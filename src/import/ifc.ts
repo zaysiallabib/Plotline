@@ -31,6 +31,16 @@ const MIN_PIECE_M = 0.05
 /** a space outline edge this close to a wall's centre line (more for a thick wall: half its thickness + 2 cm) is that wall, not a zone line */
 const ON_WALL_M = 0.1
 const TRIANGLE_CAP = 1_500_000
+/**
+ * A wall footprint wider than this across is no straight wall: a glass front turning a corner, read as one box round both
+ * sides (LTU A-House: two curtain walls 17 m and 9 m "thick" swallowed 1 476 wall pieces of a storey, 2 887 crossings).
+ * Such a wall is read from its parts' straight runs (curtainRuns), else left to the outside shape.
+ */
+const MAX_THICK_M = 1.5
+/** a curtain wall's part shorter than this along its long side is a mullion's section, not a run of the front */
+const RUN_PART_M = 0.3
+/** parts on one line with a gap up to this between them are one run (a mullion, a door in the front) */
+const RUN_GAP_M = 0.6
 
 // ---------- web-ifc ----------
 
@@ -433,6 +443,12 @@ function readModel(W: WebIfc, api: Api, model: number, fileName: string, t0: num
     }
     return { P, N, I }
   }
+  /** a curtain wall's parts (panels, frames), each its own footprint: its straight runs (curtainRuns) */
+  const parts = new Map<number, Map<number, Body>>()
+  const partOf = (owner: number, id: number): Body => {
+    const m = parts.get(owner) ?? parts.set(owner, new Map()).get(owner)!
+    return m.get(id) ?? m.set(id, { pts: [], minY: Infinity, maxY: -Infinity }).get(id)!
+  }
   const bodyOf = (id: number): Body => {
     let b = bodies.get(id)
     if (!b) bodies.set(id, (b = { pts: [], minY: Infinity, maxY: -Infinity }))
@@ -463,6 +479,7 @@ function readModel(W: WebIfc, api: Api, model: number, fileName: string, t0: num
       const wm = worldMesh(g)
       if (!wm) continue
       if (wantBody) takeBody(bodyOf(owner), wm.P, wm.N, wm.I, false)
+      if (wantBody && owner !== mesh.expressID && isA(owner, W.IFCCURTAINWALL)) takeBody(partOf(owner, mesh.expressID), wm.P, wm.N, wm.I, false)
       if (!shell) continue
       if (triangles + wm.I.length / 3 > TRIANGLE_CAP) {
         capped = true
@@ -661,6 +678,8 @@ function readModel(W: WebIfc, api: Api, model: number, fileName: string, t0: num
   let noAxis = 0
   let curved = 0
   let noBody = 0
+  let fromParts = 0
+  let bent = 0
   const draftsByStorey = new Map<number, { walls: WallDraft[]; pillars: Pillar[]; labels: RoomLabel[]; noSpace: boolean }>()
   const draftOf = (s: Storey) => {
     let d = draftsByStorey.get(s.id)
@@ -728,9 +747,21 @@ function readModel(W: WebIfc, api: Api, model: number, fileName: string, t0: num
       }
       const r = minRect(body.pts)
       if (!r || r.lengthM < 0.05) continue
-      if (!curtain) noAxis++
-      chains = [[{ x: r.centre.x - (r.dir.x * r.lengthM) / 2, y: r.centre.y - (r.dir.y * r.lengthM) / 2 }, { x: r.centre.x + (r.dir.x * r.lengthM) / 2, y: r.centre.y + (r.dir.y * r.lengthM) / 2 }]]
-      thickness ??= r.widthM
+      if (r.widthM > MAX_THICK_M) {
+        // no straight wall (a glass front turning a corner): its parts' straight runs, else the outside shape alone shows it
+        const runs = curtainRuns([...(parts.get(id)?.values() ?? [])].flatMap((b) => minRect(b.pts) ?? []))
+        if (!runs.length) {
+          bent++
+          continue
+        }
+        fromParts++
+        chains = runs.map((x) => [x.a, x.b])
+        thickness ??= Math.max(...runs.map((x) => x.widthM))
+      } else {
+        if (!curtain) noAxis++
+        chains = [[{ x: r.centre.x - (r.dir.x * r.lengthM) / 2, y: r.centre.y - (r.dir.y * r.lengthM) / 2 }, { x: r.centre.x + (r.dir.x * r.lengthM) / 2, y: r.centre.y + (r.dir.y * r.lengthM) / 2 }]]
+        thickness ??= r.widthM
+      }
     } else if (thickness === null && body) {
       // the body's width across the longest segment, from the points that project onto it
       let best: { a: Pt; b: Pt; L: number } | null = null
@@ -1013,6 +1044,8 @@ function readModel(W: WebIfc, api: Api, model: number, fileName: string, t0: num
 
   notes.push(`${storeys.length} storey${storeys.length === 1 ? '' : 's'}: ${storeys.map((s) => `${s.name} at ${fmt(s.z - baseY)} m`).join(', ')}.`)
   notes.push(...counts)
+  if (fromParts) notes.push(`${fromParts} glass fronts (curtain walls) turn a corner: each was read as the straight runs of its panels, one glass wall per run.`)
+  if (bent) notes.push(`${bent} walls are no straight wall and have no straight parts: they are left out of the plans (the outside shape shows them).`)
   if (noAxis) notes.push(`${noAxis} walls had no centre line in the file: their line was taken from the body's footprint.`)
   if (curved) notes.push(`${curved} curved walls were cut into straight pieces (within ${CHORD_M * 100} cm of the arc).`)
   if (noBody) notes.push(`${noBody} walls had neither a centre line nor a body and were left out.`)
@@ -1033,6 +1066,33 @@ function readModel(W: WebIfc, api: Api, model: number, fileName: string, t0: num
   notes.push(`Read in ${((Date.now() - t0) / 1000).toFixed(1)} s.`)
 
   return { format: 'ifc', storeys: result, shell, notes, unitScale: scale, origin }
+}
+
+/**
+ * A glass front's straight runs from its parts' footprints (each a minRect): parts along one line (within 2°, 15 cm of it)
+ * whose spans meet or leave a gap of RUN_GAP_M at most are one run, from the first part's end to the last's; its width
+ * the widest part's. A part shorter than RUN_PART_M (a mullion's section) or wider than MAX_THICK_M is no run.
+ */
+export function curtainRuns(rects: Rect[]): { a: Pt; b: Pt; widthM: number }[] {
+  const lines: { d: Pt; o: Pt; spans: [number, number, number][] }[] = []
+  for (const r of [...rects].filter((x) => x.lengthM >= RUN_PART_M && x.widthM <= MAX_THICK_M).sort((p, q) => q.lengthM - p.lengthM)) {
+    const on = lines.find((l) => Math.abs(l.d.x * r.dir.y - l.d.y * r.dir.x) < 0.035 && Math.abs(-(r.centre.x - l.o.x) * l.d.y + (r.centre.y - l.o.y) * l.d.x) <= 0.15)
+    const l = on ?? lines[lines.push({ d: r.dir, o: r.centre, spans: [] }) - 1]
+    const u = (r.centre.x - l.o.x) * l.d.x + (r.centre.y - l.o.y) * l.d.y
+    l.spans.push([u - r.lengthM / 2, u + r.lengthM / 2, r.widthM])
+  }
+  const out: { a: Pt; b: Pt; widthM: number }[] = []
+  for (const l of lines) {
+    const at = (u: number): Pt => ({ x: l.o.x + l.d.x * u, y: l.o.y + l.d.y * u })
+    const runs: [number, number, number][] = []
+    for (const s of l.spans.sort((p, q) => p[0] - q[0])) {
+      const run = runs[runs.length - 1]
+      if (run && s[0] <= run[1] + RUN_GAP_M) (run[1] = Math.max(run[1], s[1])), (run[2] = Math.max(run[2], s[2]))
+      else runs.push([...s])
+    }
+    for (const [u0, u1, w] of runs) if (u1 - u0 >= RUN_PART_M) out.push({ a: at(u0), b: at(u1), widthM: w })
+  }
+  return out
 }
 
 const RANK: Record<OpeningKind, number> = { slider: 3, door: 2, passage: 1, window: 0 }
