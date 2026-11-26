@@ -783,6 +783,15 @@ export function buildPlan(d: Drawing, name: string): Plan2dResult {
     if ((kind === 'door' && t1 - t0 > 4) || t1 - t0 < (exact ? 0.01 : MIN_GAP)) continue
     const swing = kind === 'door' && b.arc ? swingOn(b.arc, w) : null
     if (swing) placed.add(b.arc!)
+    // a block reaches past its opening (sills, frames; its widest pair of equal short lines may be the sill's ends): over
+    // an opening read already it says only what that opening is — the opening keeps its width and never grows into its
+    // neighbours (Plotline's own blocks are exact)
+    const hit = !exact && w.openings.find((x) => x.t0 < t1 && t0 < x.t1)
+    if (hit) {
+      if (hit.kind === 'passage' || (hit.kind === 'window' && kind !== 'passage')) Object.assign(hit, { kind, gap: false, ...(swing ? { hinge: swing.hinge, swing: swing.swing } : {}) })
+      blockOpenings++
+      continue
+    }
     if (putOpening(w, { kind, t0, t1, ...(swing ? { hinge: swing.hinge, swing: swing.swing } : {}) }, exact)) blockOpenings++
   }
   // door swings drawn on their own (not in a block that placed them): a quarter arc hinged on a wall

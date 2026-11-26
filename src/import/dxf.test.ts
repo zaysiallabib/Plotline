@@ -182,6 +182,16 @@ describe('dxf fixtures', () => {
     expect(deriveRooms(r.storeys[0].unit).filter((x) => x.areaSqm >= 1)).toHaveLength(3)
   })
 
+  // Maheer's Plotline 2.0 (src/dxf/dxf.test.ts "expands nested … inserts using the inherited layer")
+  test('what a block draws on layer 0 takes the layer it is inserted on, through nested blocks; its own layers stay', async () => {
+    const blocks = ['0', 'SECTION', '2', 'BLOCKS',
+      '0', 'BLOCK', '2', 'INNER', '10', 0, '20', 0, '0', 'LINE', '8', '0', '10', 0, '20', 0, '11', 2, '21', 0, '0', 'LINE', '8', 'A-FURN', '10', 0, '20', 1, '11', 2, '21', 1, '0', 'ENDBLK',
+      '0', 'BLOCK', '2', 'OUTER', '10', 0, '20', 0, '0', 'INSERT', '2', 'INNER', '8', '0', '10', 2, '20', 0, '0', 'ENDBLK', '0', 'ENDSEC']
+    const text = dxfOf(['9', '$INSUNITS', '70', 6], ['0', 'INSERT', '2', 'OUTER', '8', 'A-WALL', '10', 10, '20', 20]).replace('0\nSECTION\n2\nENTITIES', [...blocks, '0', 'SECTION', '2', 'ENTITIES'].join('\n'))
+    const r = await importDxf(text, 'blocks.dxf')
+    expect(r.layers!.map((l) => [l.name, l.role, l.count]).sort()).toEqual([['A-FURN', 'ignore', 1], ['A-WALL', 'wall', 1]])
+  })
+
   test('a file that is not a DXF is refused in plain words', async () => {
     await expect(importDxf('hello', 'x.dxf')).rejects.toThrow()
   })

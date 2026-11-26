@@ -1142,7 +1142,8 @@ could not place is named in the notes. Pick another meaning in a layer's box —
 the choice is kept in this browser for every next file with that layer name (an architect's template uses the same
 names every time). **Plotline decides** gives the layer back to Plotline. Layer names it knows by itself: the US / AIA
 ones (A-WALL, A-DOOR, A-GLAZ, S-COLS, A-ANNO-TEXT…), plain English, and the German, French, Spanish, Italian and Dutch
-words (Wände, MURS, PUERTAS, FINESTRE, KOLOM…).
+words (Wände, MURS, PUERTAS, FINESTRE, KOLOM…). What a block (a door, a window, a symbol) draws on layer 0 belongs to
+the layer the block is placed on, as in CAD: a door block placed on A-DOOR counts as doors.
 
 **Read in** (after a DXF, above its layers) says the unit the file was read in — "Plotline decides: millimetres" (the
 file's own, or Plotline's guess when the file says none or says one that makes the plan too small or too big). A drawing

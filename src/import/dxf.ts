@@ -250,7 +250,9 @@ function arcChords(c: Pt, r: number, a0: number, a1: number): Pt[] {
   return Array.from({ length: n + 1 }, (_, i) => ({ x: c.x + r * Math.cos(a0 + (sweep * i) / n), y: c.y + r * Math.sin(a0 + (sweep * i) / n) }))
 }
 
-function flatten(dxf: IDxf, entities: IEntity[], xf: Xf, out: Flat, block: string | undefined, inst: number | undefined, depth: number, frozen: Set<string>, mine?: LayerRoles): void {
+function flatten(dxf: IDxf, entities: IEntity[], xf: Xf, out: Flat, block: string | undefined, inst: number | undefined, depth: number, frozen: Set<string>, mine?: LayerRoles, owner?: string): void {
+  // (CAD's rule: what a block draws on layer 0 takes the layer it is inserted on — a door block on A-DOOR is doors)
+  const lay = (e: IEntity) => ((e.layer ?? '0') === '0' && owner ? owner : (e.layer ?? '0'))
   const det = xf.m[0] * xf.m[3] - xf.m[1] * xf.m[2]
   const rscale = Math.sqrt(Math.abs(det))
   const skip = (what: string) => out.skipped.set(what, (out.skipped.get(what) ?? 0) + 1)
@@ -259,14 +261,14 @@ function flatten(dxf: IDxf, entities: IEntity[], xf: Xf, out: Flat, block: strin
     const t = (e as { thickness?: number; depth?: number }).thickness ?? (e as { depth?: number }).depth
     return t ? Math.abs(t) : undefined
   }
-  const base = (e: IEntity) => ({ layer: e.layer ?? '0', block, inst, ...(thick(e) ? { h: thick(e) } : {}) })
+  const base = (e: IEntity) => ({ layer: lay(e), block, inst, ...(thick(e) ? { h: thick(e) } : {}) })
   const line = (e: IEntity, a: Pt, b: Pt, loop?: number) => out.segs.push({ ...base(e), a: apply(xf, a), b: apply(xf, b), ...(loop === undefined ? {} : { loop }) })
   const poly = (e: IEntity, pts: Pt[], closed: boolean) => {
     const loop = closed && pts.length > 2 ? out.loops.length : undefined
     for (let i = 0; i + 1 < pts.length; i++) line(e, pts[i], pts[i + 1], loop)
     if (loop !== undefined) {
       line(e, pts[pts.length - 1], pts[0], loop)
-      out.loops.push({ layer: e.layer ?? '0', pts: pts.map((p) => apply(xf, p)), ...(thick(e) ? { h: thick(e) } : {}) })
+      out.loops.push({ layer: lay(e), pts: pts.map((p) => apply(xf, p)), ...(thick(e) ? { h: thick(e) } : {}) })
     }
   }
   const arc = (e: IEntity, c: Pt, r: number, a0: number, a1: number) => {
@@ -371,7 +373,7 @@ function flatten(dxf: IDxf, entities: IEntity[], xf: Xf, out: Flat, block: strin
       }
       case 'HATCH': {
         const h = e as IHatchEntity
-        const r = roleOf(e.layer ?? '0', block, mine)
+        const r = roleOf(lay(e), block, mine)
         if (r !== 'wall' && r !== 'column') {
           skip('hatches off the wall / column layers')
           break
@@ -392,20 +394,20 @@ function flatten(dxf: IDxf, entities: IEntity[], xf: Xf, out: Flat, block: strin
       }
       case 'TEXT': {
         const t = e as ITextEntity
-        if (t.text) out.texts.push({ layer: e.layer ?? '0', at: apply(xf, t.startPoint ?? { x: 0, y: 0, z: 0 }), text: plainMtext(t.text, true), height: (t.textHeight ?? 1) * rscale, ...(t.startPoint?.z ? { z: t.startPoint.z } : {}) })
+        if (t.text) out.texts.push({ layer: lay(e), at: apply(xf, t.startPoint ?? { x: 0, y: 0, z: 0 }), text: plainMtext(t.text, true), height: (t.textHeight ?? 1) * rscale, ...(t.startPoint?.z ? { z: t.startPoint.z } : {}) })
         break
       }
       case 'MTEXT': {
         const t = e as IMtextEntity
-        if (t.text) out.texts.push({ layer: e.layer ?? '0', at: apply(xf, t.position ?? { x: 0, y: 0, z: 0 }), text: plainMtext(t.text), height: (t.height ?? 1) * rscale })
+        if (t.text) out.texts.push({ layer: lay(e), at: apply(xf, t.position ?? { x: 0, y: 0, z: 0 }), text: plainMtext(t.text), height: (t.height ?? 1) * rscale })
         break
       }
       case 'DIMENSION': {
         const d = e as IDimensionEntity
         const text = d.text && d.text !== '<>' ? d.text : d.actualMeasurement != null ? String(Math.round(d.actualMeasurement * 100) / 100) : ''
-        if (text) out.texts.push({ layer: `DIM:${e.layer ?? '0'}`, at: apply(xf, d.middleOfText ?? d.anchorPoint ?? { x: 0, y: 0, z: 0 }), text, height: 1 })
+        if (text) out.texts.push({ layer: `DIM:${lay(e)}`, at: apply(xf, d.middleOfText ?? d.anchorPoint ?? { x: 0, y: 0, z: 0 }), text, height: 1 })
         // its block holds the drawn lines (extension lines, arrows): read as 'dim' layer lines
-        if (d.block && dxf.blocks?.[d.block] && depth < 8) flatten(dxf, dxf.blocks[d.block].entities ?? [], xf, { ...out, texts: [] }, undefined, undefined, depth + 1, frozen, mine)
+        if (d.block && dxf.blocks?.[d.block] && depth < 8) flatten(dxf, dxf.blocks[d.block].entities ?? [], xf, { ...out, texts: [] }, undefined, undefined, depth + 1, frozen, mine, lay(e))
         break
       }
       case 'INSERT': {
@@ -427,7 +429,7 @@ function flatten(dxf: IDxf, entities: IEntity[], xf: Xf, out: Flat, block: strin
           for (let c = 0; c < cols; c++) {
             const cell: Xf = { ...local, o: { x: local.o.x + c * (ins.columnSpacing ?? 0), y: local.o.y + r * (ins.rowSpacing ?? 0) } }
             out.inserts++
-            flatten(dxf, b.entities ?? [], compose(xf, cell), out, block ?? ins.name, inst ?? out.inserts, depth + 1, frozen, mine)
+            flatten(dxf, b.entities ?? [], compose(xf, cell), out, block ?? ins.name, inst ?? out.inserts, depth + 1, frozen, mine, lay(e))
           }
         break
       }
