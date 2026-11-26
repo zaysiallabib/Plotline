@@ -930,3 +930,29 @@ describe('minimap compass', () => {
     expect(t.y).toBeLessThan(11)
   })
 })
+
+describe('a whole floor with flats picked to furnish (s31 bigifc): the walk starts in a picked flat, never a bare one', () => {
+  /** four 4 m boxes in a row: flat 1 (bed, living) | flat 2 (living, bed), each living room with its door from outside */
+  function floor(furnishFlats?: string[]): Unit {
+    const names: [string, Room['kind']][] = [['Bed 1', 'bed'], ['Living 1', 'living'], ['Living 2', 'living'], ['Bed 2', 'bed']]
+    const vertices = [0, 1, 2, 3, 4].flatMap((i) => [{ id: `t${i}`, x: 4 * i, y: 0 }, { id: `b${i}`, x: 4 * i, y: 4 }])
+    const door = (id: string) => [{ id, kind: 'door' as const, offsetM: 1.5, widthM: 0.9, heightM: 2.1, sillM: 0, hinge: 'a' as const, swing: 'in' as const }]
+    const wall = (id: string, a: string, b: string, openings: Unit['walls'][number]['openings'] = []) => ({ id, a, b, thicknessM: 0.127, heightM: 3, openings })
+    const walls = [
+      wall('top0', 't0', 't1'), wall('top1', 't1', 't2', door('in1')), wall('top2', 't2', 't3', door('in2')), wall('top3', 't3', 't4'),
+      ...[0, 1, 2, 3].map((i) => wall(`bot${i}`, `b${i}`, `b${i + 1}`)),
+      wall('x0', 't0', 'b0'), wall('x1', 't1', 'b1', door('d1')), wall('x2', 't2', 'b2'), wall('x3', 't3', 'b3', door('d2')), wall('x4', 't4', 'b4'),
+    ]
+    const roomLabels = names.map(([name, kind], i) => ({ id: `r${i}`, name, kind, x: 4 * i + 2, y: 2 }))
+    return { id: 'f', projectName: 'p', name: 'Level 2', northDeg: 0, vertices, walls, roomLabels, furniture: [], finishSlots: [], areaSqft: 0, ...(furnishFlats ? { furnishFlats } : {}) }
+  }
+  it('no pick: the first door from outside (flat 1); Flat 2 picked: in through its own door', () => {
+    const u = floor()
+    expect(core.deriveFlats(u, core.deriveRooms(u)).map((f) => f.name)).toEqual(['Flat 1', 'Flat 2'])
+    expect(entrySpawn(u, core.deriveRooms(u))!.p.x).toBeLessThan(8)
+    const v = floor(['Flat 2'])
+    const e = entrySpawn(v, core.deriveRooms(v))!
+    expect(e.p.x).toBeGreaterThan(8)
+    expect(core.roomAt(e.p, core.deriveRooms(v), v)?.name).toBe('Living 2')
+  })
+})

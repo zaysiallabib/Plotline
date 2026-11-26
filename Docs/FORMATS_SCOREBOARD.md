@@ -29,6 +29,61 @@ services or structural model, a test file of single shapes). *refused*: the Stud
 
 Left out: 69 git-lfs pointers (130-byte stand-ins for files not downloaded in this copy of the corpus).
 
+## Session 31, bigifc — a big architect model does not drown the person in marks (Stage 7)
+
+The founder's LTU A-House screenshot: a university floor of 3 062 walls and 1 076 rooms under hundreds of ×N badges, a
+minute to open, rooms all "Space N". Now (Firefox, the founder's path: `E:/dev/tmp/s31/bigifc/score/score.mjs` — the
+formats3 scorer, adding the Issues rows a person sees after the grouping and each floor's open time; before =
+`s31/redesign` bb23229, after = `s31/bigifc` a6c81a5, each from a frozen copy; shots `E:/dev/plotline-shots/s31/bigifc/`):
+
+| file | floors | read s | slowest floor open s | walls | closed rooms | named rooms | loose ends | crossings | names outside a room | flats | Issues rows a person sees |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| dental_clinic/arc.ifc | 4 | 4.3 → **5.8** | 0.1 | 2,037 | 533 | 269 | 11 | 0 | 0 | 0 | 138 → **25** |
+| hitos/arc.ifc | 7 | 3.6 → **4.3** | 0.0 | 1,828 | 506 | 238 | 62 | 2 | 0 | 0 | 159 → **39** |
+| schependomlaan/arc.ifc | 1 | 2.7 → **3** | 0.1 | 991 | 315 | 0 | 32 | 0 | 0 | 0 | 92 → **3** |
+| sixty5/arc.ifc | 19 | 18.4 → **21.5** | 0.1 | 12,345 | 2,147 | 110 | 1,254 | 0 | 0 | 0 | 1,895 → **162** |
+| smiley_west/arc.ifc | 5 | 1.3 | 0.0 | 430 | 140 | 133 | 21 | 0 | 7 | 0 → **20** | 40 |
+| wbdg_office/arc.ifc | 3 | 1.3 → **1** | 0.0 | 837 | 206 | 99 | 10 | 0 | 0 | 0 | 72 → **24** |
+| bim4eeb-demo-pol/BIM4EEB_DEMONSTRATION_BLDG_POL.ifc | 5 | 0.6 | 0.0 | 278 → **268** | 43 → **41** | 0 | 63 → **64** | 14 → **12** | 0 | 0 | 109 → **105** |
+| nordic-lca-housing-timber/ARK_NordicLCA_Housing_Timber_As-built_Archicad.ifc | 8 | 1.9 → **2.2** | 0.0 | 590 → **581** | 172 → **165** | 104 | 27 | 0 | 5 | 0 | 77 → **65** |
+| nordic-lca-office-concrete/ARK_NordicLCA_Office_Concrete_BuildingPermit_Archicad.ifc | 9 | 357.3 → **8.9** | 15.5 → **0.0** | 4,125 → **1,329** | 845 → **436** | 202 → **269** | 48 → **47** | 2,414 → **0** | 89 → **22** | 0 | 2,661 → **110** |
+| tuwien-vienna-realworld/RealWorldTestModel-EscapeRouteAnalysis-ZDB-v2.ifc | 7 | 1.6 → **1.9** | 0.0 | 640 | 197 | 110 | 15 | 7 | 0 | 0 → **5** | 49 |
+| webifc-ltu-a-house/LTU_A-House_redesign.ifczip | 5 | 42.2 → **11.5** | 43.4 → **0.2** | 8,735 → **4,600** | 1,830 → **834** | 0 | 82 → **134** | 4,561 → **0** | 0 | 0 | 5,609 → **40** |
+
+*Read s*: drop → the drawing on screen (the machine was shared: ±1–2 s on the small files is noise). *Slowest floor open*:
+the Studio's own open (join + checks) of the file's slowest floor. *Issues rows a person sees*: the rows listed one by one
+plus one row per grouped kind (below), every floor added up — the Issues heading still counts every issue.
+
+What changed, and why each number moved:
+1. **A glass front turning a corner is no 17 m wall.** A curtain wall has no body of its own; its panels' footprints were
+   read as one straight wall as thick as the front was deep (LTU: 17 m and 9 m), split at every wall meeting it and
+   passing that thickness on — 1 476 pieces of one storey; the Studio's join then took every end within 8 m as inside a
+   wall. Now a footprint over 1.5 m across is read from its panels' straight runs (a run under 1 m — a frame's return —
+   is none), a balcony glazing with a body of its own from its upright faces, else left to the outside shape (noted). LTU:
+   crossings 4 561 → 0, walls 8 735 → 4 600, closed rooms 1 830 → 834 (the rest were slivers between the fake walls),
+   read 42 → 11 s, its 2nd floor's open 43 → 0.2 s; the Nordic office: 6 minutes → 9 s, crossings 2 414 → 0, names in a
+   room of their own 202 → 269. Loose ends on the LTU 82 → 134: on the base the fake walls swallowed every end near them
+   (hidden, not joined); they are one row now with its fix. A "column" wider than 1.5 m both ways (two of 13 × 9 m on
+   the LTU, drawn as black blocks) is left to the outside shape too.
+2. **One Issues row per kind on a big floor** (over 200 walls; five or more of a kind): "34 loose wall ends", "250 rooms
+   with no name", walls crossing, names outside a room — each with its fix for all, one Ctrl+Z: **Keep them all — they
+   stand alone**, **Name them "VÅNING 3 · 1" to "VÅNING 3 · 250"**, **Join all that touch**. Their marks stay off the plan
+   until the row is opened (then one badge per room). The LTU's floor 2: 6 rows on one screen (base: 2 085 rows, 142
+   badges); both fixes applied leave 4 rows (Firefox, `E:/dev/tmp/s31/bigifc/ltu.mjs`).
+3. **European room words** (Zimmer, Bad, Küche, Wohnzimmer, Slaapkamer, Treppenhaus, Aufzug, Gang …): Smiley West's upper
+   floors show their 10 student flats each, the Vienna block 1–2 a floor (flats 0 → 20 and 0 → 5 above). **Furnish in 3D**
+   (the floor list): tick the flats the 3D furnishes, the rest stand bare; Preview 3D of Smiley West's 1.OG with Flat 5 and
+   Flat 6 ticked shows those two furnished between bare ones, the walk starting in a ticked flat.
+4. **Preview 3D of a whole university floor opens**: the LTU's 2nd floor reaches Enter in 27 s (base: never — the
+   daylight bake sampled a 100 × 60 m corridor box at 25 cm, 79 s on its small 4th floor alone); the bake's work is now
+   bounded, every built-in flat and level unchanged (each daylight region on the same 25 cm grid).
+
+Not done: a storey cannot be opened before the whole file is read (every file here now reads in 22 s or less, most in
+1–5 s, the slowest Sixty5's 342 MB at about 20 s; the reading box names each floor as it goes); a solid wall with no
+centre line that bends (one in the Polish block, 20 × 3 m) is left to the outside shape; the Polish block keeps 12
+crossings and Hitos 2 (not looked into here); the LTU's Dollhouse shows one black-streaked block with a magenta line (from
+the outside shape, not looked into); the Nordic housing block has 7 fewer closed rooms (no name lost: 104 named either way).
+
 ## Session 31, review — what the file cannot place, the person places in one click
 
 After formats3, 9 names on the ifc-bench buildings stood in no room of their own. Now:

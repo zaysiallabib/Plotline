@@ -24,6 +24,20 @@ type V3 = [number, number, number]
 
 /** metres per atlas texel: the gradient is low-frequency; 0.25 m keeps a 2700 sft unit's bake well under 300 ms */
 const TEXEL = 0.25
+/**
+ * The bake's work is bounded (s31 bigifc: on a university floor a corridor round a courtyard is a 100 × 60 m box — 96 000
+ * samples at TEXEL, most outside it, each summing hundreds of window strips checked against hundreds of walls, and the fill
+ * under its walls quadratic in them: the LTU A-House's 4th floor baked 79 s, one step 13 s, and its 2nd floor's Preview 3D
+ * never reached Enter). Three ceilings, each above everything a built-in flat or level needs, so those bake exactly as before
+ * (every region still on the 25 cm grid): a surface's samples (the largest built-in: DMD's typical plate, 157 × 37) …
+ */
+export const MAX_SAMPLES = 96 * 96
+/** … a surface's samples × its room's work per sample (opsOf; built-ins at most 7 M, DMD B2) … */
+export const MAX_OPS = 8e6
+/** (one aperture's form factor — its quad clipped to the horizon, four edges — costs about this many wall checks) */
+const FF_COST = 16
+/** … and the whole bake's, Σ over its surfaces (built-ins at most 25 M, DMD B1 / B2; the LTU floors 2–6 G): past it, every texel grows by one factor. */
+export const MAX_WORK = 50e6
 /** atlas byte 255 = factor RANGE */
 export const RANGE = 2
 /** walls shorter than this read the floor's daylight at their foot (mapDaylight) */
@@ -347,17 +361,38 @@ export function* bakeSteps(unit: Unit, rooms: Room[], cover: Pt[][] = [], blocks
   // ── sample grids ──
   type Job = { key: string; room: Room; nu: number; nv: number; u0: number; v0: number; du: number; dv: number; point: (u: number, v: number) => V3 | null; at: (u: number, v: number) => V3; n: V3; own: Id | null; cls: 0 | 1 | 2 }
   const jobs: Job[] = []
-  const grid = (lo: number, hi: number) => {
-    const n = Math.max(2, Math.ceil((hi - lo) / TEXEL) + 1)
-    return { n, d: (hi - lo) / (n - 1) || TEXEL }
+  /** one axis of a surface sampled `t` apart; `texel`: a surface's spacing, coarser than TEXEL only past MAX_SAMPLES */
+  const grid = (lo: number, hi: number, t = TEXEL) => {
+    const n = Math.max(2, Math.ceil((hi - lo) / t) + 1)
+    return { n, d: (hi - lo) / (n - 1) || t }
   }
+  // a sample's work: each aperture's form factor (about FF_COST wall checks) and the walls it is checked against
+  const opsOf = (r: Room | null) => (r ? Math.max(1, apertures.get(r.id)?.length ?? 0) * (FF_COST + (blockers.get(r.id)?.length ?? 0)) : 1)
+  const texel0 = (w: number, h: number, ops: number) => Math.max(TEXEL, Math.sqrt((w * h) / MAX_SAMPLES), Math.sqrt((w * h * ops) / MAX_OPS))
+  // the whole bake's work (Σ samples × apertures × walls checked): past MAX_WORK every surface's texel grows by one factor
+  const extentOf = (r: Room): [number, number] => {
+    const p = core.roomPolygon(r, unit)
+    return [Math.max(...p.map((q) => q.x)) - Math.min(...p.map((q) => q.x)), Math.max(...p.map((q) => q.y)) - Math.min(...p.map((q) => q.y))]
+  }
+  const surfaces: [number, number, number, number][] = [
+    ...baked.map((r): [number, number, number, number] => [...extentOf(r), opsOf(r), 2]),
+    ...unit.walls.map((w): [number, number, number, number] => [frames.get(w.id)!.lengthM, w.heightM, Math.max(...sides.get(w.id)!.map(opsOf)), sides.get(w.id)!.filter((r) => r && !core.isOutdoor(r.kind)).length]),
+  ]
+  const workAt = (k: number) => surfaces.reduce((sum, [w, h, ops, n]) => {
+    const t = texel0(w, h, ops) * k
+    return sum + n * Math.max(2, Math.ceil(w / t) + 1) * Math.max(2, Math.ceil(h / t) + 1) * ops
+  }, 0)
+  let k = 1
+  while (k < 64 && workAt(k) > MAX_WORK) k *= 1.25
+  const texel = (w: number, h: number, ops: number) => texel0(w, h, ops) * k
   for (const r of baked) {
     const poly = core.roomPolygon(r, unit)
     const inner = core.roomInnerPolygon(r, unit)
     const xs = poly.map((p) => p.x)
     const ys = poly.map((p) => p.y)
-    const gx = grid(Math.min(...xs), Math.max(...xs))
-    const gy = grid(Math.min(...ys), Math.max(...ys))
+    const t = texel(Math.max(...xs) - Math.min(...xs), Math.max(...ys) - Math.min(...ys), opsOf(r))
+    const gx = grid(Math.min(...xs), Math.max(...xs), t)
+    const gy = grid(Math.min(...ys), Math.max(...ys), t)
     const h = heightOf(r)
     const at = (z: number) => (u: number, v: number): V3 | null => (core.pointInPolygon({ x: u, y: v }, inner) ? [u, v, z] : null)
     const base = { room: r, nu: gx.n, nv: gy.n, u0: Math.min(...xs), v0: Math.min(...ys), du: gx.d, dv: gy.d, own: null }
@@ -367,8 +402,9 @@ export function* bakeSteps(unit: Unit, rooms: Room[], cover: Pt[][] = [], blocks
   const inners = new Map(rooms.map((r) => [r.id, core.roomInnerPolygon(r, unit)]))
   for (const w of unit.walls) {
     const f = frames.get(w.id)!
-    const gu = grid(0, f.lengthM)
-    const gv = grid(0, w.heightM)
+    const t = texel(f.lengthM, w.heightM, Math.max(...sides.get(w.id)!.map(opsOf)))
+    const gu = grid(0, f.lengthM, t)
+    const gv = grid(0, w.heightM, t)
     sides.get(w.id)!.forEach((room, i) => {
       if (!room || core.isOutdoor(room.kind)) return
       const s = i ? -1 : 1

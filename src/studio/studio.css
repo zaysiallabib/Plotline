@@ -422,6 +422,8 @@ ul.notes { margin: 0; padding-left: var(--s-4); display: grid; gap: var(--s-1); 
 .issues .chev { flex: none; width: var(--s-2); height: var(--s-2); margin-top: var(--s-1); border-right: 1px solid var(--muted); border-bottom: 1px solid var(--muted); transform: rotate(-45deg); transition: transform var(--dur-fast) var(--ease); }
 .issues li.group.open > .ghead .chev { transform: rotate(45deg); }
 .issues li.group > .issues { margin: 0 0 var(--s-1) var(--s-4); }
+/* s31 bigifc: a bulk row's one fix for all, under its name (the name's left edge: padding + dot + gap) */
+.issues li.bulk > .acts { margin: calc(-1 * var(--s-1)) var(--s-2) var(--s-2) calc(2 * var(--s-2) + var(--s-3)); }
 .num {
   flex: none; display: inline-grid; place-items: center; min-width: 20px; height: 20px; padding: 0 6px;
   border-radius: var(--r-pill); font-size: var(--fs-xs); font-weight: 500; line-height: 1; color: var(--surface);
@@ -498,6 +500,11 @@ ul.notes { margin: 0; padding-left: var(--s-4); display: grid; gap: var(--s-1); 
 .floors .new-project { padding: var(--s-4); background: var(--surface); border: 1px solid var(--hairline); border-radius: var(--radius); box-shadow: var(--shadow-sm); }
 .floors .open-drawing, .floors .types { display: flex; flex-direction: column; gap: var(--s-3); padding-top: var(--s-4); border-top: 1px solid var(--hairline); }
 .floors .open-drawing .link { align-self: flex-start; }
+/* s31 bigifc: which flats of a whole floor the 3D furnishes */
+.floors .furnish-flats { display: flex; flex-direction: column; gap: var(--s-2); }
+.floors .furnish-flats .name { display: flex; justify-content: space-between; align-items: baseline; gap: var(--s-2); }
+.floors .furnish-flats .name > span:last-child { display: flex; gap: var(--s-3); }
+.floors .furnish-flats .ticks { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--s-1) var(--s-3); }
 .floors .types h4 { margin: 0; font-size: var(--fs-2xs); font-weight: 500; letter-spacing: var(--track); text-transform: uppercase; color: var(--muted); }
 .floors .type { display: flex; flex-direction: column; gap: var(--s-2); }
 .floors .type .name { display: flex; justify-content: space-between; align-items: baseline; gap: var(--s-2); }

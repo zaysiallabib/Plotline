@@ -403,7 +403,23 @@ export function roomLevelAt(room: Pick<Room, 'loop' | 'levelM' | 'slope' | 'join
 export function roomAt(p: Pt, rooms: Room[], graph: Graph): Room | null {
   let best: Room | null = null
   for (const r of rooms) {
-    if (pointInPolygon(p, roomPolygon(r, graph)) && (!best || r.areaSqm < best.areaSqm)) best = r
+    const o = outlineOf(r, graph)
+    if (p.x < o.box[0] || p.x > o.box[2] || p.y < o.box[1] || p.y > o.box[3]) continue
+    if (pointInPolygon(p, o.poly) && (!best || r.areaSqm < best.areaSqm)) best = r
   }
   return best
+}
+/**
+ * Each room's outline and box, made once per vertex list (s31 bigifc: the 3D's daylight bake asks roomAt twice a wall — on
+ * the LTU A-House's 2nd floor 3 300 times over 285 rooms, every outline made again each time: 1.8 s of a 3.6 s bake).
+ */
+const roomOutlines = new WeakMap<Room, { vs: Vertex[]; poly: Pt[]; box: [number, number, number, number] }>()
+function outlineOf(r: Room, graph: Graph): { poly: Pt[]; box: [number, number, number, number] } {
+  const kept = roomOutlines.get(r)
+  if (kept && kept.vs === graph.vertices) return kept
+  const poly = roomPolygon(r, graph)
+  const xs = poly.map((q) => q.x), ys = poly.map((q) => q.y)
+  const o = { vs: graph.vertices, poly, box: [Math.min(...xs), Math.min(...ys), Math.max(...xs), Math.max(...ys)] as [number, number, number, number] }
+  roomOutlines.set(r, o)
+  return o
 }

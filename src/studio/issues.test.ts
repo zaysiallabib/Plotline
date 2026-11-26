@@ -13,7 +13,7 @@ import sheltechA from '../data/units/sheltech-a.json'
 import sheltechB from '../data/units/sheltech-b.json'
 import { emptyUnit, initialState, reducer, studioIssues, type Draft, type StudioState } from './model'
 import { ANSWERS_KEY, LOOKS_RIGHT, applyAnswer, logAnswer, openReview, studioReducer } from './review'
-import { KEEP, SPOT_PX, around, closes, exportedReview, fixSig, fixesOf, groupRows, issueKey, markIssues, rowAnswers, spotsOf, type Mark } from './issues'
+import { BIG_WALLS, BULK_MIN, KEEP, KEEP_ALL, SPOT_PX, around, bulkKindOf, bulkRows, closes, exportedReview, fixSig, fixesOf, groupRows, issueKey, markIssues, rowAnswers, spotsOf, type Mark } from './issues'
 
 const v = (id: string, x: number, y: number): Vertex => ({ id, x, y })
 const w = (id: string, a: string, b: string, openings: Opening[] = []): Wall => ({ id, a, b, thicknessM: 0.127, heightM: 3.048, openings })
@@ -562,5 +562,71 @@ describe('s31 review: two names in one room (an architect file gives a bath and 
     const f = fixes.get(markOf(marks, 'label-outside-any-room').key)!.fixes
     expect(f).toHaveLength(1)
     expect(f[0]).toMatchObject({ label: 'Draw a zone line', draw: 'zone', actions: [] })
+  })
+})
+
+describe('s31 bigifc: a big architect model (over 200 walls) shows one row per kind with its count, and a fix for all', () => {
+  /** a row of `n` 3 × 3 m rooms (3n + 1 walls, no names, no door) and `stubs` loose walls hanging under its bottom wall */
+  function row(n: number, stubs = 0): Unit {
+    const vs: Vertex[] = [], ws: Wall[] = []
+    for (let i = 0; i <= n; i++) vs.push(v(`t${i}`, 3 * i, 0), v(`b${i}`, 3 * i, 3))
+    for (let i = 0; i < n; i++) ws.push(w(`T${i}`, `t${i}`, `t${i + 1}`), w(`B${i}`, `b${i}`, `b${i + 1}`))
+    for (let i = 0; i <= n; i++) ws.push(w(`V${i}`, `t${i}`, `b${i}`))
+    for (let i = 0; i < stubs; i++) vs.push(v(`s${i}`, 3 * (i + 1), 4.5)), ws.push(w(`S${i}`, `b${i + 1}`, `s${i}`))
+    return { ...emptyUnit(), id: 'big', name: 'Level 2', planImage: SCALE, vertices: vs, walls: ws }
+  }
+  const bulks = (u: Unit) => {
+    const { marks } = marked(u)
+    return { marks, bulks: bulkRows(u, marks) }
+  }
+
+  it('over BIG_WALLS walls, each kind with BULK_MIN rows or more is one row with its count; a kind with fewer stays row by row', () => {
+    const u = row(70, BULK_MIN) // 211 + 5 walls: 70 rooms with no name, 5 loose ends
+    expect(u.walls.length).toBeGreaterThan(BIG_WALLS)
+    const { bulks: b } = bulks(u)
+    expect(b.map((x) => [x.key, x.message, x.marks.length])).toEqual([
+      ['bulk:loose', '5 loose wall ends', 5],
+      ['bulk:unnamed', '70 rooms with no name', 70],
+    ])
+    expect(b.map((x) => x.marks.every((m) => bulkKindOf(m) === x.kind))).toEqual([true, true])
+    const few = bulks(row(70, BULK_MIN - 1)) // 4 loose ends: their own rows, numbered 1 to 4 (the 70 bulked after them)
+    expect(few.bulks.map((x) => x.kind)).toEqual(['unnamed'])
+    expect(few.marks.filter((m) => !bulkKindOf(m) || bulkKindOf(m) === 'loose').map((m) => m.n).filter((n) => n !== null)).toEqual([1, 2, 3, 4])
+  })
+
+  it('a floor of BIG_WALLS walls or fewer keeps one row per issue, as before', () => {
+    const u = row(66, 4) // 199 + 4 walls … 203: trim to 200
+    const small = { ...u, walls: u.walls.slice(0, BIG_WALLS) }
+    expect(small.walls.length).toBe(BIG_WALLS)
+    expect(bulkRows(small, marked(small).marks)).toEqual([])
+  })
+
+  it('"Keep them all — they stand alone": one undo step, nothing moves, no loose end left', () => {
+    const u = row(70, 6)
+    const loose = bulks(u).bulks.find((x) => x.kind === 'loose')!
+    expect(loose.fix!.label).toBe(KEEP_ALL)
+    const s = studioReducer(stateOf(u), { type: 'apply-fix', actions: loose.fix!.actions, label: loose.fix!.label })
+    expect(studioIssues(s.unit, deriveRooms(s.unit)).filter((i) => i.code === 'dangling-vertex')).toEqual([])
+    expect(s.unit.vertices).toEqual(u.vertices)
+    expect(s.history.past).toHaveLength(1)
+  })
+
+  it('rooms with no name: named after the floor and a number, west to east, in one undo step; none left unnamed', () => {
+    const u = row(70)
+    const unnamed = bulks(u).bulks.find((x) => x.kind === 'unnamed')!
+    expect(unnamed.fix!.actions).toHaveLength(70)
+    const s = studioReducer(stateOf(u), { type: 'apply-fix', actions: unnamed.fix!.actions, label: unnamed.fix!.label })
+    expect(studioIssues(s.unit, deriveRooms(s.unit)).filter((i) => i.code === 'unlabelled-room')).toEqual([])
+    const named = [...s.unit.roomLabels].sort((a, b) => a.x - b.x)
+    expect([named[0].name, named[69].name]).toEqual(['Level 2 · 1', 'Level 2 · 70'])
+    expect(s.history.past).toHaveLength(1)
+  })
+
+  it('on a big floor the marks in one room share one badge, wherever they lie in it (the rest by distance)', () => {
+    const mk = (key: string, x: number, y: number): Mark => ({ key, n: 1, severity: 'amber', at: { x, y }, message: key })
+    const marks = [mk('a', 1, 1), mk('b', 2.9, 2.9), mk('c', 4, 1), mk('out', 50, 50), mk('out2', 50.1, 50)]
+    const roomOf = (p: { x: number; y: number }) => (p.x < 3 && p.y < 3 ? 0 : p.x < 6 && p.y < 3 ? 1 : -1)
+    const spots = spotsOf(marks, (p) => ({ x: p.x * 100, y: p.y * 100 }), SPOT_PX, roomOf)
+    expect(spots.map((s) => s.marks.map((m) => m.key))).toEqual([['a', 'b'], ['c'], ['out', 'out2']])
   })
 })

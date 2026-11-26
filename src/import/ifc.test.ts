@@ -6,7 +6,7 @@ import { existsSync, readFileSync, statSync } from 'node:fs'
 import { deflateRawSync } from 'node:zlib'
 import { describe, expect, it } from 'vitest'
 import { deriveRooms, validate, wallFrame } from '../core'
-import { importIfc, sharedEdges } from './ifc'
+import { curtainRuns, importIfc, sharedEdges } from './ifc'
 import { readGlbJson, WINDOW } from './glb'
 
 const CERT = 'E:/dev/ALTERNATIVE FORMAT TEST/Certification-datasets-main'
@@ -47,6 +47,33 @@ describe('two rooms of one open plan', () => {
     expect(s[0][0].x).toBe(4)
     expect([s[0][0].y, s[0][1].y].sort()).toEqual([1, 3])
     expect(sharedEdges(sq(0, 0, 4, 3), sq(4.1, 0, 7, 3))).toEqual([])
+  })
+})
+
+describe('a glass front turning a corner (s31 bigifc: LTU A-House read it as one wall 17 m thick)', () => {
+  /** a part's footprint rectangle: centre, angle (deg), length, width */
+  const part = (x: number, y: number, deg: number, lengthM: number, widthM = 0.03) => ({ centre: { x, y }, dir: { x: Math.cos((deg * Math.PI) / 180), y: Math.sin((deg * Math.PI) / 180) }, lengthM, widthM })
+  it('panels along one line are one run (a mullion gap between them is no break); the corner makes a second run', () => {
+    // three 1.2 m panels on y = 0 with 5 cm gaps, then two on x = 3.8 going down; mullion sections (0.05 × 0.15) left out
+    const rects = [part(0.6, 0, 0, 1.2), part(1.85, 0, 0, 1.2), part(3.1, 0, 0, 1.2), part(3.8, 0.7, 90, 1.2), part(3.8, 1.95, 90, 1.2), part(1.25, 0, 90, 0.15, 0.05)]
+    const runs = curtainRuns(rects)
+    expect(runs).toHaveLength(2)
+    const along = runs.find((r) => Math.abs(r.a.y - r.b.y) < 1e-9)!
+    expect(Math.min(along.a.x, along.b.x)).toBeCloseTo(0)
+    expect(Math.max(along.a.x, along.b.x)).toBeCloseTo(3.7)
+    expect(along.widthM).toBeCloseTo(0.03)
+    const down = runs.find((r) => r !== along)!
+    expect(Math.min(down.a.y, down.b.y)).toBeCloseTo(0.1)
+    expect(Math.max(down.a.y, down.b.y)).toBeCloseTo(2.55)
+  })
+  it('two fronts on one line with a gap wider than a door stay two runs; parts 15 cm off the line are another line', () => {
+    expect(curtainRuns([part(0.5, 0, 0, 1), part(3, 0, 0, 1)])).toHaveLength(2)
+    expect(curtainRuns([part(0.5, 0, 0, 1), part(1.5, 0.2, 0, 1)])).toHaveLength(2)
+    expect(curtainRuns([part(0.5, 0, 0, 1), part(1.5, 0.1, 0, 1)])).toHaveLength(1)
+  })
+  it('nothing wall-like among the parts: no run (the wall is left to the outside shape); a run under 1 m (a frame\'s return) is no wall', () => {
+    expect(curtainRuns([part(0, 0, 0, 0.2), part(1, 1, 0, 3, 2)])).toEqual([])
+    expect(curtainRuns([part(0, 0, 90, 0.45, 0.1), part(5, 0, 0, 0.8)])).toEqual([])
   })
 })
 

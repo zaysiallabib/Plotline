@@ -65,6 +65,17 @@ describe('kinds: what a typed name guesses', () => {
     expect(cases.map(([n]) => [n, guessKind(n)])).toEqual(cases)
   })
 
+  it("a European IFC's rooms (s31 bigifc): Zimmer, Slaapkamer, BAD / WC-3-1, Wohnküche … get their kinds; every English name keeps its own", () => {
+    const cases: [string, string][] = [
+      ['ZIMMER-3-1', 'bed'], ['Zimmer', 'bed'], ['Schlafzimmer', 'bed'], ['Slaapkamer 2', 'bed'], ['Sovrum', 'bed'], ['Chambre 1', 'bed'],
+      ['Wohnzimmer', 'living'], ['Wohnküche', 'living'], ['WOHNEN/ESSEN', 'living'], ['Woonkamer', 'living'], ['Esszimmer', 'dining'],
+      ['Arbeitszimmer', 'study'], ['Buero', 'study'], ['Schlafen/FBH', 'bed'], ['Kind/FBH', 'bed'], ['Ankleide', 'closet'], ['BAD / WC-3-1', 'bath'], ['Bad', 'bath'], ['Badkamer', 'bath'], ['Küche', 'kitchen'], ['Keuken', 'kitchen'],
+      ['Terrasse', 'balcony'], ['Balkon', 'balcony'], ['Schacht 2', 'shaft'], ['Abstellraum', 'utility'], ['Badminton hall', 'other'],
+      ['Bed-1', 'bed'], ['Toilet', 'bath'], ['Lift Lobby', 'other'], ['Store', 'utility'], ['Flur-3-3', 'other'], ['Gang', 'other'],
+    ]
+    expect(cases.map(([n]) => [n, guessKind(n)])).toEqual(cases)
+  })
+
   it('a lobby door onto its lawn is the level\'s entry (no "no entry door"); the ground sample loads with no mark', () => {
     // (its 4' door with no hinge reads as a slider in an old export: given one, it is the hinged entry door)
     const walls = GROUND_SAMPLE.walls.map((x) => ({ ...x, openings: x.openings.map((o) => ({ ...o, hinge: 'a' as const, swing: 'in' as const })) }))

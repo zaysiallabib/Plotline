@@ -6,7 +6,7 @@
  * of what it changes — and a fix is offered ONLY when applying it really closes the issue without a new one (`closes`).
  * Pure: no DOM. core.validate is untouched; this only reads its issues.
  */
-import { deriveRooms, formatFeetInches, polygonCentroid, roomAt, roomPolygon, wallFrame } from '../core'
+import { deriveRooms, formatFeetInches, polygonCentroid, roomAt, roomPolygon, validate, wallFrame } from '../core'
 import type { Id, Pt, Room, RoomKind, RoomLabel, Unit, Wall } from '../core'
 import type { PrintedRoom, ReviewItem } from '../trace/types'
 import { MIN_OPENING_M, WALL_TYPES, ahead, entityPoints, findOpening, initialState, openSpotsNear, reducer, studioIssues, wallTypeOf, type Action, type StudioIssue, type StudioState, type WallType } from './model'
@@ -284,7 +284,11 @@ const TWIN_M = 0.1
  * have a spot. A "Check these" row on an issue's spot gets no mark of its own: it carries the issue's number (twinOf).
  */
 export function markIssues(u: Unit, rooms: Room[], issues: StudioIssue[], review: Review['items'] = []): Mark[] {
-  const fromIssues = issues.map((i) => issueMark(u, rooms, i)).sort((p, q) => Number(!p.at) - Number(!q.at) || RANK[p.severity] - RANK[q.severity])
+  // (a big floor's kinds that come as one row each — bulkRows — after the rows listed one by one: those are 1, 2, 3 …)
+  const many = new Map<BulkKind, number>()
+  if (u.walls.length > BIG_WALLS) for (const i of issues) if (BULK_OF[i.code]) many.set(BULK_OF[i.code]!, (many.get(BULK_OF[i.code]!) ?? 0) + 1)
+  const later = (m: Omit<Mark, 'n'>) => Number((many.get(bulkKindOf(m as Mark)!) ?? 0) >= BULK_MIN)
+  const fromIssues = issues.map((i) => issueMark(u, rooms, i)).sort((p, q) => Number(!p.at) - Number(!q.at) || later(p) - later(q) || RANK[p.severity] - RANK[q.severity])
   const fromReview: Omit<Mark, 'n'>[] = review.map((r) => {
     const twin = fromIssues.find((m) => m.at && dist(m.at, r.at) <= TWIN_M)
     return { key: `review:${r.id}`, severity: twin?.severity ?? (r.kind === 'unclosed' ? 'red' : 'amber'), at: r.at, message: r.message, review: r, ...(twin ? { twinOf: twin.key } : {}) }
@@ -313,18 +317,114 @@ export interface Spot {
  * of a badge's spot on screen join it (its count shows, not a number); grey ones (cosmetic) are not drawn at all, the
  * list holds them; a "Check these" row on an issue's spot is that issue's badge already (twinOf). List order kept.
  */
-export function spotsOf(marks: Mark[], toScreen: (p: Pt) => Pt, px = SPOT_PX): Spot[] {
+export function spotsOf(marks: Mark[], toScreen: (p: Pt) => Pt, px = SPOT_PX, roomOf?: (p: Pt) => number): Spot[] {
   const out: Spot[] = []
+  // s31 bigifc: on a big floor (`roomOf`), the marks in one room share its badge, wherever they lie in it; the rest by px
+  const byRoom = new Map<number, Spot>()
+  const loose: Spot[] = []
   for (const m of marks) {
     if (!m.at || m.twinOf || m.severity === 'grey') continue
     const p = toScreen(m.at)
-    const s = out.find((x) => Math.hypot(x.at.x - p.x, x.at.y - p.y) <= px)
+    const k = roomOf ? roomOf(m.at) : -1
+    const s = k >= 0 ? byRoom.get(k) : loose.find((x) => Math.hypot(x.at.x - p.x, x.at.y - p.y) <= px)
     if (s) {
       s.marks.push(m)
       if (m.severity === 'red') s.severity = 'red'
-    } else out.push({ key: m.key, at: p, marks: [m], severity: m.severity })
+      continue
+    }
+    const n: Spot = { key: m.key, at: p, marks: [m], severity: m.severity }
+    out.push(n)
+    if (k >= 0) byRoom.set(k, n)
+    else loose.push(n)
   }
   return out
+}
+
+// ── s31 bigifc: a big architect's model does not drown the person in marks ─────────────────────────────────────────
+
+/** a floor with more walls than this is a big model's storey (an architect's whole floor: LTU A-House 1 644 walls, a Sixty5 floor 650) … */
+export const BIG_WALLS = 200
+/** … where a kind of row with at least this many is ONE row with its count (and its fix for all), its marks drawn on the
+ *  plan only while that row is open, one badge per room */
+export const BULK_MIN = 5
+
+export type BulkKind = 'loose' | 'crossing' | 'outside' | 'unnamed'
+const BULK_OF: Partial<Record<StudioIssue['code'], BulkKind>> = { 'dangling-vertex': 'loose', 'walls-intersect': 'crossing', 'label-outside-any-room': 'outside', 'unlabelled-room': 'unnamed' }
+const BULK_WORDS: Record<BulkKind, [string, string]> = {
+  loose: ['loose wall end', 'loose wall ends'],
+  crossing: ['wall crossing', 'walls crossing'],
+  outside: ['room name outside a room', 'room names outside a room'],
+  unnamed: ['room with no name', 'rooms with no name'],
+}
+/** "Keep them all": the loose ends' fix for all of them */
+export const KEEP_ALL = 'Keep them all — they stand alone'
+export const JOIN_ALL = 'Join all that touch'
+
+/** One row for many of a kind (s31 bigifc): "217 loose wall ends", the fix for all of them, its marks. */
+export interface Bulk {
+  /** `bulk:<kind>` */
+  key: string
+  kind: BulkKind
+  message: string
+  severity: Severity
+  marks: Mark[]
+  /** the kind's one safe fix for all of them, one undo step; absent: each by hand (open the row) */
+  fix?: Fix
+}
+
+/** the mark's kind of bulk row, when it is one of those kinds */
+export const bulkKindOf = (m: Mark): BulkKind | undefined => (m.issue ? BULK_OF[m.issue.code] : undefined)
+
+/**
+ * The bulk rows of a big floor (more than BIG_WALLS walls): each kind (loose ends, crossings, names outside a room, rooms
+ * with no name) with BULK_MIN rows or more is one row, in that order. Its fix: loose ends — every wall run they end stands
+ * alone on purpose (nothing moves; a stray corner goes); crossings — the Join walls pass, offered only when it leaves fewer;
+ * rooms with no name — each named after the floor and a number, west → east (the drawing's name, else
+ * "Room"); names outside a room — none (which room is whose is a person's call: the row opens them one by one).
+ */
+export function bulkRows(u: Unit, marks: Mark[]): Bulk[] {
+  if (u.walls.length <= BIG_WALLS) return []
+  const by = new Map<BulkKind, Mark[]>()
+  for (const m of marks) {
+    const k = bulkKindOf(m)
+    if (k) by.set(k, [...(by.get(k) ?? []), m])
+  }
+  const out: Bulk[] = []
+  for (const kind of ['loose', 'crossing', 'outside', 'unnamed'] as BulkKind[]) {
+    const ms = by.get(kind) ?? []
+    if (ms.length < BULK_MIN) continue
+    const fix = bulkFix(u, kind, ms)
+    const words = BULK_WORDS[kind][ms.length === 1 ? 0 : 1]
+    out.push({ key: `bulk:${kind}`, kind, message: `${ms.length.toLocaleString('en')} ${words}`, severity: ms.some((m) => m.severity === 'red') ? 'red' : ms.some((m) => m.severity === 'amber') ? 'amber' : 'grey', marks: ms, ...(fix ? { fix } : {}) })
+  }
+  return out
+}
+
+function bulkFix(u: Unit, kind: BulkKind, ms: Mark[]): Fix | undefined {
+  if (kind === 'loose') {
+    const walls = new Set<Id>(), strays: Id[] = []
+    for (const m of ms) {
+      const id = m.issue!.ids[0]
+      const mine = u.walls.filter((w) => w.a === id || w.b === id)
+      if (!mine.length) strays.push(id)
+      else if (mine.length === 1) for (const w of runOf(u, id, mine[0])) walls.add(w)
+    }
+    const actions: Action[] = [...(walls.size ? [{ type: 'stand-alone', ids: [...walls], on: true } as Action] : []), ...(strays.length ? [{ type: 'delete', ids: strays } as Action] : [])]
+    return actions.length ? { label: KEEP_ALL, title: `Each of these walls is meant to end there (a screen, a fin, a wall the file stops short): nothing moves, their free ends are no longer asked about${strays.length ? `; the ${strays.length} corner${strays.length === 1 ? '' : 's'} with no wall go${strays.length === 1 ? 'es' : ''}` : ''}`, actions, ghost: [] } : undefined
+  }
+  if (kind === 'crossing') {
+    const n = (x: Unit) => validate(x).filter((i) => i.code === 'walls-intersect').length
+    const after = reducer({ ...initialState(), unit: u }, { type: 'join-walls' }).unit
+    return after !== u && n(after) < ms.length ? { label: JOIN_ALL, title: 'Every wall end inside another wall is joined there and every crossing is split at a shared corner (Join walls)', actions: [{ type: 'join-walls' }], ghost: [] } : undefined
+  }
+  if (kind === 'unnamed') {
+    const prefix = u.name.trim() || 'Room'
+    const spots = ms.flatMap((m) => m.nameAt ?? []).sort((p, q) => p.x - q.x || p.y - q.y)
+    if (!spots.length) return undefined
+    const actions: Action[] = spots.map((p, i) => ({ type: 'add-label', label: { name: `${prefix} · ${i + 1}`, kind: 'other', x: p.x, y: p.y } }))
+    return { label: `Name them “${prefix} · 1” to “${prefix} · ${spots.length}”`, title: `The file names none of these rooms: each gets the floor's name and a number, west to east (rename any one with R)`, actions, ghost: [] }
+  }
+  return undefined
 }
 
 /** a "Check these" row's kind in words (its number's tooltip; the name of a part of a long "Elsewhere") */

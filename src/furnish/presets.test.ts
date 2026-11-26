@@ -2,7 +2,7 @@ import * as THREE from 'three'
 import { describe, expect, test } from 'vitest'
 import { deriveRooms, pointInPolygon, roomInnerPolygon, type FurniturePlacement, type Opening, type Pt, type Room, type RoomKind, type Unit } from '../core'
 import { heightRange, isCeilingLight, kitAsset, placementLabel, placementSize } from './kit'
-import { AC_KINDS, bestView, doorClearZones, ENTRY, footprint, furnish, isCommonCore, isPlanter, LIT_KINDS, PATH_W, quadsOverlap, WARDROBE_CLEAR } from './presets'
+import { AC_KINDS, bareRooms, bestView, doorClearZones, ENTRY, footprint, furnish, isCommonCore, isPlanter, LIT_KINDS, PATH_W, quadsOverlap, WARDROBE_CLEAR } from './presets'
 import { buildProcedural } from './procedural'
 import { ART_SETS, CURTAINS, parsePlanter, PLANTER } from './procedural.meta'
 
@@ -814,5 +814,27 @@ describe('sized labels', () => {
     expect(placementLabel({ assetId: 'tv_55', sizeM: { x: 1.845, y: 1.17, z: 0.24 } })).toBe('83" TV on stand')
     expect(sized('kitchen_sink', 0.75)).toBe('Kitchen sink cabinet (0.75 m)')
     expect(placementLabel({ assetId: 'ceiling_light', sizeM: { x: 0.532, y: 0.119, z: 0.532 } })).toBe('Flush ceiling light, opal diffuser Ø53 cm')
+  })
+})
+
+describe('a whole floor of many flats furnishes only the flats picked (s31 bigifc, Unit.furnishFlats)', () => {
+  /** five 4 m boxes in a row joined by doors: flat 1 (bed, living), the lift lobby, flat 2 (living, bed) */
+  const ROW: [string, RoomKind][] = [['Bed 1', 'bed'], ['Living 1', 'living'], ['Lift lobby', 'other'], ['Living 2', 'living'], ['Bed 2', 'bed']]
+  function floor(furnishFlats?: string[]): Unit {
+    const n = ROW.length
+    const vertices = [...Array(n + 1)].flatMap((_, i) => [{ id: `t${i}`, x: 4 * i, y: 0 }, { id: `b${i}`, x: 4 * i, y: 4 }])
+    const wall = (id: string, a: string, b: string, door = false) => ({ id, a, b, thicknessM: 0.127, heightM: 3, openings: door ? [{ id: `o${id}`, kind: 'door' as const, offsetM: 1.5, widthM: 0.9, heightM: 2.1, sillM: 0 }] : [] })
+    const walls = [...[...Array(n)].flatMap((_, i) => [wall(`top${i}`, `t${i}`, `t${i + 1}`), wall(`bot${i}`, `b${i}`, `b${i + 1}`)]), wall('x0', 't0', 'b0'), wall(`x${n}`, `t${n}`, `b${n}`), ...[...Array(n - 1)].map((_, i) => wall(`x${i + 1}`, `t${i + 1}`, `b${i + 1}`, true))]
+    const roomLabels = ROW.map(([name, kind], i) => ({ id: `r${i}`, name, kind, x: 4 * i + 2, y: 2 }))
+    return { id: 'floor', projectName: 'p', name: 'Level 2', northDeg: 0, vertices, walls, roomLabels, furniture: [], finishSlots: [], areaSqft: 0, ...(furnishFlats ? { furnishFlats } : {}) }
+  }
+  const furnishedRooms = (u: Unit) => [...new Set(furnish(u, deriveRooms(u)).map((p) => p.roomId))].sort()
+
+  test('none picked: every room furnished, as before; one picked: the other flat bare, the core as ever; none: only the core', () => {
+    expect(furnishedRooms(floor())).toEqual(['r0', 'r1', 'r3', 'r4'])
+    expect(furnishedRooms(floor(['Flat 1']))).toEqual(['r0', 'r1'])
+    expect(furnishedRooms(floor(['Flat 2']))).toEqual(['r3', 'r4'])
+    expect(furnishedRooms(floor([]))).toEqual([])
+    expect(bareRooms(floor(), deriveRooms(floor()))).toBeNull()
   })
 })

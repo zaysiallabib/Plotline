@@ -8,7 +8,7 @@ import { resizeAxes, surfaceOf } from './furniture'
 import { LibraryPanel } from './LibraryPanel'
 import { EXTERIOR_M, PARTITION_M, WALL_TYPES, findEntity, formatLevel, openingDefaults, parseLevel, rampDirs, selectionText, shared, wallTypeOf, type StudioIssue, type StudioState, type WallType } from './model'
 import { AI_KEY, LOOKS_RIGHT, SHOW_ME, TRACKER_KEY, answerId, fewRooms, roomCount, type StudioAction as Action } from './review'
-import { groupRows, REVIEW_KIND, type Fix, type Mark, type MarkFixes, type Severity } from './issues'
+import { groupRows, REVIEW_KIND, type Bulk, type Fix, type Mark, type MarkFixes, type Severity } from './issues'
 import type { AutoTraceStats } from '../trace/types'
 import type { ImportResult, LayerRole } from '../import'
 
@@ -168,6 +168,10 @@ interface Props {
   issues: StudioIssue[]
   /** the "Check these" rows, then the Issues, as marked on the plan (issues.ts markIssues) */
   marks: Mark[]
+  /** s31 bigifc: a big model's floor — each kind of many rows as one row (issues.ts bulkRows); the open one lists its rows */
+  bulks?: Bulk[]
+  openBulk?: string | null
+  onBulk?: (key: string | null) => void
   /** working fixes per mark key — an entry once worked out (s27 rows: a long list fills in as it goes); null while the plan is still changing */
   fixes: Map<string, MarkFixes> | null
   /** the mark open on the plan */
@@ -202,14 +206,15 @@ interface Props {
   onReadIn?: (pick: number | 'auto' | 'length') => void
 }
 
-export function Panel({ state, dispatch, rooms, flats, issues, marks, fixes, active, picked = null, lit = null, onPick, onHot, onOpen, onFix, onAnswer, ai, pieces, placing, onPlace, notes, onDismissNotes, layers, onLayerRole, readIn, onReadIn }: Props) {
+export function Panel({ state, dispatch, rooms, flats, issues, marks, bulks = [], openBulk = null, onBulk, fixes, active, picked = null, lit = null, onPick, onHot, onOpen, onFix, onAnswer, ai, pieces, placing, onPlace, notes, onDismissNotes, layers, onLayerRole, readIn, onReadIn }: Props) {
   const piece = pieces?.find((p) => state.selection.length === 1 && p.id === state.selection[0])
   const { unit } = state
   const review = marks.filter((m) => m.review)
   const aiDone = ai ? Object.entries(ai.notes).filter(([id, n]) => n.before && !review.some((m) => m.review!.id === id)) : []
   // Ask AI for all: the rows the AI has not answered yet (or failed on)
   const unasked = ai ? review.map((m) => m.review!.id).filter((id) => !ai.notes[id] || ai.notes[id].error) : []
-  const listed = marks.filter((m) => m.issue)
+  const bulked = new Set(bulks.flatMap((b) => b.marks.map((m) => m.key)))
+  const listed = marks.filter((m) => m.issue && !bulked.has(m.key))
   // a mark opened on the plan: its row comes into view once (not on every render: the timer re-renders each second)
   useEffect(() => {
     if (active || picked) document.querySelector('.panel .issues li.on')?.scrollIntoView({ block: 'nearest' })
@@ -527,19 +532,52 @@ export function Panel({ state, dispatch, rooms, flats, issues, marks, fixes, act
             Join walls (overlaps and crossings)
           </button>
         )}
-        {listed.length === 0 ? (
+        {listed.length === 0 && !bulks.length ? (
           <p className="muted">No issues. Ready to export.</p>
         ) : (
           <>
             <p className="muted legend">
               <span className="num red" /> breaks the 3D <span className="num amber" /> worth a look <span className="num grey" /> cosmetic
             </p>
-            <ul className="issues">{listed.map((m) => row(m))}</ul>
+            <ul className="issues">
+              {bulks.map((b) => {
+                const open = b.key === openBulk
+                return (
+                  <li key={b.key} className={`group bulk${open ? ' open' : ''}`}>
+                    <button className="ghead" aria-expanded={open} title={open ? 'Fold them away and take their marks off the plan' : 'List them here and show their marks on the plan'} onClick={() => onBulk?.(open ? null : b.key)}>
+                      <span className={`num ${b.severity}`} />
+                      <span className="grow">
+                        <span className="gname">{b.message}</span>
+                        {!open && <span className="gfirst">{BULK_HINT[b.kind]}</span>}
+                      </span>
+                      <span className="chev" aria-hidden="true" />
+                    </button>
+                    {b.fix && (
+                      <span className="acts">
+                        <button className="link" title={`${b.fix.title} — one Ctrl+Z undoes it`} onClick={() => onFix(b.fix!)}>
+                          {b.fix.label}
+                        </button>
+                      </span>
+                    )}
+                    {open && <ul className="issues">{b.marks.map((m) => row(m))}</ul>}
+                  </li>
+                )
+              })}
+              {listed.map((m) => row(m))}
+            </ul>
           </>
         )}
       </section>
     </aside>
   )
+}
+
+/** a closed bulk row's second line (s31 bigifc) */
+const BULK_HINT: Record<Bulk['kind'], string> = {
+  loose: 'Open to see them on the plan',
+  crossing: 'Open to see them on the plan',
+  outside: 'Open to place them one by one',
+  unnamed: 'Open to see them on the plan',
 }
 
 /** O tool: what the next click on a wall places (kind + width); the ghost on the wall shows exactly this */
