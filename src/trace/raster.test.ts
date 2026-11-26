@@ -1,6 +1,15 @@
 import { describe, expect, test } from 'vitest'
 import { colourPage, dashMask, furnitureMask, hatchMask, lightWalls, normalPolarity, outlinedWalls } from './raster'
 import type { Gray } from './types'
+import { traceRasters } from './rasterInput'
+
+test('the picture as rasters: grey = its luminance, the colour its own buffer, one size (the page and the worker alike)', () => {
+  const rgba = Uint8ClampedArray.from([255, 0, 0, 255, 0, 255, 0, 255, 0, 0, 255, 255, 255, 255, 255, 255])
+  const { gray, rgb } = traceRasters({ width: 2, height: 2, data: rgba })
+  expect([...gray.data]).toEqual([76, 149, 29, 255])
+  expect(rgb).toEqual({ width: 2, height: 2, data: rgba })
+  expect([gray.width, gray.height]).toEqual([2, 2])
+})
 
 const K = 50 // px per m
 /** a blank 10 × 8 m sheet; fill(x0, y0, x1, y1) in metres, grey 0 */

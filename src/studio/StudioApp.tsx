@@ -37,6 +37,7 @@ import {
 } from './model'
 import { AI_KEY, ANSWERS_KEY, LOOKS_RIGHT, SHOW_ME, STRIPS_KEY, TRACKER_KEY, answerId, logAnswer, openReview, roomIndexAt, studioReducer, type Review } from './review'
 import type { AutoTraceResult, Gray } from '../trace/types'
+import { traceRasters } from '../trace/rasterInput'
 import type { Preview, TraceIn, TraceJob, TraceMsg } from './autotrace.worker'
 import type { FixesIn, FixesOut } from './fixes.worker'
 import { KindSelect, LevelFields, Panel, WALL_KEYS, formatArea } from './Panel'
@@ -303,10 +304,7 @@ function rastersOf(im: HTMLImageElement): { gray: Gray; rgb: NonNullable<TraceJo
   ctx.fillStyle = '#fff'
   ctx.fillRect(0, 0, c.width, c.height)
   ctx.drawImage(im, 0, 0)
-  const rgba = ctx.getImageData(0, 0, c.width, c.height).data
-  const data = new Uint8Array(c.width * c.height)
-  for (let i = 0; i < data.length; i++) data[i] = 0.299 * rgba[i * 4] + 0.587 * rgba[i * 4 + 1] + 0.114 * rgba[i * 4 + 2]
-  return { gray: { width: c.width, height: c.height, data }, rgb: { width: c.width, height: c.height, data: rgba } }
+  return traceRasters(ctx.getImageData(0, 0, c.width, c.height))
 }
 
 /** what the Studio calls a drawing (its name box, Preview 3D): its own name, else "Type A" / "Floor plan A" / "Untitled unit" — its files and its buyer link too */
@@ -1492,9 +1490,11 @@ export default function StudioApp() {
     } catch {
       /* storage blocked: no AI helper, the default tracker */
     }
-    const { gray, rgb } = rastersOf(img)
     const worker = new Worker(new URL('./autotrace.worker.ts', import.meta.url), { type: 'module' })
     const send = (m: TraceIn, transfer: Transferable[] = []) => worker.postMessage(m, transfer)
+    // (the picture goes over as a bitmap, read into pixels in the worker — from Maheer's Plotline 2.0: a click made before
+    // it is sent waits for it)
+    let sent = false, early: TraceIn | null = null
     // hover: one preview in flight at a time, the latest spot sent as soon as it is back (the worker's pace is the throttle)
     let ready = false, busy = false, picked = false, want: Pt | null = null, seq = 0
     const next = () => {
@@ -1551,7 +1551,9 @@ export default function StudioApp() {
         stop()
         toast('Auto-trace cancelled')
       }
-      send(px ? { type: 'pick', px } : { type: 'floor' })
+      const m: TraceIn = px ? { type: 'pick', px } : { type: 'floor' }
+      if (sent) send(m)
+      else early = m
     }
     worker.onmessage = (e: MessageEvent<TraceMsg>) => {
       const m = e.data
@@ -1575,7 +1577,15 @@ export default function StudioApp() {
     }
     setPrep('starting')
     setTrace('pick')
-    send({ type: 'prepare', job: { gray, rgb, pxPerM: unit.planImage?.pxPerM, aiKey, tracker, mock: MOCK_TRACE } }, [gray.data.buffer, rgb.data.buffer])
+    const job = { pxPerM: unit.planImage?.pxPerM, aiKey, tracker, mock: MOCK_TRACE }
+    const bitmap = typeof OffscreenCanvas === 'undefined' ? null : await createImageBitmap(img).catch(() => null)
+    if (bitmap) send({ type: 'prepare', job: { ...job, bitmap } }, [bitmap])
+    else {
+      const { gray, rgb } = rastersOf(img)
+      send({ type: 'prepare', job: { ...job, gray, rgb } }, [gray.data.buffer, rgb.data.buffer])
+    }
+    sent = true
+    if (early) send(early)
   }
 
   // ----- hit testing (screen px)

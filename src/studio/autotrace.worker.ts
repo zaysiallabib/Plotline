@@ -7,6 +7,7 @@
  */
 import { autoTrace, pick, pickFloor, prepare, preview } from '../trace'
 import { geminiReader } from '../trace/ai'
+import { traceRasters } from '../trace/rasterInput'
 import type { AutoTraceOpts, AutoTraceResult, Gray, Px } from '../trace/types'
 
 export interface TraceJob {
@@ -23,7 +24,9 @@ export interface TraceJob {
   /** dev only (/studio?mock-trace): the fixed Sheltech A result instead of the solver */
   mock?: boolean
 }
-export type TraceIn = TraceJob | { type: 'prepare'; job: Omit<TraceJob, 'pickPx'> } | { type: 'hover'; px: Px; seq: number } | { type: 'pick'; px: Px } | { type: 'floor' }
+/** the plan picture handed over as a bitmap: its grey + colour rasters are made here, off the page (from Maheer's Plotline 2.0) */
+type BitmapJob = Omit<TraceJob, 'pickPx' | 'gray' | 'rgb'> & { bitmap: ImageBitmap }
+export type TraceIn = TraceJob | { type: 'prepare'; job: Omit<TraceJob, 'pickPx'> | BitmapJob } | { type: 'hover'; px: Px; seq: number } | { type: 'pick'; px: Px } | { type: 'floor' }
 export type Preview = { polys: Px[][]; names: { at: Px; text: string }[]; region: { x: number; y: number; w: number; h: number }[] }
 export type TraceMsg =
   | { type: 'progress'; stage: string; fraction: number }
@@ -40,6 +43,21 @@ let job: Omit<TraceJob, 'pickPx'> | null = null
 let prepared: ReturnType<typeof prepare> | null = null
 let ready: Awaited<ReturnType<typeof prepare>> | null = null
 
+/** = the page's rastersOf: the bitmap drawn on white (transparent pixels read as paper) */
+function rasterize({ bitmap, ...job }: BitmapJob): Omit<TraceJob, 'pickPx'> {
+  try {
+    const canvas = new OffscreenCanvas(bitmap.width, bitmap.height)
+    const ctx = canvas.getContext('2d', { willReadFrequently: true })
+    if (!ctx) throw new Error('the plan picture could not be read')
+    ctx.fillStyle = '#fff'
+    ctx.fillRect(0, 0, canvas.width, canvas.height)
+    ctx.drawImage(bitmap, 0, 0)
+    return { ...job, ...traceRasters(ctx.getImageData(0, 0, canvas.width, canvas.height)) }
+  } finally {
+    bitmap.close()
+  }
+}
+
 onmessage = async ({ data }: MessageEvent<TraceIn>) => {
   try {
     if (!('type' in data)) {
@@ -47,7 +65,7 @@ onmessage = async ({ data }: MessageEvent<TraceIn>) => {
       return post({ type: 'done', result: await trace(data.gray, { ...optsOf(data), pickPx: data.pickPx }) })
     }
     if (data.type === 'prepare') {
-      job = data.job
+      job = 'bitmap' in data.job ? rasterize(data.job) : data.job
       // (the dev mock has nothing to prepare: its pick is the fixed result)
       if (!(import.meta.env.DEV && job.mock)) ready = await (prepared = prepare(job.gray, optsOf(job)))
       return post({ type: 'ready' })
