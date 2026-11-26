@@ -14,6 +14,7 @@ import type { Id, Pillar, Pt, Shell, Unit } from '../../core'
 import { FLOOR_M, type Rect } from './demo-tower'
 import type { Tower } from './index'
 import type { Review } from '../../studio/review'
+import type { SheetKind } from '../../import/sheets'
 import { placesIn, settleOn } from './apartments'
 
 export const PROJECTS_KEY = 'plotline.projects'
@@ -57,6 +58,28 @@ export interface Project {
    * back finds its rows again (manual walk s31: they went). By drawing id; absent: none kept.
    */
   reviews?: Record<Id, Review>
+  /**
+   * The drawings of the architect's set that are not floor plans (session 31, Stage 1 of Docs/PLAN_DRAWING_SETS.md):
+   * elevations, sections, the site plan, schedules… kept with the project as what they are — each a picture in this browser
+   * (studio/pictures.ts, by its id) with its kind, title and where it came from, for the later stages (heights, the outside).
+   * Nothing is traced on them. Absent in older projects.
+   */
+  sheets?: ProjectSheet[]
+}
+
+/** A view of the drawing set kept with the project (Project.sheets): its picture is kept under `id` like a drawing's. */
+export interface ProjectSheet {
+  id: Id
+  kind: SheetKind
+  /** as printed: "FRONT ELEVATION (SOUTH)" */
+  title: string
+  /** an elevation's side, a section's mark, a plan's floors ("2–8") */
+  which?: string
+  /** 1 : scale as printed */
+  scale?: number
+  /** where it came from: the file and its page */
+  file: string
+  page: number
 }
 
 export interface ProjectPlan {
@@ -523,6 +546,7 @@ export function parseProjects(raw: string | null): Project[] {
         typeof p.flats === 'object' &&
         Array.isArray(p.floors) &&
         (p.levels === undefined || Array.isArray(p.levels)) &&
+        (p.sheets === undefined || Array.isArray(p.sheets)) &&
         (p.plan === undefined || (typeof p.plan === 'object' && Number.isFinite(p.plan?.floors))),
     )
   } catch {

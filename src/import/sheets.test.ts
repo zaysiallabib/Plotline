@@ -122,6 +122,8 @@ describe('a page', () => {
     const b = r.views[0].box
     expect(b.x1).toBeLessThan(1100) // the title block left out
     expect(b.x0).toBeGreaterThan(20) // and the border
+    expect(b.y0).toBeGreaterThan(38) // and its own title, underline and scale line under the drawing
+    expect(b.y0).toBeLessThan(100)
     expect(drawingArea(page([], border))).toEqual({ x0: 20, y0: 10, x1: 1100, y1: 782 })
   })
   test('a cover sheet is one title page, whatever small plans it shows', () => {

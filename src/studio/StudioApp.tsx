@@ -1,4 +1,4 @@
-import { Fragment, useCallback, useEffect, useMemo, useReducer, useRef, useState, type ReactNode } from 'react'
+import { Fragment, Suspense, lazy, useCallback, useEffect, useMemo, useReducer, useRef, useState, type ReactNode } from 'react'
 import { deriveFlats, deriveRooms, formatFeetInches, nearestWall, newId, parseLength, pillarCorners, roomAt, unitBounds, vertexById, wallFrame } from '../core'
 import type { Id, OpeningKind, Pt, RoomKind, Shell, Site, Slope, Unit } from '../core'
 import { draw, flatNames, roomNames, wallFaceDots, type Hit, type Hover } from './draw'
@@ -9,6 +9,7 @@ import {
   WALL_TYPES,
   arcPoints,
   dirDegOf,
+  emptyUnit,
   entityPoints,
   findEntity,
   formatTimer,
@@ -46,13 +47,14 @@ import { NorthArrow, SitePanel } from './SitePanel'
 import { FloorList, NewProject } from './FloorList'
 import { getPicture, putPicture } from './pictures'
 import { putShell } from './shells'
-import PdfPages from './PdfPages'
+import type { SetChoice, SetFile, SetRow } from './SetPanel'
 import PrintBox from './PrintBox'
 import { SAMPLES, sampleLine, type Sample } from './samples'
 import { CONVERTED_PICTURE, toPlanPicture } from '../import/picture'
 import type { PdfDoc } from '../import/pdf'
+import type { Box } from '../import/sheets'
 import { IMPORT_ACCEPT, expandZips, filesOfDrop, importFile, importFormatOf, lockedFormatOf, mainFile, siblingsOf, type DropFile, type ImportResult, type ImportedStorey, type LayerRole, type LayerRoles } from '../import'
-import { PROJECTS_KEY, keepApartments, keepReview, newProject, projectWith, parseProjects, projectTower, readProjects, saveProjects, setSlot, slotLabel, slotsOf, syncUnit, type Project, type ProjectPlan, type Slot } from '../data/building/projects'
+import { PROJECTS_KEY, drawingName, keepApartments, keepReview, newProject, projectWith, parseProjects, projectTower, readProjects, saveProjects, setSlot, slotLabel, slotsOf, syncUnit, type Project, type ProjectPlan, type Slot } from '../data/building/projects'
 import { finishesKey, keptFor, layoutKey, putKept, readFinishes, splitKept } from '../data/building/apartments'
 import { floorIn, roleIn, stemIn } from '../data/building'
 import { HARD, snapMove, snapPoint, type Snap } from './snap'
@@ -70,6 +72,8 @@ import './studio.css'
 import { ask } from '../lib/ask'
 
 const DRAFT_KEY = 'plotline.studio.draft'
+/** the Set panel and what it reads (sheets.ts, the 2D engine's scale words) load when a set is first dropped */
+const SetPanel = lazy(() => import('./SetPanel'))
 /** a person's corrections of what a DXF / SVG layer holds, by layer name: kept for every next file (src/import plan2d roleOf) */
 const LAYER_ROLES_KEY = 'plotline.layerRoles'
 const readLayerRoles = (): LayerRoles => {
@@ -331,9 +335,12 @@ export default function StudioApp() {
   const [reading, setReading] = useState<{ name: string; stage: string; fraction: number | null; stop: AbortController } | null>(null)
   /** Try a sample's list: opens under its button, or over it when the window is too short */
   const [samplesOpen, setSamplesOpen] = useState<false | 'down' | 'up'>(false)
-  /** a PDF of several pages waiting for "which page is the plan?" (PdfPages), and the page being read after a click */
-  const [pdfPick, setPdfPick] = useState<{ name: string; doc: PdfDoc; busy: number | null } | null>(null)
-  const openPdfDoc = useRef<PdfDoc | null>(null)
+  /** a drawing set (a PDF of several pages, or several PDFs) listed page by page in the Set panel (SetPanel) */
+  const [setFiles, setSetFiles] = useState<SetFile[] | null>(null)
+  /** the PDFs open now: the last set (or single PDF) stays open while its message offers "as a picture" / "its lines" */
+  const openPdfDocs = useRef<PdfDoc[]>([])
+  /** a kept drawing of the set (Project.sheets) shown big over the sheet */
+  const [sheetView, setSheetView] = useState<{ title: string; dataUrl: string } | null>(null)
   const [missingPlan, setMissingPlan] = useState<string | null>(null)
   // Auto-trace: 'pick' = waiting for the click inside the flat; then the running stage; cancelTrace stops either
   const [trace, setTrace] = useState<'pick' | { stage: string; fraction: number } | null>(null)
@@ -782,7 +789,8 @@ export default function StudioApp() {
     if (!id || !signedIn) return
     let live = true
     void (async () => {
-      for (const u of Object.keys(readProjects().find((p) => p.id === id)?.units ?? {})) {
+      const p = readProjects().find((x) => x.id === id)
+      for (const u of [...Object.keys(p?.units ?? {}), ...(p?.sheets ?? []).map((s) => s.id)]) {
         const pic = await getPicture(u).catch(() => undefined) // one at a time: a project's pictures are a few MB each
         if (!live) return
         await pictureOnline(u, pic)
@@ -994,42 +1002,57 @@ export default function StudioApp() {
     if (lastRead.current) void importArchitect(lastRead.current.file, lastRead.current.siblings)
   }
   /**
-   * A PDF: one page is read at once; several ask which page is the plan (PdfPages). A page whose lines make a plan (two or
-   * more closed rooms) opens as the drawing; else the page becomes the plan picture to trace (a brochure page is a photo,
-   * or a picture with its words turned into outlines). Either way the message offers the other.
+   * A PDF, or several dropped together. One page holding one floor plan is read at once, as before. Anything more — a set of
+   * pages, a page of several drawings, an elevation alone — opens the Set panel (SetPanel): every page read for what it is,
+   * the plans built onto their floors in one go, or one drawing opened alone. A drawing opened alone whose lines make a
+   * plan (two or more closed rooms) opens as the drawing; else it becomes the plan picture to trace (a brochure page is a
+   * photo, or a picture with its words turned into outlines). Either way the message offers the other.
    */
-  const openPdfFile = async (file: File) => {
-    let doc: PdfDoc
-    try {
-      doc = await (await import('../import/pdf')).openPdf(await file.arrayBuffer())
-    } catch (e) {
-      return showError(`Could not read ${file.name}: ${e instanceof Error ? e.message : String(e)}`)
+  const openPdfFiles = async (files: File[]) => {
+    const pdf = await import('../import/pdf')
+    const docs: SetFile[] = []
+    for (const file of files) {
+      try {
+        docs.push({ name: file.name, doc: await pdf.openPdf(await file.arrayBuffer()) })
+      } catch (e) {
+        showError(`Could not read ${file.name}: ${e instanceof Error ? e.message : String(e)}`)
+      }
     }
-    // (the last PDF stays open while its message offers "as a picture" / "its lines": the next one closes it)
-    void openPdfDoc.current?.loadingTask.destroy()
-    openPdfDoc.current = doc
-    if (doc.numPages === 1) return readPdfPage(file.name, doc, 1).catch((e) => showError(`Could not read ${file.name}: ${e instanceof Error ? e.message : String(e)}`))
+    if (!docs.length) return
+    // (the last PDFs stay open while a message offers "as a picture" / "its lines": the next ones close them)
+    for (const d of openPdfDocs.current) void d.loadingTask.destroy()
+    openPdfDocs.current = docs.map((d) => d.doc)
+    if (docs.length === 1 && docs[0].doc.numPages === 1) {
+      const { name, doc } = docs[0]
+      const one = await (async () => {
+        const { readSheet } = await import('../import/sheets')
+        return readSheet(await pdf.readSheetPage(doc, 1)).views
+      })().catch(() => [])
+      if (import.meta.env.DEV) Object.assign(window, { __plotlineSheetRead: one }) // the sets scoreboard: what a one-page PDF was read as
+      // a page of one plan (or nothing told by its words) keeps today's path: read at once
+      if (one.length <= 1 && (!one[0] || one[0].kind === 'plan' || one[0].by === 'shape')) return readPdfPage(name, doc, 1).catch((e) => showError(`Could not read ${name}: ${e instanceof Error ? e.message : String(e)}`))
+    }
     setNote(null)
-    setPdfPick({ name: file.name, doc, busy: null })
+    setSetFiles(docs)
   }
-  const closePdf = () => setPdfPick(null)
-  const pdfThumb = useCallback(async (page: number, px: number) => (await (await import('../import/pdf')).renderPage(pdfPick!.doc, page, px)).toDataURL('image/jpeg', 0.85), [pdfPick?.doc]) // eslint-disable-line react-hooks/exhaustive-deps
-  const readPdfPage = async (name: string, doc: PdfDoc, page: number) => {
+  const openPdfFile = (file: File) => openPdfFiles([file])
+  const closeSet = useCallback(() => setSetFiles(null), [])
+  const readPdfPage = async (name: string, doc: PdfDoc, page: number, frame: Box | null = null) => {
     const stop = new AbortController()
     setReading({ name, stage: doc.numPages > 1 ? `page ${page}` : 'the page', fraction: null, stop })
     try {
-      await readPdfPageNow(name, doc, page, stop.signal)
+      await readPdfPageNow(name, doc, page, frame, stop.signal)
     } finally {
       setReading((x) => (x?.stop === stop ? null : x))
     }
   }
-  const readPdfPageNow = async (name: string, doc: PdfDoc, page: number, stopped: AbortSignal) => {
+  const readPdfPageNow = async (name: string, doc: PdfDoc, page: number, frame: Box | null, stopped: AbortSignal) => {
     const pdf = await import('../import/pdf')
-    const r = await pdf.importPdf(doc, name, page).catch(() => null)
+    const r = await pdf.importPdf(doc, name, page, frame ?? undefined).catch(() => null)
     if (stopped.aborted) return
-    // the page as the plan picture: its longer side 4000 px (a plan picture's usual size), WEBP to stay under the 10 MB limit
+    // the page (or its one drawing) as the plan picture: its longer side 4000 px (a plan picture's usual size), WEBP to stay under the 10 MB limit
     const asPicture = async () => {
-      const canvas = await pdf.renderPage(doc, page, 4000)
+      const { canvas } = await pdf.renderView(doc, page, frame, 4000)
       const blob = await new Promise<Blob | null>((ok) => canvas.toBlob(ok, 'image/webp', 0.92))
       if (stopped.aborted) return
       if (!blob) return showError('This browser could not turn the page into a picture')
@@ -1045,11 +1068,81 @@ export default function StudioApp() {
       if (r) toast(`${where} is now the plan picture (its lines did not make a clean plan) — set the scale (S), then Auto-trace`, r.storeys[0]?.unit.walls.length ? { label: 'Read its lines instead', onClick: () => void takeImport(r, name) } : undefined)
     }
   }
-  const pickPdfPage = async (page: number) => {
-    if (!pdfPick) return
-    setPdfPick({ ...pdfPick, busy: page })
-    await readPdfPage(pdfPick.name, pdfPick.doc, page).catch((e) => showError(`Could not read page ${page}: ${e instanceof Error ? e.message : String(e)}`))
-    closePdf()
+  /** one drawing of the set opened alone, as the page picker did */
+  const openOne = (row: SetRow, files: SetFile[]) => {
+    closeSet()
+    void readPdfPage(files[row.file].name, files[row.file].doc, row.page, row.frame).catch((e) => showError(`Could not read page ${row.page}: ${e instanceof Error ? e.message : String(e)}`))
+  }
+  /**
+   * Build the project from the set (Stage 1): each ticked plan becomes a drawing on its floors — its own lines when they
+   * make a plan, else its picture to trace (scaled when the sheet prints its scale); each ticked elevation, section, site
+   * plan, schedule or interior elevation is kept with the project as a picture (Project.sheets). The project's floors are
+   * the floors read; its first drawing opens.
+   */
+  const buildSet = async (rows: SetChoice[], files: SetFile[]) => {
+    closeSet()
+    const pdf = await import('../import/pdf')
+    const stop = new AbortController()
+    const name = files[0].name.replace(/\.pdf$/i, '')
+    const plans = rows.filter((r) => r.kind === 'plan' && r.used && r.slots.length)
+    const kept = rows.filter((r) => r.kind !== 'plan' && r.used)
+    const all = [...plans.flatMap((r) => r.slots)]
+    const numbers = all.filter((s): s is number => typeof s === 'number')
+    let p = newProject(newId(), name, { basements: Math.max(0, ...numbers.map((s) => -s)), floors: Math.max(1, ...numbers), rooftop: all.includes('R') })
+    const pictureOf = async (r: SetChoice, px: number): Promise<{ pic: PlanImage; pxPerPt: number }> => {
+      const { canvas, pxPerPt } = await pdf.renderView(files[r.file].doc, r.page, r.frame, px)
+      return { pic: { dataUrl: canvas.toDataURL('image/webp', 0.9), naturalW: canvas.width, naturalH: canvas.height, name: `${files[r.file].name.replace(/\.pdf$/i, '')} p${r.page}.webp` }, pxPerPt }
+    }
+    let first: Id | null = null
+    let pictures = 0
+    try {
+      for (const [i, r] of [...plans, ...kept].entries()) {
+        if (stop.signal.aborted) return toast('Stopped building the project')
+        setReading({ name, stage: `drawing ${i + 1} of ${plans.length + kept.length}`, fraction: i / (plans.length + kept.length), stop })
+        if (r.kind === 'plan') {
+          const read = await pdf.importPdf(files[r.file].doc, files[r.file].name, r.page, r.frame ?? undefined).catch(() => null)
+          let u: Unit
+          if (read && pdf.readsAsPlan(read)) u = read.storeys[0].unit
+          else {
+            // its lines make no plan: the drawing's picture, to trace (scaled when the sheet prints its scale: 1 : n)
+            const { pic, pxPerPt } = await pictureOf(r, 4000)
+            u = { ...emptyUnit(), ...(r.view.scale ? { planImage: { src: pic.name, pxPerM: pxPerPt / (r.view.scale * (0.0254 / 72)), originPx: { x: 0, y: 0 } } } : {}) }
+            await putPicture(u.id, pic)
+            pictures++
+          }
+          u = { ...u, name: drawingName(p, r.slots[0]), projectName: name }
+          for (const s of r.slots) p = setSlot(p, s, u)
+          first ??= u.id
+        } else {
+          const id = newId()
+          await putPicture(id, (await pictureOf(r, 2400)).pic)
+          const which = r.which ?? (r.kind === 'elevation' ? r.view.facade : r.kind === 'section' ? r.view.mark : undefined)
+          p = { ...p, sheets: [...(p.sheets ?? []), { id, kind: r.kind, title: r.view.title || `Page ${r.page}`, ...(which ? { which } : {}), ...(r.view.scale ? { scale: r.view.scale } : {}), file: files[r.file].name, page: r.page }] }
+        }
+      }
+    } catch (e) {
+      return showError(`Could not build the project: ${e instanceof Error ? e.message : String(e)}`)
+    } finally {
+      setReading((x) => (x?.stop === stop ? null : x))
+    }
+    const ps = [...fresh(), p]
+    if (!storeProjects(ps)) return
+    setActive({ id: p.id })
+    setListOpen(true)
+    if (first) openDrawing(ps, first)
+    toast(`${name}: ${plans.length} drawing${plans.length === 1 ? '' : 's'} on their floors${pictures ? ` (${pictures} as pictures to trace)` : ''}, ${kept.length} kept with the project — the list on the right`)
+  }
+  useEffect(() => {
+    if (!sheetView) return
+    const key = (e: KeyboardEvent) => e.key === 'Escape' && (e.stopPropagation(), setSheetView(null))
+    addEventListener('keydown', key, true)
+    return () => removeEventListener('keydown', key, true)
+  }, [sheetView])
+  /** a kept drawing of the set, big (from this browser, else the company's copy online) */
+  const showSheet = async (id: Id, title: string) => {
+    const pic = (await getPicture(id).catch(() => undefined)) ?? (await pictureFromCloud(id, null).catch(() => null))
+    if (!pic) return showError('This drawing’s picture is not in this browser')
+    setSheetView({ title, dataUrl: pic.dataUrl })
   }
   /** what a read file gave, into the Studio (importArchitect above); `fileName`: for the project's name */
   const takeImport = async (r: ImportResult, fileName: string) => {
@@ -1130,6 +1223,9 @@ export default function StudioApp() {
     const name = (p: string) => p.split('/').pop() ?? p
     const asFile = (f: DropFile) => (f.data instanceof File && f.data.name === name(f.path) ? f.data : new File([f.data], name(f.path), { type: MIME[f.path.toLowerCase().split('.').pop() ?? ''] ?? '' }))
     const main = mainFile(files.map((f) => f.path))
+    // a drawing set: several PDFs (and nothing that holds more, an IFC or a model) are listed together in the Set panel
+    const pdfs = files.filter((f) => /\.pdf$/i.test(f.path)).sort((a, b) => a.path.localeCompare(b.path, undefined, { numeric: true }))
+    if (main && /\.pdf$/i.test(main) && pdfs.length > 1) return void openPdfFiles(pdfs.map(asFile))
     if (main) return void importArchitect(asFile(files.find((f) => f.path === main)!), files.length > 1 ? siblingsOf(files, main) : undefined)
     const usable = files.find((f) => /\.(png|jpe?g|webp|tiff?|heic|heif|json)$/i.test(f.path)) ?? files.find((f) => lockedFormatOf(f.path)) ?? files[0]
     onFile(asFile(usable))
@@ -1277,7 +1373,7 @@ export default function StudioApp() {
       if (!p) return null
       // each apartment's furniture and finishes ride with it (`apartments`), so another computer opens them as they were left
       const units = Object.fromEntries(Object.entries(p.units).map(([id, x]) => [id, withLayout(x)]))
-      return { key: itemKey('project', p.id), kind: 'project', name: p.name, data: withPictures({ ...p, units, apartments: keptFor(Object.keys(p.units)) }, Object.keys(p.units)) }
+      return { key: itemKey('project', p.id), kind: 'project', name: p.name, data: withPictures({ ...p, units, apartments: keptFor(Object.keys(p.units)) }, [...Object.keys(p.units), ...(p.sheets ?? []).map((s) => s.id)]) }
     }
     return u.vertices.length ? { key: itemKey('unit', u.id), kind: 'unit', name: u.name.trim() || 'Untitled drawing', data: withPictures({ ...withLayout(u), apartments: keptFor([u.id]) }, [u.id]) } : null
   }
@@ -2624,7 +2720,22 @@ export default function StudioApp() {
             </div>
           )}
           {printOpen && <PrintBox unit={unit} onClose={() => setPrintOpen(false)} />}
-          {pdfPick && <PdfPages name={pdfPick.name} count={pdfPick.doc.numPages} thumb={pdfThumb} busy={pdfPick.busy} onPick={(p) => void pickPdfPage(p)} onClose={closePdf} />}
+          {setFiles && (
+            <Suspense fallback={null}>
+              <SetPanel files={setFiles} onOpenOne={openOne} onBuild={(rows, files) => void buildSet(rows, files)} onClose={closeSet} />
+            </Suspense>
+          )}
+          {sheetView && (
+            <div className="pages-sheet sheet-view" role="dialog" aria-label={sheetView.title}>
+              <div className="head">
+                <strong>{sheetView.title}</strong>
+                <button className="x" title="Close (Esc)" onClick={() => setSheetView(null)}>
+                  ×
+                </button>
+              </div>
+              <img src={sheetView.dataUrl} alt={sheetView.title} />
+            </div>
+          )}
           {reading && (
             <div className="trace-card" role="status">
               <span>
@@ -2746,6 +2857,7 @@ export default function StudioApp() {
             onOldWay={() => setBuildingOpen(true)}
             onClose={() => setListOpen(false)}
             onToast={toast}
+            onSheet={(id, title) => void showSheet(id, title)}
           />
         )}
         <Panel

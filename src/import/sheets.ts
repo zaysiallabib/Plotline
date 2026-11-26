@@ -449,13 +449,38 @@ export function readSheet(page: SheetPage): SheetRead {
   const series = number ? /\d/.exec(number)?.[0] : undefined
   if ((series === '5' || series === '6') && !drawings.some((c) => c.view.kind === 'detail' || c.view.kind === 'schedule'))
     return onePage({ kind: kindOfNumber(number!)!, title: '' }, 'number')
-  if (drawings.length === 1) return onePage(drawings[0].view, 'words', scaleNear(drawings[0]) ?? pageScale())
+  if (drawings.length === 1) {
+    // its own title, the title's underline and scale line are not the drawing: the frame stops at the title when it sits
+    // in the outer quarter of the drawing area, under the drawing (or over it)
+    const c = drawings[0]
+    const r = onePage(c.view, 'words', scaleNear(c) ?? pageScale())
+    const b = r.views[0].box, H = b.y1 - b.y0
+    const under = titleUnder(c, segs)
+    if (under && c.box.y1 < b.y0 + 0.25 * H) r.views[0].box = { ...b, y0: c.box.y1 }
+    else if (!under && c.box.y0 > b.y1 - 0.25 * H) r.views[0].box = { ...b, y1: c.box.y0 }
+    return r
+  }
   // a sheet of details (most of its titles say so, or its number does and one does): one page of details, not split
   const details = drawings.filter((c) => c.view.kind === 'detail').length
   if (details * 2 > drawings.length || (details && number && kindOfNumber(number) === 'detail'))
     return onePage({ kind: 'detail', title: drawings.find((c) => c.view.kind === 'detail')!.view.title }, 'words')
   if (drawings.every((c) => c.view.kind === 'schedule')) return onePage(drawings[0].view, 'words')
   return { views: split(page, titles, drawings, scaleNear), ...(number ? { number } : {}) }
+}
+
+/** a title sits under its drawing (true) or over it: the nearer lines, just over it or just under it (an underline right at it aside) */
+function titleUnder(c: Title, segs: Seg[]): boolean {
+  const nearest = (up: boolean) => {
+    let d = Infinity
+    for (const g of segs) {
+      const m = { x: (g.a.x + g.b.x) / 2, y: (g.a.y + g.b.y) / 2 }
+      if (m.x < c.box.x0 - c.t.width * 0.25 || m.x > c.box.x1 + c.t.width * 0.25) continue
+      const e = up ? m.y - c.box.y1 : c.box.y0 - m.y
+      if (e > c.t.height && e < d) d = e
+    }
+    return d
+  }
+  return nearest(true) <= nearest(false)
 }
 
 /**
@@ -521,18 +546,7 @@ function split(page: SheetPage, titles: Title[], drawings: Title[], scaleNear: (
   const area = drawingArea(page)
   const outside = (b: Box) => b.x1 <= area.x0 + gap || b.x0 >= area.x1 - gap || b.y1 <= area.y0 + gap || b.y0 >= area.y1 - gap
   // each title's own habit: its drawing is the nearer side's lines, over it or under it (an underline right at it aside)
-  const nearest = (c: Title, up: boolean) => {
-    const h = c.t.height
-    let d = Infinity
-    for (const g of segs) {
-      const m = { x: (g.a.x + g.b.x) / 2, y: (g.a.y + g.b.y) / 2 }
-      if (m.x < c.box.x0 - c.t.width * 0.25 || m.x > c.box.x1 + c.t.width * 0.25) continue
-      const e = up ? m.y - c.box.y1 : c.box.y0 - m.y
-      if (e > 1.0 * h && e < d) d = e
-    }
-    return d
-  }
-  const under = new Map(titles.map((c) => [c, nearest(c, true) <= nearest(c, false)])) // the title is under its drawing
+  const under = new Map(titles.map((c) => [c, titleUnder(c, segs)]))
   const lift = 0.02 * diag
   const cost = (c: Title, b: Box) => {
     const dx = Math.max(0, c.box.x0 - b.x1, b.x0 - c.box.x1)
