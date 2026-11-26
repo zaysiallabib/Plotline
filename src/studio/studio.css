@@ -514,7 +514,7 @@ ul.notes { margin: 0; padding-left: var(--s-4); display: grid; gap: var(--s-1); 
 .floors .kept { display: flex; flex-direction: column; gap: var(--s-2); padding-top: var(--s-4); border-top: 1px solid var(--hairline); }
 .floors .kept h4 { margin: 0; font-size: var(--fs-2xs); font-weight: 500; letter-spacing: var(--track); text-transform: uppercase; color: var(--muted); }
 .floors .kept ul { list-style: none; margin: 0 calc(-1 * var(--s-2)); padding: 0; display: grid; gap: 2px; }
-.floors .kept button { display: grid; grid-template-columns: 96px minmax(0, 1fr); gap: var(--s-2); width: 100%; height: auto; padding: var(--s-2); background: transparent; border: 0; border-radius: var(--r-sm); text-align: left; font-weight: 400; }
+.floors .kept button { display: grid; grid-template-columns: 124px minmax(0, 1fr); gap: var(--s-2); width: 100%; height: auto; padding: var(--s-2); background: transparent; border: 0; border-radius: var(--r-sm); text-align: left; font-weight: 400; }
 .floors .kept button:hover { background: var(--hover); }
 .floors .kept .lbl { font-weight: 500; }
 .floors .kept .muted { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--fs-sm); }
