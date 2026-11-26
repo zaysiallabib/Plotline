@@ -630,7 +630,7 @@ export function slotsWords(ss: SetSlot[]): string {
   const parts: string[] = []
   for (let i = 0; i < nums.length; ) {
     let j = i
-    while (j + 1 < nums.length && nums[j + 1] === nums[j] + 1) j++
+    while (j + 1 < nums.length && nums[j + 1] === nums[j] + 1 && Math.sign(nums[j + 1]) === Math.sign(nums[j])) j++ // (basements, G and floors apart)
     const w = (n: number) => (n === 0 ? 'G' : n < 0 ? `B${-n}` : String(n))
     parts.push(j - i >= 2 ? `${w(nums[i])}–${w(nums[j])}` : nums.slice(i, j + 1).map(w).join(', '))
     i = j + 1
@@ -678,10 +678,15 @@ export const KEPT: SheetKind[] = ['elevation', 'section', 'site', 'schedule', 'i
 export function setChoices(picks: SetPick[]): { slots: SetSlot[]; tick: boolean }[] {
   const auto = slotsFor(picks.map((p) => (p.kind === 'plan' && !p.slots ? p.level : null)))
   const claimed = new Set<SetSlot>()
+  // a plan naming no floor: in a set whose plans name theirs it is no floor's plan (a page read by its shape alone, a
+  // diagram); in a set where none does, only the first is ticked (on the ground) — the person types the others' floors
+  const named = picks.some((p, i) => p.kind === 'plan' && (p.slots ?? auto[i]).length)
+  let first = true
   const out = picks.map((p, i) => {
     if (p.kind !== 'plan') return { slots: [] as SetSlot[], tick: p.tick ?? KEPT.includes(p.kind) }
     const slots = p.slots ?? auto[i]
-    const tick = p.tick ?? (!p.use && (!slots.length || slots.some((s) => !claimed.has(s))))
+    const tick = p.tick ?? (!p.use && (slots.length ? slots.some((s) => !claimed.has(s)) : !named && first))
+    if (!slots.length && tick && p.tick == null) first = false
     if (tick) for (const s of slots) claimed.add(s)
     return { slots, tick }
   })

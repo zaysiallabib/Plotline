@@ -39,6 +39,27 @@ describe('pdf fixture', () => {
     expect(readsAsPlan({ ...r, storeys: [{ ...r.storeys[0], unit: { ...u, walls: [...u.walls, ...many] } }] })).toBe(false)
   })
 
+  test('one drawing of a page (a frame): only its lines, texts and fills are read; the page as sheets.ts sees it', async () => {
+    const { openPdf, readSheetPage } = await import('./pdf')
+    const doc = await openPdf(bytes(`${__dirname}/fixtures/two-rooms.pdf`))
+    const page = await readSheetPage(doc, 1)
+    expect(page.box.x1 - page.box.x0).toBeGreaterThan(0)
+    const living = page.texts.find((t) => t.text === 'LIVING')!
+    expect(living.dir).toEqual({ x: 1, y: 0 })
+    expect(living.width).toBeGreaterThan(living.height)
+    const all = await importPdf(doc, 'two-rooms.pdf', 1, page.box)
+    const whole = await importPdf(doc, 'two-rooms.pdf', 1)
+    expect(all.storeys[0].unit.walls).toHaveLength(whole.storeys[0].unit.walls.length) // the whole page as its frame: the same
+    // the scale its title prints (its scale line may lie outside the frame) is the scale
+    const at50 = await importPdf(doc, 'two-rooms.pdf', 1, page.box, 50)
+    expect(at50.unitScale).toBeCloseTo((50 * 0.0254) / 72, 6)
+    expect(at50.notes.some((n) => n.includes('as printed under the drawing, 1 : 50'))).toBe(true)
+    // a frame round the living room's name only: no wall pair, its name alone
+    const only = await importPdf(doc, 'two-rooms.pdf', 1, { x0: living.at.x - 40, y0: living.at.y - 20, x1: living.at.x + 40, y1: living.at.y + 20 }).catch((e: Error) => e)
+    expect(only instanceof Error ? only.message : only.storeys[0].unit.walls.length).toSatisfy((x: unknown) => x === 'This PDF is a picture, not a drawing — use the picture itself' || x === 0)
+    await doc.loadingTask.destroy()
+  })
+
   test('a PDF with no drawn lines is refused as a picture', async () => {
     const pdf = `%PDF-1.4\n1 0 obj << /Type /Catalog /Pages 2 0 R >> endobj\n2 0 obj << /Type /Pages /Kids [3 0 R] /Count 1 >> endobj\n3 0 obj << /Type /Page /Parent 2 0 R /MediaBox [0 0 100 100] >> endobj\ntrailer << /Root 1 0 R >>\n%%EOF\n`
     await expect(importPdf(new TextEncoder().encode(pdf).buffer as ArrayBuffer, 'scan.pdf')).rejects.toThrow('This PDF is a picture')

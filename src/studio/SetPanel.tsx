@@ -7,7 +7,7 @@
  * kind, the floors, a tick — remembered by the drawing's title for the next set from the same architect. Build makes the
  * project in one go; a row's picture opens that one drawing alone, as the page picker did.
  */
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import type { PdfDoc } from '../import/pdf'
 import { KEPT, SHEET_KINDS, norm, parseSlots, readSheet, setChoices, slotsWords, type Box, type SetSlot, type SheetKind, type SheetRead, type View } from '../import/sheets'
 
@@ -87,10 +87,9 @@ interface Props {
 export default function SetPanel({ files, onOpenOne, onBuild, onClose }: Props) {
   const [rows, setRows] = useState<SetRow[]>([])
   const [reading, setReading] = useState<{ at: number; of: number } | null>({ at: 0, of: files.reduce((a, f) => a + f.doc.numPages, 0) })
-  const live = useRef(true)
   // every page read in turn (a frame between pages, so the list grows on screen), then each drawing's small picture
   useEffect(() => {
-    live.current = true
+    const live = { current: true } // (this run's own: closed and opened again, the old run stops)
     void (async () => {
       const pdf = await import('../import/pdf')
       const mine = readChoices()

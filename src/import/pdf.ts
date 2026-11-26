@@ -239,9 +239,10 @@ export const readsAsPlan = (r: ImportResult): boolean =>
 
 /**
  * One page of a PDF (the file's bytes, or a PDF already open) read as a drawing; a page with no lines is refused. `frame`
- * (page frame, sheets.ts): only the lines, texts and fills inside it — one view of a page of several.
+ * (page frame, sheets.ts): only the lines, texts and fills inside it — one view of a page of several. `printed`: the view's
+ * scale as its title prints it (1 : printed; its scale line may lie outside the frame).
  */
-export async function importPdf(src: ArrayBuffer | PdfDoc, name: string, pageNo = 1, frame?: Box): Promise<ImportResult> {
+export async function importPdf(src: ArrayBuffer | PdfDoc, name: string, pageNo = 1, frame?: Box, printed?: number): Promise<ImportResult> {
   const doc = src instanceof ArrayBuffer ? await openPdf(src) : src
   const read = await readPage(doc, pageNo).finally(() => src instanceof ArrayBuffer && doc.loadingTask.destroy())
   const { pictures, pages } = read
@@ -258,7 +259,7 @@ export async function importPdf(src: ArrayBuffer | PdfDoc, name: string, pageNo 
   }
   if (!segs.length) throw new Error('This PDF is a picture, not a drawing — use the picture itself')
   const notes: string[] = [`PDF: ${pages} page(s); page ${pageNo}${frame ? ' (one of its drawings)' : ''} read: ${segs.length} lines, ${texts.length} texts${pictures ? `, ${pictures} picture(s) ignored` : ''}.`]
-  const { scale, note } = sheetScale(segs, texts, (ptPerM) => ` — 1 : ${(1 / (ptPerM * PT)).toFixed(0)} on the sheet`, PT)
+  const { scale, note } = printed ? { scale: printed * PT, note: `Scale: as printed under the drawing, 1 : ${+printed.toFixed(1)}.` } : sheetScale(segs, texts, (ptPerM) => ` — 1 : ${(1 / (ptPerM * PT)).toFixed(0)} on the sheet`, PT)
   notes.push(note)
   if (/not set/.test(note)) {
     // no scale on the page (no dimension, scale or room size printed as words: a brochure page whose words are drawn as

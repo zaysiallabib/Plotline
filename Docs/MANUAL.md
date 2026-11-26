@@ -1164,7 +1164,9 @@ under it, its kind, and its floors (a plan), side (an elevation) or mark (a sect
 - **Plans** — each ticked one becomes the drawing of its floors. The floors come from the title: G (ground), B1, 2, 2–8,
   Roof. A set with no ground-floor plan counts its 1st floor as the ground floor (American and Chilean sets do; a line
   under Plans says so). Of two plans for one floor the first is ticked; a reflected ceiling, electrical, plumbing or
-  foundation plan never is. A typical floor with no numbers goes on every floor left up to the highest one named.
+  foundation plan never is. A typical floor with no numbers goes on every floor left up to the highest one named. A plan
+  whose title names no floor is left out when the others name theirs; when none does, the first goes on the ground and
+  you type the others' floors (a set whose words are drawn as lines).
 - **Elevations, Sections, Site, Schedules, Interior elevations** — ticked: kept with the project as pictures.
 - **Details, Title pages and notes, Other pages** (a brochure's photos, its specifications) — left out unless ticked.
 

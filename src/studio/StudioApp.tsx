@@ -1037,18 +1037,18 @@ export default function StudioApp() {
   }
   const openPdfFile = (file: File) => openPdfFiles([file])
   const closeSet = useCallback(() => setSetFiles(null), [])
-  const readPdfPage = async (name: string, doc: PdfDoc, page: number, frame: Box | null = null) => {
+  const readPdfPage = async (name: string, doc: PdfDoc, page: number, frame: Box | null = null, printed?: number) => {
     const stop = new AbortController()
     setReading({ name, stage: doc.numPages > 1 ? `page ${page}` : 'the page', fraction: null, stop })
     try {
-      await readPdfPageNow(name, doc, page, frame, stop.signal)
+      await readPdfPageNow(name, doc, page, frame, printed, stop.signal)
     } finally {
       setReading((x) => (x?.stop === stop ? null : x))
     }
   }
-  const readPdfPageNow = async (name: string, doc: PdfDoc, page: number, frame: Box | null, stopped: AbortSignal) => {
+  const readPdfPageNow = async (name: string, doc: PdfDoc, page: number, frame: Box | null, printed: number | undefined, stopped: AbortSignal) => {
     const pdf = await import('../import/pdf')
-    const r = await pdf.importPdf(doc, name, page, frame ?? undefined).catch(() => null)
+    const r = await pdf.importPdf(doc, name, page, frame ?? undefined, printed).catch(() => null)
     if (stopped.aborted) return
     // the page (or its one drawing) as the plan picture: its longer side 4000 px (a plan picture's usual size), WEBP to stay under the 10 MB limit
     const asPicture = async () => {
@@ -1071,7 +1071,7 @@ export default function StudioApp() {
   /** one drawing of the set opened alone, as the page picker did */
   const openOne = (row: SetRow, files: SetFile[]) => {
     closeSet()
-    void readPdfPage(files[row.file].name, files[row.file].doc, row.page, row.frame).catch((e) => showError(`Could not read page ${row.page}: ${e instanceof Error ? e.message : String(e)}`))
+    void readPdfPage(files[row.file].name, files[row.file].doc, row.page, row.frame, row.view.scale).catch((e) => showError(`Could not read page ${row.page}: ${e instanceof Error ? e.message : String(e)}`))
   }
   /**
    * Build the project from the set (Stage 1): each ticked plan becomes a drawing on its floors — its own lines when they
@@ -1100,7 +1100,7 @@ export default function StudioApp() {
         if (stop.signal.aborted) return toast('Stopped building the project')
         setReading({ name, stage: `drawing ${i + 1} of ${plans.length + kept.length}`, fraction: i / (plans.length + kept.length), stop })
         if (r.kind === 'plan') {
-          const read = await pdf.importPdf(files[r.file].doc, files[r.file].name, r.page, r.frame ?? undefined).catch(() => null)
+          const read = await pdf.importPdf(files[r.file].doc, files[r.file].name, r.page, r.frame, r.view.scale).catch(() => null)
           let u: Unit
           if (read && pdf.readsAsPlan(read)) u = read.storeys[0].unit
           else {

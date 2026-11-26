@@ -216,13 +216,16 @@ describe('the set', () => {
     expect(c.map((x) => x.tick)).toEqual([true, false, true, false, true, true, false, true])
     expect(c.map((x) => x.slots)).toEqual([[0], [0], [1], [1], [], [], [], []])
   })
-  test('a plan with no floor named goes on the lowest floor still free; typed floors win', () => {
-    expect(setChoices([{ kind: 'plan', level: levelOf('GROUND FLOOR') }, { kind: 'plan', level: null }]).map((x) => x.slots)).toEqual([[0], [1]])
+  test('a plan naming no floor: left out where the others name theirs; where none does, the first goes on the ground; ticked by the person, on the lowest floor still free; typed floors win', () => {
+    expect(setChoices([{ kind: 'plan', level: levelOf('GROUND FLOOR') }, { kind: 'plan', level: null }])).toEqual([{ slots: [0], tick: true }, { slots: [], tick: false }])
+    expect(setChoices([{ kind: 'plan', level: null }, { kind: 'plan', level: null }])).toEqual([{ slots: [0], tick: true }, { slots: [], tick: false }])
+    expect(setChoices([{ kind: 'plan', level: levelOf('GROUND FLOOR') }, { kind: 'plan', level: null, tick: true }]).map((x) => x.slots)).toEqual([[0], [1]])
     expect(setChoices([{ kind: 'plan', level: levelOf('GROUND FLOOR'), slots: [2, 3] }]).map((x) => x.slots)).toEqual([[2, 3]])
   })
   test('floors in short and back: "B1, G, 2–8, Roof"', () => {
     const ss = [-1, 0, 2, 3, 4, 5, 6, 7, 8, 'R'] as const
     expect(slotsWords([...ss])).toBe('B1, G, 2–8, Roof')
+    expect(slotsWords([-2, -1, 0, 1, 2, 3])).toBe('B2, B1, G, 1–3') // never a run across the ground
     expect(parseSlots('B1, G, 2–8, Roof')).toEqual([...ss])
     expect(parseSlots('G-2')).toEqual([0, 1, 2])
     expect(parseSlots('the second')).toBeNull()
