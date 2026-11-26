@@ -195,6 +195,10 @@ describe('the set', () => {
   test('a set with a ground floor numbers its upper floors from 1 (Dhaka, the UK); words counted from the ground never move', () => {
     expect(slotsFor([levelOf('GROUND FLOOR'), levelOf('1ST FLOOR'), levelOf('BASEMENT 1')])).toEqual([[0], [1], [-1]])
     expect(slotsFor([levelOf('GRUNDRISS 1. OG')])).toEqual([[1]])
+    // a house of a ground floor and its "2ND FLOOR" (no 1st, nothing higher: the Canadian fourplex) counts its ground as the 1st
+    expect(slotsFor([levelOf('GROUND FLOOR'), levelOf('2ND FLOOR')])).toEqual([[0], [1]])
+    // a tower whose brochure skips the 1st floor's page keeps its numbers (Rangs Noorani Heights: 2nd & 4th, 3rd & 7th)
+    expect(slotsFor([levelOf('Ground Floor'), levelOf('2nd & 4th Floor'), levelOf('3rd & 7th Floor')])).toEqual([[0], [2, 4], [3, 7]])
   })
   test('a mezzanine takes floor 1 when free, an attic the floor over the highest, a typical floor every floor left up to the highest', () => {
     expect(slotsFor([levelOf('GROUND FLOOR'), levelOf('MEZZANINE'), levelOf('3RD FLOOR PLAN')])).toEqual([[0], [1], [3]])

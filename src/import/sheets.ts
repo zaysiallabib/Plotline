@@ -640,7 +640,10 @@ export function slotsFor(levels: (Level | null | undefined)[], floors = 0): SetS
   const all = levels.filter((l): l is Level => !!l)
   const nums = all.flatMap((l) => l.at.filter((f): f is number => typeof f === 'number' && f >= 1))
   const ground = all.some((l) => l.at.includes(0) || l.above)
-  const shift = !ground && nums.length > 0 && Math.min(...nums) === 1 ? 1 : 0
+  // (a house of a ground floor and a "2ND FLOOR" over it, no 1st, no mezzanine and nothing higher — Canada's fourplex —
+  // counts its ground floor as the 1st: its 2nd floor is floor 1)
+  const house = ground && !all.some((l) => l.above || l.at.includes('mezz')) && nums.length > 0 && nums.every((n) => n === 2)
+  const shift = (!ground && nums.length > 0 && Math.min(...nums) === 1) || house ? 1 : 0
   const placed = (f: number) => (f >= 1 ? f - shift : f)
   const top = Math.max(0, ...nums.map(placed))
   const taken = new Set(all.flatMap((l) => l.at.filter((f): f is number => typeof f === 'number').map(placed)))
