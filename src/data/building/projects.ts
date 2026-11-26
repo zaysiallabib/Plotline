@@ -16,6 +16,7 @@ import type { Tower } from './index'
 import type { Review } from '../../studio/review'
 import type { SheetKind } from '../../import/sheets'
 import { placesIn, settleOn } from './apartments'
+import { towerHeights, type Heights } from './storeys'
 
 export const PROJECTS_KEY = 'plotline.projects'
 
@@ -55,6 +56,13 @@ export interface Project {
   shell?: Shell
   /** an imported building's storey floor heights (m above the lowest floor) by slot ('0', '1', '-1', 'R'); absent: every floor FLOOR_M */
   elevations?: Record<string, number>
+  /**
+   * How tall each storey is, as the set's sections and elevations print it (session 31, Stage 3: src/import/heights.ts) or
+   * the person typed it in the Set panel: floor levels, the top floor's ceiling, the slab, the roof (flat with its parapet, or
+   * pitched with its eave and ridge), and the drawings it was read from. Absent in older projects and sets with no section:
+   * every storey FLOOR_M, as before. An imported building's own storeys (`elevations`) come first.
+   */
+  heights?: Heights & { from?: string[] }
   /**
    * Each drawing's "Check these" list (studio/review.ts Review), kept with it: opening another floor's drawing and coming
    * back finds its rows again (manual walk s31: they went). By drawing id; absent: none kept.
@@ -620,7 +628,10 @@ export function projectTower(p: Project): Tower {
   }
   for (const l of levels) FLATS[l.stem] = { unit: p.units[l.unitId], offset: l.offset }
   const LEVELS = Object.fromEntries(levels.map((l) => [l.stem, levelFloor(l, top)]))
-  const ELEVATIONS = elevationsOf(p, top)
+  // the storeys the set's sections print (Stage 3): every floor's level, the walls a slab under the next, the roof's own shape
+  const lowestFloor = Math.min(0, ...(p.levels ?? []).filter((l) => l.kind === 'basement').map((l) => -(l.n ?? 1)), -(p.plan?.basements ?? 0))
+  const STOREYS = p.heights && !p.elevations ? towerHeights(p.heights, lowestFloor, top, FLOOR_M) : undefined
+  const ELEVATIONS = STOREYS?.levels ?? elevationsOf(p, top)
   // the building's outside shape on every drawing without its own, its floor datum at that drawing's floor height
   // ponytail: one baseY per drawing (its first floor); a drawing on floors 1–5 is placed by the Building view's own floor arithmetic
   if (p.shell)
@@ -655,8 +666,8 @@ export function projectTower(p: Project): Tower {
   // no traced rooftop: the top floor's own stair and lift rooms run up into a head room on the roof (building.ts), as the Demo
   // tower's listed core does; a traced rooftop draws its own
   const topF = FLOORS.find((f) => f.floor === top)
-  const CORE: Tower['CORE'] = roof ? [] : [...new Set([...(topF?.flats ?? []), ...(topF?.standIns ?? [])])].flatMap((s) => [...new Set(deriveRooms(FLATS[s].unit).filter(runsUp).map((r) => r.name))].map((n): [string, string] => [s, n]))
-  return { FLOOR_M, FLATS, FLOORS, CORE, GROUND: { plot, roads: [], gardens: [], ramp: [], bays: [], blocks: [], columns }, ROOF: { gardens: [], tanks: [] }, LEVELS, ...(ELEVATIONS ? { ELEVATIONS } : {}) }
+  const CORE: Tower['CORE'] = roof || STOREYS?.ridgeM !== undefined ? [] : [...new Set([...(topF?.flats ?? []), ...(topF?.standIns ?? [])])].flatMap((s) => [...new Set(deriveRooms(FLATS[s].unit).filter(runsUp).map((r) => r.name))].map((n): [string, string] => [s, n]))
+  return { FLOOR_M, FLATS, FLOORS, CORE, GROUND: { plot, roads: [], gardens: [], ramp: [], bays: [], blocks: [], columns }, ROOF: { gardens: [], tanks: [] }, LEVELS, ...(ELEVATIONS ? { ELEVATIONS } : {}), ...(STOREYS ? { STOREYS } : {}) }
 }
 
 /** The tower's floor heights by floor number (the rooftop = top + 1) from an imported building's storey elevations; undefined when the project has none. */
@@ -682,6 +693,7 @@ export function parseProjects(raw: string | null): Project[] {
         Array.isArray(p.floors) &&
         (p.levels === undefined || Array.isArray(p.levels)) &&
         (p.sheets === undefined || Array.isArray(p.sheets)) &&
+        (p.heights === undefined || (typeof p.heights === 'object' && typeof p.heights?.floors === 'object')) &&
         (p.plan === undefined || (typeof p.plan === 'object' && Number.isFinite(p.plan?.floors))),
     )
   } catch {

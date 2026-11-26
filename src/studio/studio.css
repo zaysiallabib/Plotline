@@ -316,6 +316,17 @@
 /* the one question a set of flat pages asks (several flats of the same floors): a tick and its sentence */
 .set-ask { display: flex; align-items: flex-start; gap: var(--s-3); margin: 0 0 var(--s-2); font-size: var(--fs-sm); color: var(--ink-2); max-width: 80ch; }
 .set-ask input { margin-top: 3px; flex: none; }
+/* a section's or elevation's heights under its row (SetPanel HeightsRow): each an inscription over its field; as read it is
+   second ink, typed over it is ink */
+.set-heights { grid-column: 3 / -1; display: flex; flex-wrap: wrap; align-items: flex-end; gap: var(--s-2) var(--s-3); }
+.set-heights label { display: flex; flex-direction: column; gap: 2px; }
+.set-heights input { width: 10ch; color: var(--ink-2); }
+.set-heights label:first-of-type input { width: 16ch; }
+.set-heights label.yours input { color: var(--ink); }
+.set-heights > .muted { align-self: center; font-size: var(--fs-sm); }
+.set-heights-sum p { color: var(--ink-2); }
+.set-differ > span { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s-1) var(--s-3); }
+.set-differ .check { display: inline-flex !important; }
 .set-foot {
   position: sticky; bottom: 0; display: flex; align-items: center; gap: var(--s-2); margin: var(--s-2) calc(-1 * var(--s-5)) 0;
   padding: var(--s-3) var(--s-5) var(--s-4); background: var(--surface); border-top: 1px solid var(--line);

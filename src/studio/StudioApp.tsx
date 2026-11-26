@@ -53,6 +53,7 @@ import { deletePicture, getPicture, putPicture } from './pictures'
 import { putShell } from './shells'
 import type { SetChoice, SetFile, SetRow } from './SetPanel'
 import type { Storeys } from '../import/sheets'
+import type { SetHeights } from '../import/heights'
 import PrintBox from './PrintBox'
 import { SAMPLES, sampleLine, type Sample } from './samples'
 import { CONVERTED_PICTURE, toPlanPicture } from '../import/picture'
@@ -1207,7 +1208,7 @@ export default function StudioApp() {
    * drawing already is replaced only after a yes; the set stacks on its floors) or make a new project. Undo (the message's
    * link) puts the projects back as they were.
    */
-  const buildSet = async (rows: SetChoice[], files: SetFile[], storeys: Storeys | null = null) => {
+  const buildSet = async (rows: SetChoice[], files: SetFile[], storeys: Storeys | null = null, heights: SetHeights | null = null) => {
     const name = files[0].folder ?? files[0].name.replace(/\.[^.]+$/, '')
     const plans = rows.filter((r) => r.kind === 'plan' && r.used && r.slots.length)
     const kept = rows.filter((r) => r.kind !== 'plan' && r.used)
@@ -1236,6 +1237,12 @@ export default function StudioApp() {
     const stop = new AbortController()
     const was = into && planOfProject(into)
     let p = into && was ? { ...into, plan: { basements: Math.max(was.basements, shape.basements), floors: Math.max(was.floors, shape.floors), rooftop: was.rooftop || shape.rooftop } } : newProject(newId(), name, shape)
+    // how tall each storey is, as the set's sections and elevations print it (Stage 3): the project is built to it (a set with
+    // none keeps what the project had)
+    if (heights) {
+      const { differ: _, ...h } = heights // eslint-disable-line @typescript-eslint/no-unused-vars
+      p = { ...p, heights: h }
+    }
     const made: Id[] = [] // the pictures this build keeps (Undo deletes them)
     const pictureOf = async (r: SetChoice, px: number): Promise<{ pic: PlanImage; pxPerPt: number }> => {
       const doc = files[r.file].doc
@@ -1395,7 +1402,7 @@ export default function StudioApp() {
       toast(into ? `${name}'s floors taken out of ${into.name}` : `The project ${name} is gone`)
     }
     const drawings = plans.filter((r) => !r.with).length
-    toast(`${name}: ${drawings} drawing${drawings === 1 ? '' : 's'} on their floors${into ? ` of ${into.name}` : ''}${pictures ? ` (${pictures} as pictures to trace)` : ''}${stacked ? `, ${stacked} stacked on the floor${stacked === 1 ? '' : 's'} they share walls with` : ''}${sideBySide ? `, ${sideBySide} flats side by side on one floor (move each into place)` : ''}, ${kept.length} kept with the project — the list on the right`, { label: 'Undo', onClick: undo })
+    toast(`${name}: ${drawings} drawing${drawings === 1 ? '' : 's'} on their floors${into ? ` of ${into.name}` : ''}${pictures ? ` (${pictures} as pictures to trace)` : ''}${stacked ? `, ${stacked} stacked on the floor${stacked === 1 ? '' : 's'} they share walls with` : ''}${sideBySide ? `, ${sideBySide} flats side by side on one floor (move each into place)` : ''}, ${kept.length} kept with the project${heights ? `, every storey as tall as its sections print (${heights.from.length} drawing${heights.from.length === 1 ? '' : 's'})` : ''} — the list on the right`, { label: 'Undo', onClick: undo })
   }
   useEffect(() => {
     if (!sheetView) return
@@ -3057,7 +3064,7 @@ export default function StudioApp() {
           {printOpen && <PrintBox unit={unit} onClose={() => setPrintOpen(false)} />}
           {setFiles && (
             <Suspense fallback={null}>
-              <SetPanel files={setFiles} onRead={readSetFile} onOpenOne={openOne} onBuild={(rows, files, storeys) => void buildSet(rows, files, storeys)} onClose={closeSet} onReading={onSetReading} />
+              <SetPanel files={setFiles} onRead={readSetFile} onOpenOne={openOne} onBuild={(rows, files, storeys, heights) => void buildSet(rows, files, storeys, heights)} onClose={closeSet} onReading={onSetReading} />
             </Suspense>
           )}
           {sheetView && (
