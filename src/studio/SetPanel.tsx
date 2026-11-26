@@ -170,12 +170,13 @@ function HeightsRow({ row, typed, onType }: { row: SetRow; typed?: { heights: He
       {(['storeys', 'ceiling', 'slab'] as const).map(field)}
       <label>
         <span className="label">Roof</span>
-        <select value={kind} title="Flat (a slab with a parapet) or pitched (slopes from the eave to the ridge)" onChange={(e) => onType('kind', e.target.value)}>
+        <select value={kind} title="Flat (a slab with a parapet), pitched (two slopes from the eaves to the ridge, a gable at each end) or hipped (sloped at the ends too)" onChange={(e) => onType('kind', e.target.value)}>
           <option value="flat">Flat</option>
           <option value="pitched">Pitched</option>
+          <option value="hip">Hipped</option>
         </select>
       </label>
-      {(kind === 'pitched' ? (['eave', 'ridge'] as const) : (['roof', 'parapet'] as const)).map(field)}
+      {(kind === 'flat' ? (['roof', 'parapet'] as const) : (['eave', 'ridge'] as const)).map(field)}
     </div>
   )
 }
@@ -193,7 +194,7 @@ function HeightsSum({ heights, any, differ, answers, onAnswer }: { heights: SetH
             Object.keys(storeysOf(heights)).length ? `Floor to floor ${storeysWords(storeysOf(heights))} m` : 'Floor to floor as before',
             heights.ceilingM !== undefined ? `top floor's ceiling ${lv(heights.ceilingM)}` : '',
             heights.slabM !== undefined ? `slab ${heights.slabM.toFixed(2)} m` : 'slab 0.15 m (not printed: as usual)',
-            heights.ridgeM !== undefined ? `a pitched roof, eave ${heights.eaveM !== undefined ? lv(heights.eaveM) : 'at the ceiling'}, ridge ${lv(heights.ridgeM)}` : heights.roofM !== undefined ? `a flat roof at ${lv(heights.roofM)}${heights.parapetM !== undefined ? `, parapet ${heights.parapetM.toFixed(2)} m` : ', parapet 1.10 m (not printed)'}` : '',
+            heights.ridgeM !== undefined ? `a ${heights.hip ? 'hipped' : 'pitched'} roof, eave ${heights.eaveM !== undefined ? lv(heights.eaveM) : 'at the ceiling'}, ridge ${lv(heights.ridgeM)}` : heights.roofM !== undefined ? `a flat roof at ${lv(heights.roofM)}${heights.parapetM !== undefined ? `, parapet ${heights.parapetM.toFixed(2)} m` : ', parapet 1.10 m (not printed)'}` : '',
           ]
             .filter(Boolean)
             .join(' · ')}

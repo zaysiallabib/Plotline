@@ -41,6 +41,34 @@ export interface HeightsRead {
   marks: Mark[]
   /** 0–1: 1 every height printed and, where the scale is known, its line agrees with it */
   confidence: number
+  /** the roof's outline between its eave and ridge lines (an elevation's): flat to the ridge along it (the long side of a gable), a triangle (a gable or hip end), a trapezoid (the long side of a hip) */
+  outline?: RoofOutline
+}
+export type RoofOutline = 'rectangle' | 'triangle' | 'trapezoid'
+
+/**
+ * The roof's outline seen on an elevation, between the eave's line `eaveY` and the ridge's `ridgeY` (view units, y up): its
+ * slopes are the long slanted lines in that band (each rising over half of it). None: the ridge runs along this side
+ * (a rectangle). Both ways: where they reach the top — together (a triangle: a gable's or a hip's end) or apart (a
+ * trapezoid: a hip's long side, the ridge between them). Null when the band is too thin to say.
+ */
+export function roofOutline(segs: Seg[], eaveY: number, ridgeY: number): RoofOutline | null {
+  const H = ridgeY - eaveY
+  if (!(H > 0)) return null
+  const tops: { x: number; up: 1 | -1 }[] = []
+  let x0 = Infinity, x1 = -Infinity
+  for (const g of segs) {
+    const [lo, hi] = g.a.y < g.b.y ? [g.a, g.b] : [g.b, g.a]
+    const dx = hi.x - lo.x, dy = hi.y - lo.y
+    if (dy < 0.5 * H || Math.abs(dx) < 0.2 * dy || lo.y < eaveY - 0.15 * H || hi.y > ridgeY + 0.15 * H) continue
+    tops.push({ x: hi.x, up: dx > 0 ? 1 : -1 })
+    ;(x0 = Math.min(x0, lo.x, hi.x)), (x1 = Math.max(x1, lo.x, hi.x))
+  }
+  const r = tops.filter((t) => t.up === 1), l = tops.filter((t) => t.up === -1)
+  if (!r.length || !l.length) return tops.length ? null : 'rectangle'
+  // (the rising-right slope's top against the rising-left one's: the ridge between them)
+  const gap = Math.min(...l.map((t) => t.x)) - Math.max(...r.map((t) => t.x))
+  return gap > 0.15 * (x1 - x0) ? 'trapezoid' : 'triangle'
 }
 
 /** two readings of one height this close agree */
@@ -249,7 +277,11 @@ export function readHeights(view: { segs: Seg[]; texts: SheetText[]; mPerUnit?: 
   }
   out.sort((a, b) => a.heightM - b.heightM || a.y - b.y)
   const confidence = !out.length ? 0 : out.every((x) => x.printed) ? (checked ? 0.5 + (0.5 * agree) / checked : 0.9) : how === 'given' || how === 'marks' ? 0.8 : 0.6
-  return { marks: out, confidence: Math.round(confidence * 100) / 100 }
+  // the roof's outline between the highest eave and the ridge (a pitched roof's elevation)
+  const ridge = out.filter((x) => x.at === 'ridge').sort((a, b) => b.y - a.y)[0]
+  const eave = out.filter((x) => x.at === 'eave' && ridge && x.y < ridge.y).sort((a, b) => b.y - a.y)[0]
+  const outline = ridge && eave ? roofOutline(view.segs, eave.y, ridge.y) : null
+  return { marks: out, confidence: Math.round(confidence * 100) / 100, ...(outline ? { outline } : {}) }
 }
 
 /** One view of a page (sheets.ts): its own lines and words, at its printed scale (`unitM`: metres a page unit on paper — a PDF point). */
@@ -314,6 +346,7 @@ export function heightsOf(read: HeightsRead): Heights | null {
   if (Number.isFinite(ridge) && ridge - (Number.isFinite(eave) ? eave : Number.isFinite(plate) ? plate : at(top)) >= PITCH_M) {
     if (Number.isFinite(eave)) out.eaveM = eave
     out.ridgeM = ridge
+    if (read.outline === 'trapezoid') out.hip = true // (a hip's long side: the ridge shorter than the eave; a gable shows a rectangle)
   } else if (Number.isFinite(roof)) {
     out.roofM = roof
     if (Number.isFinite(parapet) && parapet > roof) out.parapetM = parapet - roof
@@ -355,6 +388,10 @@ export function setHeights(views: { title: string; kind: string; heights: Height
     pitched ??= p
     for (const key of TOPS) if (h[key] !== undefined && (key === 'ceilingM' || key === 'slabM' || p === pitched)) put(key, h[key]!, v.title)
   }
+  // a hipped roof: an elevation shows a hip's long side (a trapezoid) — and none shows a gable's (a rectangle) unless typed so
+  const said = views.find((v) => v.typed && v.heights?.ridgeM !== undefined)
+  const hip = said ? !!said.heights!.hip : views.some((v) => v.heights?.hip)
+  if (pitched && hip) out.hip = true
   for (const [key, options] of seen) {
     const m = options[answers[key] ?? 0]?.m ?? options[0].m
     if (/^-?\d+$/.test(key)) out.floors[Number(key)] = m
@@ -388,6 +425,8 @@ export function floorsOf(storeys: Record<number, number>, ground = 0): Record<nu
 
 /** a drawing's heights as the Set panel's fields: floor to floor in short (storeysWords), the tops as levels as printed ("+5.79"), the slab and a parapet as heights */
 export type HeightField = 'storeys' | 'ceiling' | 'slab' | 'roof' | 'parapet' | 'eave' | 'ridge' | 'kind'
+/** the roof's kind as the Set panel's box says it */
+export type RoofKind = 'flat' | 'pitched' | 'hip'
 export function heightFields(h: Heights | null): Record<HeightField, string> {
   const lv = (m: number | undefined) => (m === undefined ? '' : `${m < 0 ? '−' : '+'}${Math.abs(m).toFixed(2)}`)
   const ht = (m: number | undefined) => (m === undefined ? '' : m.toFixed(2))
@@ -399,7 +438,7 @@ export function heightFields(h: Heights | null): Record<HeightField, string> {
     parapet: ht(h?.parapetM),
     eave: lv(h?.eaveM),
     ridge: lv(h?.ridgeM),
-    kind: h?.ridgeM !== undefined ? 'pitched' : 'flat',
+    kind: h?.ridgeM !== undefined ? (h.hip ? 'hip' : 'pitched') : 'flat',
   }
 }
 
@@ -440,8 +479,13 @@ export function typedHeights(read: Heights | null, typed: Partial<Record<HeightF
     if (v === null || ((f === 'slab' || f === 'parapet') && (v < 0 || v > 3))) bad.push(f)
     else h[key] = v
   }
-  if ((typed.kind ?? shown.kind) === 'pitched') delete h.roofM, delete h.parapetM
-  else delete h.eaveM, delete h.ridgeM
+  const kind = typed.kind ?? shown.kind
+  if (kind === 'flat') delete h.eaveM, delete h.ridgeM, delete h.hip
+  else {
+    delete h.roofM, delete h.parapetM
+    if (kind === 'hip') h.hip = true
+    else delete h.hip
+  }
   const some = Object.keys(h.floors).length > 1 || TOPS.some((k) => h[k] !== undefined)
   return { heights: some ? h : null, bad }
 }

@@ -1260,8 +1260,10 @@ drawing you had open opened again, the build's pictures gone.
 line of fields shows the heights its level marks print — the lines with words beside them ("1ST FLOOR (FINISH) +0'-0"",
 "CEILING (T.O. PLATE) +19'-0"", "ROOF RIDGE +29'-2"", "N.P.T +2.34", "F.F.L. +3.05", "ROOF", "PARAPET"): **Floor to
 floor** (one number when every storey is alike, else by floor: "G 4.50, 1–9 3.05"), the top floor's **Ceiling** and the
-**Slab** when a drawing prints them, and the roof — **Flat** with its **Roof level** and **Parapet**, or **Pitched** with
-its **Eave** and **Ridge**. Levels are shown as the drawing prints them (+6.10 m over the ground floor), heights in metres.
+**Slab** when a drawing prints them, and the roof — **Flat** with its **Roof level** and **Parapet**, or **Pitched** (a gable
+at each end) or **Hipped** (sloped at the ends too) with its **Eave** and **Ridge**. Gable or hip is read from the
+elevations' outline of the roof: a long side whose ridge runs its whole length is a gable's, one whose slopes stop short of
+the ends a hip's. Levels are shown as the drawing prints them (+6.10 m over the ground floor), heights in metres.
 A mark with no number printed is measured on the drawing at its printed scale (or from a dimension printed between two
 level lines). Click any field and type over it — metres, or feet and inches with their marks (`10'-0"`, `+20'-0"`);
 red when it is no length; the roof's kind in its box. What you type is remembered by the drawing's title, like a kind. A
@@ -1277,7 +1279,8 @@ levels (the Dhaka brochures, a set of plans only) says so, and every storey stay
 **Build the project** then builds every storey to those heights: each floor at its own level, its walls up to the slab
 under the next floor (the top floor's to its ceiling), the slab as thick as printed (0.15 m when no drawing says), a flat
 roof's parapet as high as printed (1.10 m when none is), a pitched roof as two slopes from the eave up to the ridge along
-the building's long side with a gable at each end. A floor the drawings do not show takes the storey under it (a
+the building's long side with a gable at each end (a hipped roof slopes at the ends too). While the top floor is still a
+picture to trace, the roof stands over the highest floor that has walls, at its printed height. A floor the drawings do not show takes the storey under it (a
 typical floor); a building taller than its section keeps the section's top storey under the roof. Walking a flat — and
 its Dollhouse — its ceiling is at its storey's height; the drawing itself keeps its walls as drawn (only a full-height wall
 stands its storey: a low wall, a parapet, a planter edge keep theirs). The message after the build says "every storey as

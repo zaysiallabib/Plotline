@@ -242,13 +242,13 @@ export function plate(unit: Unit, rooms: Room[], top: number, h: number, walls: 
 /**
  * A pitched roof over the top floor (session 31 heights: as the set's sections and elevations print it): over the box of
  * its outer walls' corners `pts` (plan, the scene's frame) along their longest wall's direction `dir`, the ridge down the
- * box's long middle at `ridge` (y), two slopes down to the eaves at `eave` along the long sides, a gable end at each short
- * end from the roof slab `base` up to the slopes, and a knee wall from `base` to the eave along the long sides. Both faces
- * of each (seen from the Dollhouse's cut too). `cover`: the slopes; `walls`: the gables and knee walls.
- * ponytail: one box over the whole floor (an L-shaped house gets one roof over its box), a gable only (no hip from the
- * elevations' outline yet), no overhang, no dormers.
+ * box's long middle at `ridge` (y), two slopes down to the eaves at `eave` along the long sides; a gable: a gable end at each
+ * short end from the roof slab `base` up to the slopes; `hip`: two more slopes there instead, the ridge shorter by the
+ * box's width (a pyramid on a square). A knee wall from `base` to the eave all round. Both faces of each (seen from the
+ * Dollhouse's cut too). `cover`: the slopes; `walls`: the gables and knee walls.
+ * ponytail: one box over the whole floor (an L-shaped house gets one roof over its box), slopes alike, no overhang, no dormers.
  */
-export function pitchedRoof(pts: Pt[], dir: Pt, base: number, eave: number, ridge: number): { cover: THREE.BufferGeometry; walls: THREE.BufferGeometry } {
+export function pitchedRoof(pts: Pt[], dir: Pt, base: number, eave: number, ridge: number, hip = false): { cover: THREE.BufferGeometry; walls: THREE.BufferGeometry } {
   let u = { x: dir.x, y: dir.y }
   let v = { x: -u.y, y: u.x }
   const span = (d: Pt) => {
@@ -259,6 +259,7 @@ export function pitchedRoof(pts: Pt[], dir: Pt, base: number, eave: number, ridg
   let [b0, b1] = span(v)
   if (a1 - a0 < b1 - b0) [u, v, a0, a1, b0, b1] = [v, { x: -u.x, y: -u.y }, b0, b1, -a1, -a0] // (the ridge runs down the long side)
   const bm = (b0 + b1) / 2
+  const d = hip ? Math.min((b1 - b0) / 2, (a1 - a0) / 2) : 0 // (a hip's ridge stops this far in from each end)
   const at = (a: number, b: number, y: number): number[] => [a * u.x + b * v.x, y, a * u.y + b * v.y]
   const faces = (polys: number[][][], wall: boolean): THREE.BufferGeometry => {
     const pos: number[] = []
@@ -275,13 +276,14 @@ export function pitchedRoof(pts: Pt[], dir: Pt, base: number, eave: number, ridg
   }
   const cover = faces(
     [
-      [at(a0, b0, eave), at(a1, b0, eave), at(a1, bm, ridge), at(a0, bm, ridge)],
-      [at(a1, b1, eave), at(a0, b1, eave), at(a0, bm, ridge), at(a1, bm, ridge)],
+      [at(a0, b0, eave), at(a1, b0, eave), at(a1 - d, bm, ridge), at(a0 + d, bm, ridge)],
+      [at(a1, b1, eave), at(a0, b1, eave), at(a0 + d, bm, ridge), at(a1 - d, bm, ridge)],
+      ...(hip ? [[at(a0, b1, eave), at(a0, b0, eave), at(a0 + d, bm, ridge)], [at(a1, b0, eave), at(a1, b1, eave), at(a1 - d, bm, ridge)]] : []),
     ],
     false,
   )
-  const knee = eave - base > 0.01 ? [b0, b1].map((b) => [at(a0, b, base), at(a1, b, base), at(a1, b, eave), at(a0, b, eave)]) : []
-  const gables = [a0, a1].map((a) => [at(a, b0, base), at(a, b1, base), at(a, b1, eave), at(a, bm, ridge), at(a, b0, eave)])
+  const knee = eave - base > 0.01 ? [...[b0, b1].map((b) => [at(a0, b, base), at(a1, b, base), at(a1, b, eave), at(a0, b, eave)]), ...(hip ? [a0, a1].map((a) => [at(a, b0, base), at(a, b1, base), at(a, b1, eave), at(a, b0, eave)]) : [])] : []
+  const gables = hip ? [] : [a0, a1].map((a) => [at(a, b0, base), at(a, b1, base), at(a, b1, eave), at(a, bm, ridge), at(a, b0, eave)])
   return { cover, walls: faces([...knee, ...gables], true) }
 }
 
@@ -489,9 +491,9 @@ export class Building extends THREE.Group {
   private get plateM(): number {
     return this.t.STOREYS?.slabM ?? this.t.FLOOR_M - WALL_M
   }
-  /** the parapet round the roof: the project's own (its sections print it), else PARAPET_M */
+  /** the parapet round the roof: the project's own (its sections print it; under a pitched roof none), else PARAPET_M */
   private get parapetM(): number {
-    return this.t.STOREYS?.parapetM ?? PARAPET_M
+    return this.t.STOREYS?.ridgeM !== undefined ? 0.01 : (this.t.STOREYS?.parapetM ?? PARAPET_M)
   }
 
   /**
@@ -640,7 +642,7 @@ export class Building extends THREE.Group {
         pitched.pts.push(...u.vertices.map((q) => ({ x: q.x + this.shift(s).x, y: q.y + this.shift(s).y })))
       }
     if (pitched?.pts.length) {
-      const r = pitchedRoof(pitched.pts, pitched.dir, R, this.levelOf(0) + t.STOREYS!.eaveM!, this.levelOf(0) + t.STOREYS!.ridgeM!)
+      const r = pitchedRoof(pitched.pts, pitched.dir, R, this.levelOf(0) + t.STOREYS!.eaveM!, this.levelOf(0) + t.STOREYS!.ridgeM!, !!t.STOREYS!.hip)
       put(top + 1, ROOF_COVER, r.cover)
       put(top + 1, EXTERIOR_PLASTER, r.walls)
     }

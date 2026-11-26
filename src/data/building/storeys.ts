@@ -21,6 +21,8 @@ export interface Heights {
   /** a pitched roof's eave and ridge */
   eaveM?: number
   ridgeM?: number
+  /** a pitched roof hipped at its ends (else a gable) */
+  hip?: boolean
   /** a flat roof's parapet: how high it stands over the roof slab */
   parapetM?: number
   /** the floor slab's thickness: each storey's walls stop this far under the next floor */
@@ -36,9 +38,10 @@ export interface TowerHeights {
   slabM: number
   /** a flat roof's parapet over the roof slab */
   parapetM?: number
-  /** a pitched roof's eave and ridge, m over the ground floor */
+  /** a pitched roof's eave and ridge, m over the ground floor, and whether it is hipped (else a gable) */
   eaveM?: number
   ridgeM?: number
+  hip?: boolean
 }
 
 /**
@@ -73,7 +76,7 @@ export function towerHeights(h: Heights, lowest: number, top: number, typical: n
   levels[top + 1] = levels[top] + roofOver
   const walls: Record<number, number> = {}
   for (let k = Math.min(lowest, lo); k <= top; k++) walls[k] = levels[k + 1] - levels[k] - slabM
-  const pitched = h.ridgeM !== undefined ? { ridgeM: h.ridgeM + shift, eaveM: (h.eaveM ?? h.floors[hi] + roofOver - slabM) + shift } : null
+  const pitched = h.ridgeM !== undefined ? { ridgeM: h.ridgeM + shift, eaveM: (h.eaveM ?? h.floors[hi] + roofOver - slabM) + shift, ...(h.hip ? { hip: true } : {}) } : null
   return { levels, walls, slabM, ...(pitched ?? (h.parapetM !== undefined ? { parapetM: h.parapetM } : {})) }
 }
 

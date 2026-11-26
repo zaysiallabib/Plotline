@@ -1,7 +1,7 @@
 /**
  * Heights from sections and elevations (heights.ts): a test per rule. Fixtures: the farmhouse set's "SECTION LOOKING
- * NORTH" and "SIDE ELEVATION (WEST)" as the PDF holds them (every text of the view, its horizontal lines at the level
- * marks; Farmhouse Drawing Set V-001 by Amatect, CC BY-SA 3.0, Wikimedia Commons), Elemental's Quinta Monroy CORTE B-B's
+ * NORTH", "SIDE ELEVATION (WEST)" and "FRONT ELEVATION (SOUTH)" as the PDF holds them (every text of the view, its
+ * horizontal lines at the level marks and its long slanted lines — the roof's slopes; Farmhouse Drawing Set V-001 by Amatect, CC BY-SA 3.0, Wikimedia Commons), Elemental's Quinta Monroy CORTE B-B's
  * level marks as printed, and made-up sections in the ways Dhaka and European architects print levels. The real sets are
  * scored in Docs/SETS_SCOREBOARD.md "Stage 3".
  */
@@ -10,7 +10,7 @@ import { describe, expect, test } from 'vitest'
 import { FT } from '../core'
 import type { Seg } from './plan2d'
 import type { SheetText } from './sheets'
-import { heightFields, heightsOf, levelValue, markOf, parseHeight, parseStoreys, readHeights, setHeights, splitMark, storeysOf, storeysWords, typedHeights, type Heights } from './heights'
+import { heightFields, roofOutline, heightsOf, levelValue, markOf, parseHeight, parseStoreys, readHeights, setHeights, splitMark, storeysOf, storeysWords, typedHeights, type Heights } from './heights'
 
 type Fx = { title: string; scale: number; texts: [string, number, number, number, number, number, number][]; segs: [number, number, number, number][] }
 const fixture = (f: string): { texts: SheetText[]; segs: Seg[]; mPerUnit: number } => {
@@ -179,6 +179,27 @@ describe('the building from the marks', () => {
   })
   test('a set with no ground floor named: its 1st floor is the ground (as its plans are numbered)', () => {
     expect(view([['1ST FLOOR', '+0.00'], ['2ND FLOOR', '+3.00'], ['ROOF', '+6.10']])?.floors).toEqual({ 0: 0, 1: 3 })
+  })
+})
+
+describe("the roof's outline on an elevation: gable or hip", () => {
+  test('the farmhouse: its west elevation a gable end (a triangle), its front the long side of the gable (a rectangle): a gable', () => {
+    const r = readHeights(fixture('farmhouse-west'))
+    expect(r.outline).toBe('triangle')
+    expect(heightsOf(r)?.hip).toBeUndefined()
+    expect(readHeights(fixture('farmhouse-front')).outline).toBe('rectangle')
+  })
+  const slope = (x0: number, y0: number, x1: number, y1: number): Seg => ({ a: { x: x0, y: y0 }, b: { x: x1, y: y1 }, layer: '' })
+  test("a gable's long side shows no slope (a rectangle); a hip's long side two slopes apart (a trapezoid); its end two meeting (a triangle)", () => {
+    expect(roofOutline([line(0, 100, 10), line(0, 100, 40)], 10, 40)).toBe('rectangle')
+    expect(roofOutline([slope(0, 10, 30, 40), slope(100, 10, 70, 40), line(30, 70, 40)], 10, 40)).toBe('trapezoid')
+    expect(roofOutline([slope(0, 10, 30, 40), slope(60, 10, 30, 40)], 10, 40)).toBe('triangle')
+  })
+  test("a hip's long side read: the set's roof is hipped; a person's Pitched over it makes it a gable", () => {
+    const hip: Heights = { floors: { 0: 0, 1: 3 }, eaveM: 6, ridgeM: 8.5, hip: true }
+    expect(setHeights([{ title: 'SOUTH', kind: 'elevation', heights: hip }]).hip).toBe(true)
+    expect(setHeights([{ title: 'SOUTH', kind: 'elevation', heights: typedHeights(hip, { kind: 'pitched' }).heights, typed: true }]).hip).toBeUndefined()
+    expect(heightFields(hip).kind).toBe('hip')
   })
 })
 

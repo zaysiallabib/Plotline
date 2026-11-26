@@ -1092,6 +1092,13 @@ describe('the storeys the set prints (session 31 heights: data/building/storeys.
     expect(Math.min(...[...Array(pos.count).keys()].map((i) => pos.getY(i)))).toBe(5.5)
     r.walls.computeBoundingBox()
     expect([r.walls.boundingBox!.min.y, r.walls.boundingBox!.max.y]).toEqual([5, 8])
+    // hipped: the ridge 10 − 4 m long, slopes at the ends too, no gable — the walls only the knee up to the eave
+    const h = pitchedRoof([{ x: 0, y: 0 }, { x: 4, y: 10 }, { x: 0, y: 10 }, { x: 4, y: 0 }], { x: 1, y: 0 }, 5, 5.5, 8, true)
+    const hp = h.cover.attributes.position
+    const ridge = [...Array(hp.count).keys()].filter((i) => hp.getY(i) === 8).map((i) => hp.getZ(i))
+    expect([Math.min(...ridge), Math.max(...ridge)]).toEqual([2, 8])
+    h.walls.computeBoundingBox()
+    expect(h.walls.boundingBox!.max.y).toBe(5.5)
   })
 
   test('the walked flat stands its storey: its full walls as tall as the tower draws that floor', async () => {
