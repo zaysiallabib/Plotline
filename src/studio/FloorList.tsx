@@ -84,9 +84,14 @@ interface Props {
   onOldWay: () => void
   onClose: () => void
   onToast: (text: string) => void
+  /** a kept drawing of the set (Project.sheets), shown big */
+  onSheet: (id: Id, title: string) => void
 }
 
-export function FloorList({ projects, project, drawing, unit, fresh, onStore, onCreate, onActivate, onOpen, onRename, onFurnish, onShow, onOldWay, onClose, onToast }: Props) {
+/** what a kept drawing is, in the list: "Elevation · south" */
+const SHEET_WORDS: Record<string, string> = { elevation: 'Elevation', section: 'Section', site: 'Site plan', schedule: 'Schedule', interior: 'Interior elevation', detail: 'Detail', title: 'Title page', other: 'Drawing', plan: 'Plan' }
+
+export function FloorList({ projects, project, drawing, unit, fresh, onStore, onCreate, onActivate, onOpen, onRename, onFurnish, onShow, onOldWay, onClose, onToast, onSheet }: Props) {
   const [also, setAlso] = useState<Record<Id, string>>({})
   // a clicked button lets go of the keys (Enter / Space on it again must not draw another floor)
   const blur = (e: React.MouseEvent) => e.target instanceof HTMLButtonElement && e.target.blur()
@@ -195,7 +200,7 @@ export function FloorList({ projects, project, drawing, unit, fresh, onStore, on
   }
   const remove = async () => {
     if (!(await ask(`Delete the project "${project.name}" and all its drawings? This cannot be undone.`, 'Delete', true))) return
-    for (const id of Object.keys(project.units)) void deletePicture(id).catch(() => {})
+    for (const id of [...Object.keys(project.units), ...(project.sheets ?? []).map((s) => s.id)]) void deletePicture(id).catch(() => {})
     if (onStore(fresh().filter((p) => p.id !== pid))) onActivate(null)
   }
   const inProject = !!drawing && !!project.units[drawing]
@@ -376,6 +381,24 @@ export function FloorList({ projects, project, drawing, unit, fresh, onStore, on
           )
         })}
       </ul>
+      {!!project.sheets?.length && (
+        <section className="kept">
+          <h4 title="The set's elevations, sections, site plan and schedules, kept as they are: nothing is traced on them">Kept from the drawing set</h4>
+          <ul>
+            {project.sheets.map((s) => (
+              <li key={s.id}>
+                <button title={`${s.title} — ${s.file}, page ${s.page}${s.scale ? `, 1 : ${s.scale}` : ''}`} onClick={() => onSheet(s.id, s.title)}>
+                  <span className="lbl">
+                    {SHEET_WORDS[s.kind] ?? s.kind}
+                    {s.which ? ` · ${s.which}` : ''}
+                  </span>
+                  <span className="muted">{s.title}</span>
+                </button>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
     </aside>
   )
 }
