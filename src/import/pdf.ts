@@ -11,6 +11,7 @@ import { deriveRooms, type Pt } from '../core'
 import { buildPlan, penRoles, quarterArc, sheetScale, type ArcPrim, type Drawing, type Fills, type Seg, type TextPrim } from './plan2d'
 import { emptyUnit } from '../studio/model'
 import type { ImportResult } from './types'
+import type { Box, SheetPage, SheetText } from './sheets'
 
 const CHORDS = 8
 const PT = 0.0254 / 72
@@ -53,8 +54,38 @@ export async function renderPage(doc: PdfDoc, pageNo: number, longPx: number): P
   return canvas
 }
 
+/**
+ * One view of a page (`frame`: sheets.ts, page points as the page is shown; null = the whole page) drawn on a white canvas,
+ * its longer side `longPx` pixels (browser only): the Set panel's small pictures, and a view kept with the project or traced
+ * as a picture. `pxPerPt`: canvas pixels per page point, so a printed scale gives the picture's pixels per metre.
+ */
+export async function renderView(doc: PdfDoc, pageNo: number, frame: Box | null, longPx: number): Promise<{ canvas: HTMLCanvasElement; pxPerPt: number }> {
+  const page = await doc.getPage(pageNo)
+  const one = page.getViewport({ scale: 1 })
+  const rot = ((page.rotate % 360) + 360) % 360
+  // the frame's corners back in PDF user space (pdf.ts turns a rotated page: undo it), then on the scale-1 viewport
+  const unturn = (p: Pt): Pt => (rot === 90 ? { x: -p.y, y: p.x } : rot === 180 ? { x: -p.x, y: -p.y } : rot === 270 ? { x: p.y, y: -p.x } : p)
+  const px = frame
+    ? [{ x: frame.x0, y: frame.y0 }, { x: frame.x1, y: frame.y0 }, { x: frame.x0, y: frame.y1 }, { x: frame.x1, y: frame.y1 }].map((p) => {
+        const q = unturn(p)
+        const [x, y] = one.convertToViewportPoint(q.x, q.y)
+        return { x, y }
+      })
+    : [{ x: 0, y: 0 }, { x: one.width, y: one.height }]
+  const x0 = Math.max(0, Math.min(...px.map((p) => p.x))), y0 = Math.max(0, Math.min(...px.map((p) => p.y)))
+  const x1 = Math.min(one.width, Math.max(...px.map((p) => p.x))), y1 = Math.min(one.height, Math.max(...px.map((p) => p.y)))
+  const s = longPx / Math.max(1, x1 - x0, y1 - y0)
+  const viewport = page.getViewport({ scale: s, offsetX: -x0 * s, offsetY: -y0 * s })
+  const canvas = document.createElement('canvas')
+  canvas.width = Math.max(1, Math.ceil((x1 - x0) * s))
+  canvas.height = Math.max(1, Math.ceil((y1 - y0) * s))
+  await page.render({ canvas, viewport, background: '#ffffff' }).promise
+  page.cleanup()
+  return { canvas, pxPerPt: s }
+}
+
 /** a page's lines (the clip paths left out) and texts, in PDF user space turned the way the page is shown */
-async function readPage(doc: PdfDoc, pageNo: number): Promise<{ segs: Seg[]; arcs: ArcPrim[]; texts: TextPrim[]; pictures: number; pages: number; fills: Fills }> {
+async function readPage(doc: PdfDoc, pageNo: number): Promise<{ segs: Seg[]; arcs: ArcPrim[]; texts: TextPrim[]; words: SheetText[]; pictures: number; pages: number; shapes: Shape[]; box: Box }> {
   const pdfjs = await lib()
   const page = await doc.getPage(pageNo)
   const rot = ((page.rotate % 360) + 360) % 360
@@ -68,8 +99,8 @@ async function readPage(doc: PdfDoc, pageNo: number): Promise<{ segs: Seg[]; arc
   const stack: (typeof g)[] = []
   let pictures = 0
   let pen = ''
-  const fills: Fills = new Map()
-  let shape: Pt[] = [] // the filled subpath being drawn: its area and outline length go to its pen
+  const shapes: Shape[] = []
+  let shape: Pt[] = [] // the filled subpath being drawn: its area and outline length go to its pen (penRoles), with where it is
   const closeShape = () => {
     if (shape.length >= 3) {
       let a = 0, l = 0
@@ -78,9 +109,7 @@ async function readPage(doc: PdfDoc, pageNo: number): Promise<{ segs: Seg[]; arc
         a += q.x * r.y - r.x * q.y
         l += Math.hypot(r.x - q.x, r.y - q.y)
       })
-      const f = fills.get(pen) ?? fills.set(pen, { area: 0, outline: 0 }).get(pen)!
-      f.area += Math.abs(a) / 2
-      f.outline += l
+      shapes.push({ pen, area: Math.abs(a) / 2, outline: l, at: turn(shape[0]) })
     }
     shape = []
   }
@@ -157,21 +186,43 @@ async function readPage(doc: PdfDoc, pageNo: number): Promise<{ segs: Seg[]; arc
     const [a, b, , , e, f] = t.transform
     const h = Math.hypot(a, b) || 1
     const dir = { x: a / h, y: b / h }
-    return { str: t.str, at: { x: e, y: f }, end: { x: e + dir.x * t.width, y: f + dir.y * t.width }, dir, h }
+    return { str: t.str, at: { x: e, y: f }, end: { x: e + dir.x * t.width, y: f + dir.y * t.width }, dir, h, words: t.str }
   })
   const merged: (typeof runs)[number][] = []
   for (const r of runs) {
     const last = merged[merged.length - 1]
-    if (last && Math.abs(last.dir.x * r.dir.y - last.dir.y * r.dir.x) < 0.01 && Math.hypot(r.at.x - last.end.x, r.at.y - last.end.y) < 0.6 * r.h) {
+    const gap = last ? Math.hypot(r.at.x - last.end.x, r.at.y - last.end.y) : Infinity
+    if (last && Math.abs(last.dir.x * r.dir.y - last.dir.y * r.dir.x) < 0.01 && gap < 0.6 * r.h) {
       last.str += r.str
+      // (the words keep the gap between two runs as a space: "GROUND" "FLOOR PLAN" is "GROUND FLOOR PLAN" to sheets.ts)
+      last.words += gap > 0.12 * r.h && !/\s$/.test(last.words) && !/^\s/.test(r.str) ? ` ${r.str}` : r.str
       last.end = r.end
     } else merged.push({ ...r })
   }
   // (a label's point is the middle of its text, so it lands in its room)
   // (fonts print the foot mark as a curly quote)
   const texts: TextPrim[] = merged.map((r) => ({ layer: '', at: turn({ x: (r.at.x + r.end.x) / 2, y: (r.at.y + r.end.y) / 2 }), text: r.str.replace(/[‘’′]/g, "'").replace(/[“”″]/g, '"'), height: r.h }))
+  // the same texts with their length and direction, for what kind of sheet this is (sheets.ts)
+  const words: SheetText[] = merged.map((r, i) => ({ text: r.words.replace(/[‘’′]/g, "'").replace(/[“”″]/g, '"'), at: texts[i].at, height: r.h, width: Math.hypot(r.end.x - r.at.x, r.end.y - r.at.y), dir: turn(r.dir) }))
+  const [vx0, vy0, vx1, vy1] = page.view
+  const corners = [turn({ x: vx0, y: vy0 }), turn({ x: vx1, y: vy1 })]
+  const box: Box = { x0: Math.min(corners[0].x, corners[1].x), y0: Math.min(corners[0].y, corners[1].y), x1: Math.max(corners[0].x, corners[1].x), y1: Math.max(corners[0].y, corners[1].y) }
   page.cleanup()
-  return { segs, arcs, texts, pictures, pages: doc.numPages, fills }
+  return { segs, arcs, texts, words, pictures, pages: doc.numPages, shapes, box }
+}
+
+/** a filled subpath: its pen, area and outline length (page points) and one of its corners (page frame) */
+interface Shape {
+  pen: string
+  area: number
+  outline: number
+  at: Pt
+}
+
+/** What is on a page for sheets.ts: its box, texts and lines, in the page frame (turned as shown) — and how many pictures it holds. */
+export async function readSheetPage(doc: PdfDoc, pageNo: number): Promise<SheetPage & { pictures: number }> {
+  const r = await readPage(doc, pageNo)
+  return { box: r.box, texts: r.words, segs: r.segs, arcs: r.arcs, pictures: r.pictures }
 }
 
 /**
@@ -186,12 +237,27 @@ export const readsAsPlan = (r: ImportResult): boolean =>
     return rooms >= 2 && s.unit.walls.length <= 20 * rooms
   })
 
-/** One page of a PDF (the file's bytes, or a PDF already open) read as a drawing; a page with no lines is refused. */
-export async function importPdf(src: ArrayBuffer | PdfDoc, name: string, pageNo = 1): Promise<ImportResult> {
+/**
+ * One page of a PDF (the file's bytes, or a PDF already open) read as a drawing; a page with no lines is refused. `frame`
+ * (page frame, sheets.ts): only the lines, texts and fills inside it — one view of a page of several.
+ */
+export async function importPdf(src: ArrayBuffer | PdfDoc, name: string, pageNo = 1, frame?: Box): Promise<ImportResult> {
   const doc = src instanceof ArrayBuffer ? await openPdf(src) : src
-  const { segs, arcs, texts, pictures, pages, fills } = await readPage(doc, pageNo).finally(() => src instanceof ArrayBuffer && doc.loadingTask.destroy())
+  const read = await readPage(doc, pageNo).finally(() => src instanceof ArrayBuffer && doc.loadingTask.destroy())
+  const { pictures, pages } = read
+  const ok = (p: Pt) => !frame || (p.x >= frame.x0 && p.x <= frame.x1 && p.y >= frame.y0 && p.y <= frame.y1)
+  const segs = read.segs.filter((g) => ok({ x: (g.a.x + g.b.x) / 2, y: (g.a.y + g.b.y) / 2 }))
+  const arcs = read.arcs.filter((a) => ok(a.c))
+  const texts = read.texts.filter((t) => ok(t.at))
+  const fills: Fills = new Map()
+  for (const s of read.shapes) {
+    if (!ok(s.at)) continue
+    const f = fills.get(s.pen) ?? fills.set(s.pen, { area: 0, outline: 0 }).get(s.pen)!
+    f.area += s.area
+    f.outline += s.outline
+  }
   if (!segs.length) throw new Error('This PDF is a picture, not a drawing — use the picture itself')
-  const notes: string[] = [`PDF: ${pages} page(s); page ${pageNo} read: ${segs.length} lines, ${texts.length} texts${pictures ? `, ${pictures} picture(s) ignored` : ''}.`]
+  const notes: string[] = [`PDF: ${pages} page(s); page ${pageNo}${frame ? ' (one of its drawings)' : ''} read: ${segs.length} lines, ${texts.length} texts${pictures ? `, ${pictures} picture(s) ignored` : ''}.`]
   const { scale, note } = sheetScale(segs, texts, (ptPerM) => ` — 1 : ${(1 / (ptPerM * PT)).toFixed(0)} on the sheet`, PT)
   notes.push(note)
   if (/not set/.test(note)) {
