@@ -10,7 +10,7 @@
  * sizes, else "set it with S". A pure reader — a small XML tokenizer, no DOM — so it runs in the tests and anywhere.
  */
 import type { Pt } from '../core'
-import { ROLE_WORDS, buildPlan, guessScale, penRoles, quarterArc, roleOf, sheetScale, type ArcPrim, type Drawing, type Fills, type LayerRoles, type Loop, type Seg, type TextPrim } from './plan2d'
+import { ROLE_WORDS, buildPlan, guessScale, penRoles, bezierArc, roleOf, sheetScale, type ArcPrim, type Drawing, type Fills, type LayerRoles, type Loop, type Seg, type TextPrim } from './plan2d'
 import type { ImportResult } from './types'
 
 // ---------- XML ----------
@@ -301,7 +301,7 @@ function path(d: string, m: M, poly: (pts: Pt[], closed: boolean) => void, arc: 
   }
   const cubic = (x1: number, y1: number, x2: number, y2: number, x: number, y: number) => {
     const p0 = P(cx, cy), p1 = P(x1, y1), p2 = P(x2, y2), p3 = P(x, y)
-    const q = quarterArc(p0, p1, p2, p3)
+    const q = bezierArc(p0, p1, p2, p3)
     if (q) arc(q)
     for (let k = 1; k <= CHORDS; k++) {
       const t = k / CHORDS, u = 1 - t

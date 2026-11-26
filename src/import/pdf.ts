@@ -8,7 +8,7 @@
  * plain words.
  */
 import { deriveRooms, type Pt } from '../core'
-import { buildPlan, penRoles, quarterArc, sheetScale, type ArcPrim, type Drawing, type Fills, type Seg, type TextPrim } from './plan2d'
+import { bezierArc, buildPlan, penRoles, sheetScale, sheetSymbols, type ArcPrim, type Drawing, type Fills, type Seg, type TextPrim } from './plan2d'
 import { emptyUnit } from '../studio/model'
 import type { ImportResult } from './types'
 import type { Box, SheetPage, SheetText } from './sheets'
@@ -156,7 +156,7 @@ async function readPage(doc: PdfDoc, pageNo: number): Promise<{ segs: Seg[]; arc
             k += 2 * n
             const p3 = pts[n - 1]
             if (cur && op === 2) {
-              const q = quarterArc(turn(cur), turn(pts[0]), turn(pts[1]), turn(p3))
+              const q = bezierArc(turn(cur), turn(pts[0]), turn(pts[1]), turn(p3))
               if (q) arcs.push({ ...q, layer: '' })
             }
             if (cur) {
@@ -247,9 +247,13 @@ export async function importPdf(src: ArrayBuffer | PdfDoc, name: string, pageNo 
   const read = await readPage(doc, pageNo).finally(() => src instanceof ArrayBuffer && doc.loadingTask.destroy())
   const { pictures, pages } = read
   const ok = (p: Pt) => !frame || (p.x >= frame.x0 && p.x <= frame.x1 && p.y >= frame.y0 && p.y <= frame.y1)
-  const segs = read.segs.filter((g) => ok({ x: (g.a.x + g.b.x) / 2, y: (g.a.y + g.b.y) / 2 }))
-  const arcs = read.arcs.filter((a) => ok(a.c))
+  const inFrame = read.segs.filter((g) => ok({ x: (g.a.x + g.b.x) / 2, y: (g.a.y + g.b.y) / 2 }))
+  const arcsInFrame = read.arcs.filter((a) => ok(a.c))
   const texts = read.texts.filter((t) => ok(t.at))
+  // the sheet's symbols (markers, bubbles, arrows, break lines) are no part of the building
+  const symbols = sheetSymbols(inFrame, arcsInFrame, texts, PT)
+  const segs = inFrame.filter((_, i) => !symbols.segs.has(i))
+  const arcs = arcsInFrame.filter((_, i) => !symbols.arcs.has(i))
   const fills: Fills = new Map()
   for (const s of read.shapes) {
     if (!ok(s.at)) continue
@@ -261,6 +265,7 @@ export async function importPdf(src: ArrayBuffer | PdfDoc, name: string, pageNo 
   const notes: string[] = [`PDF: ${pages} page(s); page ${pageNo}${frame ? ' (one of its drawings)' : ''} read: ${segs.length} lines, ${texts.length} texts${pictures ? `, ${pictures} picture(s) ignored` : ''}.`]
   const { scale, note } = printed ? { scale: printed * PT, note: `Scale: as printed under the drawing, 1 : ${+printed.toFixed(1)}.` } : sheetScale(segs, texts, (ptPerM) => ` — 1 : ${(1 / (ptPerM * PT)).toFixed(0)} on the sheet`, PT)
   notes.push(note)
+  if (symbols.segs.size) notes.push(`${symbols.segs.size} lines of the sheet's symbols (markers and bubbles, arrows, break lines) left out of the walls.`)
   if (/not set/.test(note)) {
     // no scale on the page (no dimension, scale or room size printed as words: a brochure page whose words are drawn as
     // outlines): its lines read as metres make no walls — and a page of outlined words is tens of thousands of them (a

@@ -715,7 +715,7 @@ export function buildPlan(d: Drawing, name: string): Plan2dResult {
   const isSwing = (a: ArcPrim) => {
     let sweep = a.a1 - a.a0
     while (sweep < 0) sweep += 2 * Math.PI
-    return a.r * s >= 0.5 && a.r * s <= 1.6 && sweep >= Math.PI / 3 && sweep <= (2 * Math.PI) / 3
+    return a.r * s >= 0.5 && a.r * s <= 1.6 && sweep >= (2 * Math.PI) / 9 && sweep <= (2 * Math.PI) / 3 // (a quarter, or a door drawn open at 45°)
   }
   // blocks: a door / window / passage block over a wall is that opening. Its two jambs — two equal lines across, as far
   // apart as it is wide — say exactly where it stands (its leaf and swing reach off the wall); a block without them, by
@@ -1212,19 +1212,140 @@ export function sheetScale(segs: Seg[], texts: TextPrim[], sheet: (unitsPerM: nu
 }
 
 /**
- * A cubic bezier that is a quarter circle (a door swing drawn as a curve, as PDF and SVG writers do): its centre is the far
- * corner of the tangents' box. The arc counter-clockwise from a0 to a1, or null.
+ * A cubic bezier that is a circular arc (a door swing, a bubble's quarter — drawn as curves, as PDF and SVG writers do: a
+ * quarter, or a door drawn open at 45°): its centre is where the normals at its two ends meet, its middle lies on the same
+ * circle. The arc counter-clockwise from a0 to a1 (5°–180° of sweep), or null.
  */
-export function quarterArc(p0: Pt, p1: Pt, p2: Pt, p3: Pt): { c: Pt; r: number; a0: number; a1: number } | null {
-  const corner = { x: p0.x + (p1.x - p0.x) / 0.5523, y: p0.y + (p1.y - p0.y) / 0.5523 }
-  const c = { x: p0.x + p3.x - corner.x, y: p0.y + p3.y - corner.y }
-  const r0 = Math.hypot(p0.x - c.x, p0.y - c.y), r3 = Math.hypot(p3.x - c.x, p3.y - c.y)
-  const t3 = { x: p3.x + (p2.x - p3.x) / 0.5523, y: p3.y + (p2.y - p3.y) / 0.5523 }
-  const dotT = (p0.x - c.x) * (p3.x - c.x) + (p0.y - c.y) * (p3.y - c.y)
-  if (!(r0 > 0 && Math.abs(r3 - r0) < 0.03 * r0 && Math.hypot(t3.x - corner.x, t3.y - corner.y) < 0.05 * r0 && Math.abs(dotT) < 0.1 * r0 * r0)) return null
+export function bezierArc(p0: Pt, p1: Pt, p2: Pt, p3: Pt): { c: Pt; r: number; a0: number; a1: number } | null {
+  const t0 = len(sub(p1, p0)) > 1e-9 ? sub(p1, p0) : sub(p2, p0)
+  const t3 = len(sub(p3, p2)) > 1e-9 ? sub(p3, p2) : sub(p3, p1)
+  const n0 = { x: -t0.y, y: t0.x }, n3 = { x: -t3.y, y: t3.x }
+  const den = crossZ(n0, n3)
+  if (Math.abs(den) < 1e-6 * len(t0) * len(t3)) return null
+  const c = { x: p0.x + (n0.x * crossZ(sub(p3, p0), n3)) / den, y: p0.y + (n0.y * crossZ(sub(p3, p0), n3)) / den }
+  const r0 = len(sub(p0, c)), r3 = len(sub(p3, c))
+  const mid = { x: (p0.x + 3 * p1.x + 3 * p2.x + p3.x) / 8, y: (p0.y + 3 * p1.y + 3 * p2.y + p3.y) / 8 }
+  if (!(r0 > 0) || Math.abs(r3 - r0) > 0.03 * r0 || Math.abs(len(sub(mid, c)) - r0) > 0.02 * r0) return null
+  // (its middle on the chord's side of the centre: under half a turn, as one bezier is)
+  if (dot(sub(mid, c), sub({ x: (p0.x + p3.x) / 2, y: (p0.y + p3.y) / 2 }, c)) <= 0 || len(sub(p3, p0)) < 0.087 * r0) return null
   const b0 = Math.atan2(p0.y - c.y, p0.x - c.x), b3 = Math.atan2(p3.y - c.y, p3.x - c.x)
-  const ccw = (p0.x - c.x) * (p3.y - c.y) - (p0.y - c.y) * (p3.x - c.x) > 0
+  const ccw = crossZ(sub(p0, c), sub(p3, c)) > 0
   return { c, r: r0, a0: ccw ? b0 : b3, a1: ccw ? b3 : b0 }
+}
+
+/**
+ * The lines of a printed sheet that are drawing symbols, not the building (session 31 levels: in the farmhouse set's build
+ * its elevation markers and its stair's break line became wall pieces). A symbol is drawn at a size on PAPER whatever the
+ * drawing's scale (`paper`: metres of paper per file unit — a PDF point is 0.0254 / 72):
+ *  bubbles  a circle 2–20 mm across with a short text inside (an elevation or section marker, a grid bubble, a door / window
+ *           tag, a north arrow's N): the circle and every line it carries — its triangle, its arrow — within 2.4 radii of it
+ *  arrows   a line ending in a head (two short equal lines from its tip, 10–50° either side: a stair's UP / DN arrow, a note's
+ *           leader): the head and the run of lines behind it, up to where it meets another line
+ *  breaks   a break line: two lines on one line joined by a slanted zigzag of short lines that crosses it (where a plan cuts
+ *           a stair)
+ * The indices of the lines and arcs to leave out. ponytail: arrows and breaks are found on lines that share their ends
+ * exactly (one drawn path), as CAD prints draw them.
+ */
+export function sheetSymbols(segs: Seg[], arcs: ArcPrim[], texts: TextPrim[], paper: number): { segs: Set<number>; arcs: Set<number>; why: Map<number, 'bubble' | 'arrow' | 'break'> } {
+  const why = new Map<number, 'bubble' | 'arrow' | 'break'>()
+  const out = { segs: { add: (i: number, w: 'bubble' | 'arrow' | 'break' = 'arrow') => why.has(i) || why.set(i, w) }, arcs: new Set<number>() }
+  const mm = 0.001 / paper // one paper millimetre in file units
+  const L = segs.map((g) => len(sub(g.b, g.a)))
+  // every line's two ends, by place (within 0.05 mm)
+  const tol = 0.05 * mm
+  const cell = (p: Pt) => `${Math.round(p.x / tol)},${Math.round(p.y / tol)}`
+  const at = new Map<string, { i: number; end: 'a' | 'b' }[]>()
+  segs.forEach((g, i) => {
+    if (L[i] < 1e-9) return
+    for (const end of ['a', 'b'] as const) (at.get(cell(g[end])) ?? at.set(cell(g[end]), []).get(cell(g[end]))!).push({ i, end })
+  })
+  const touching = (p: Pt) => at.get(cell(p)) ?? []
+  const other = (i: number, end: 'a' | 'b') => (end === 'a' ? segs[i].b : segs[i].a)
+  const dirFrom = (i: number, end: 'a' | 'b'): Pt => {
+    const d = sub(other(i, end), segs[i][end])
+    return { x: d.x / L[i], y: d.y / L[i] }
+  }
+
+  // bubbles: arcs of one circle (centre and radius within 2 %) summing to a whole turn
+  const circles = new Map<string, { c: Pt; r: number; ix: number[]; sweep: number }>()
+  arcs.forEach((a, i) => {
+    if (a.r < mm || a.r > 10 * mm) return
+    const q = a.r * 0.02
+    const k = `${Math.round(a.c.x / q)},${Math.round(a.c.y / q)},${Math.round(a.r / q)}`
+    const c = circles.get(k) ?? circles.set(k, { c: a.c, r: a.r, ix: [], sweep: 0 }).get(k)!
+    c.ix.push(i)
+    c.sweep += (((a.a1 - a.a0) % (2 * Math.PI)) + 2 * Math.PI) % (2 * Math.PI)
+  })
+  for (const c of circles.values()) {
+    if (c.sweep < 1.8 * Math.PI || !texts.some((t) => len(sub(t.at, c.c)) <= c.r && t.text.trim().length <= 8)) continue
+    for (const i of c.ix) out.arcs.add(i)
+    segs.forEach((g, i) => len(sub(g.a, c.c)) <= 2.4 * c.r && len(sub(g.b, c.c)) <= 2.4 * c.r && out.segs.add(i, 'bubble'))
+  }
+
+  // the run of lines from line i's end `end` on: through every corner where just one other line goes on
+  const run = (i: number, end: 'a' | 'b', keep: (j: number) => boolean): number[] => {
+    const got = [i]
+    let p = other(i, end), cur = i
+    for (let n = 0; n < 400; n++) {
+      const next = touching(p).filter((x) => x.i !== cur)
+      if (next.length !== 1 || got.includes(next[0].i) || !keep(next[0].i)) break
+      cur = next[0].i
+      got.push(cur)
+      p = other(cur, next[0].end)
+    }
+    return got
+  }
+
+  // arrows: two short equal lines from one tip, either side of a longer one leaving it between them; the barbs' far ends
+  // free or joined to each other (a closed head) — a square's corner with its diagonal (a column) goes on to its other sides
+  const atTip = (i: number, end: 'a' | 'b', tip: Pt) => len(sub(other(i, end), tip)) <= 2 * tol
+  for (const [, here] of at) {
+    if (here.length < 3) continue
+    const tip = segs[here[0].i][here[0].end]
+    const short = here.filter((x) => L[x.i] >= 0.8 * mm && L[x.i] <= 6 * mm)
+    for (const [m, h1] of short.entries())
+      for (const h2 of short.slice(m + 1)) {
+        if (Math.abs(L[h1.i] - L[h2.i]) > 0.3 * Math.max(L[h1.i], L[h2.i])) continue
+        const d1 = dirFrom(h1.i, h1.end), d2 = dirFrom(h2.i, h2.end)
+        const open = Math.acos(Math.max(-1, Math.min(1, dot(d1, d2))))
+        if (open < (20 * Math.PI) / 180 || open > (100 * Math.PI) / 180) continue
+        const far = [other(h1.i, h1.end), other(h2.i, h2.end)]
+        const loose = (k: 0 | 1) => touching(far[k]).every((x) => x.i === (k ? h2.i : h1.i) || atTip(x.i, x.end, tip) || len(sub(other(x.i, x.end), far[1 - k])) <= 2 * tol)
+        if (!loose(0) || !loose(1)) continue
+        const mid = { x: d1.x + d2.x, y: d1.y + d2.y }
+        const bis = { x: mid.x / len(mid), y: mid.y / len(mid) }
+        const shaft = here.find((x) => x.i !== h1.i && x.i !== h2.i && L[x.i] > Math.max(L[h1.i], L[h2.i]) && dot(dirFrom(x.i, x.end), bis) > Math.cos((8 * Math.PI) / 180))
+        if (!shaft) continue
+        for (const k of [0, 1] as const) for (const x of touching(far[k])) out.segs.add(x.i)
+        for (const j of run(shaft.i, shaft.end, () => true)) out.segs.add(j)
+      }
+  }
+
+  // breaks: a long line, a zigzag of 2–4 short lines crossing it, slanted to it, the long line again on its line
+  segs.forEach((g, i) => {
+    if (L[i] < 10 * mm) return
+    for (const end of ['a', 'b'] as const) {
+      const zig = run(i, end === 'a' ? 'b' : 'a', (j) => L[j] <= 8 * mm).slice(1)
+      if (zig.length < 2 || zig.length > 4) continue
+      const last = zig[zig.length - 1]
+      const { dir, n } = folded(g.a, g.b)
+      const tail = touching(segs[last].a)
+        .concat(touching(segs[last].b))
+        .find((x) => x.i !== last && !zig.includes(x.i) && x.i !== i && L[x.i] >= 10 * mm && Math.abs(crossZ(dir, folded(segs[x.i].a, segs[x.i].b).dir)) <= Math.sin((3 * Math.PI) / 180))
+      if (!tail) continue
+      const t2 = segs[tail.i]
+      const side = zig.flatMap((j) => [segs[j].a, segs[j].b]).map((p) => dot(sub(p, g.a), n))
+      const off = [t2.a, t2.b].map((p) => Math.abs(dot(sub(p, g.a), n)))
+      // (a wall's end cap — across, along, across — is square to it; a break's zig is slanted)
+      const slant = zig.some((j) => {
+        const s = Math.abs(crossZ(dir, folded(segs[j].a, segs[j].b).dir))
+        return s > Math.sin((20 * Math.PI) / 180) && s < Math.sin((80 * Math.PI) / 180)
+      })
+      if (Math.max(...off) > 0.5 * mm || !slant || Math.max(...side) < 0.4 * mm || Math.min(...side) > -0.4 * mm) continue
+      for (const j of [i, ...zig, tail.i]) out.segs.add(j, 'break')
+    }
+  })
+  return { segs: new Set(why.keys()), arcs: out.arcs, why }
 }
 
 /**
