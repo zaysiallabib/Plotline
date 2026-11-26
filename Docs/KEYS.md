@@ -218,6 +218,7 @@ no staff row below shows there. Checked against the product on 2026-11-21; walke
 | Floor list — **Floor plans**: a plan's floors box (`2, 4, 6-8`), **Apply**, **Copy** | Puts the plan on those floors · a new plan from this one | Building | §6 |
 | Floor list — per floor: **Draw**, **Open**, **Use drawing…** (with **This floor only — its own copy**), **Clear** | Gives a floor a drawing, opens it, uses another (or its own copy), empties the floor | Building | §6 |
 | Floor list — **Open now** (name), **Delete this drawing** | Renames the open drawing · takes it off every floor and deletes it | Building | §6 |
+| Floor list — **Furnish in 3D**: a tick per flat, **All**, **None** (a drawing with two flats or more) | Only the ticked flats are furnished and lit in the 3D; the others stand bare; the walk starts in the first ticked | Building | §6 |
 | The old way: **Put only this plan into a building…**, **Use this plan as** (A flat · Ground floor · Basement · Common floor · Rooftop), **Name**, **This flat on floors … to …**, **Next to it on each floor**, **Basement number**, **On floor**, **Move it right**, **Move it down**, **Back to the automatic place**, **Show building**, **Take this flat out** / **Take this plan out** | One plan into a building, without a project | Building, no project open | §6 |
 
 ## Change list (`/changes`, staff)

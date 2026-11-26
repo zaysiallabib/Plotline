@@ -2756,6 +2756,7 @@ export default function StudioApp() {
             onActivate={activate}
             onOpen={openDrawing}
             onRename={(name) => dispatch({ type: 'set-meta', patch: { name } })}
+            onFurnish={(furnishFlats) => dispatch({ type: 'set-meta', patch: { furnishFlats } })}
             onShow={showProject}
             onOldWay={() => setBuildingOpen(true)}
             onClose={() => setListOpen(false)}

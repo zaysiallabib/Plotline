@@ -153,7 +153,7 @@ export type Action =
   | { type: 'set-view'; view: View }
   | { type: 'set-plan-image'; image: PlanImage | null }
   | { type: 'set-scale'; pxPerM: number; originPx?: Pt }
-  | { type: 'set-meta'; patch: Partial<Pick<Unit, 'name' | 'projectName' | 'floor' | 'areaSqft' | 'northDeg' | 'site'>> }
+  | { type: 'set-meta'; patch: Partial<Pick<Unit, 'name' | 'projectName' | 'floor' | 'areaSqft' | 'northDeg' | 'site' | 'furnishFlats'>> }
   /** the architect's outside shape (core Shell) as it stands: moved, turned, its floor height; undefined removes it (undoable) */
   | { type: 'set-shell'; shell: Shell | undefined }
   /** `toggle` (Shift+click): each of `ids` already picked leaves the selection, the others join it */
