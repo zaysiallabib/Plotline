@@ -1131,7 +1131,10 @@ To see each kind without a file of your own: **Try a sample ▾** in the empty S
 | A **folder**, a **.zip** or several files | The best file opens (an IFC first, then a 3D model, then a DXF / PDF; an architectural IFC before a structural one); the rest are its pictures and data. Several PDFs and nothing better (an architect's set sent as one PDF a sheet): all their pages in **What is in this set**, in the order of their names. A zip of pictures opens its first picture |
 
 While it reads, a box at the top says what it is doing with a bar for how far ("building the 3D (53 %)", "floor 3 of
-7"); the Studio keeps working (a 64 MB building takes about half a minute), and **Cancel** stops it. Afterwards the panel
+7", a DXF's "reading the lines", "finding the walls"); the Studio keeps working (a 64 MB building takes about half a
+minute), and **Cancel** stops it. A DXF over 15 MB is refused at once with its size ("it is 22.5 MB, and Plotline reads a
+DXF of up to 15.0 MB — save only the floor plan from your CAD program (one floor per file) and drop that"), so is one
+holding more than 50 000 drawn things, and a binary DXF ("save it as ASCII DXF in your CAD program"). Afterwards the panel
 lists **What was read from the file** — its unit, what was guessed, what it lacked — until **Dismiss**. After a DXF or
 an SVG the list ends with its **layers**, each with what Plotline took it as ("Plotline decides: Walls"); a layer it
 could not place is named in the notes. Pick another meaning in a layer's box — **Walls**, **Kerbs**, **Zone lines**,

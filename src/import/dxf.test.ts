@@ -8,8 +8,9 @@ import { existsSync, readdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { describe, expect, test } from 'vitest'
 import { deriveRooms, validate } from '../core'
 import { EXTERIOR_M, PARTITION_M } from '../studio/model'
-import { importDxf } from './dxf'
+import { MAX_DXF_ENTITIES, importDxf } from './dxf'
 import { splinePoints, stripMtext } from './dxf'
+import { MAX_DXF_BYTES, importFile } from './index'
 import { roleOf } from './plan2d'
 
 /** a DXF from group code / value pairs */
@@ -105,6 +106,18 @@ describe('dxf fixtures', () => {
 
   test('a file that is not a DXF is refused in plain words', async () => {
     await expect(importDxf('hello', 'x.dxf')).rejects.toThrow()
+  })
+
+  test('too big, too many things, binary: refused at once, saying why and what to do (from Maheer\'s Plotline 2.0)', async () => {
+    const big = new File([new Uint8Array(MAX_DXF_BYTES + 1)], 'plans.dxf')
+    await expect(importFile(big)).rejects.toThrow('it is 15.0 MB, and Plotline reads a DXF of up to 15.0 MB — save only the floor plan')
+    await expect(importDxf('AutoCAD Binary DXF\r\n\x1a\0\0\0', 'b.dxf')).rejects.toThrow('it is a binary DXF — save it as ASCII DXF in your CAD program')
+    const points = Array.from({ length: MAX_DXF_ENTITIES + 1 }, () => ['0', 'POINT', '8', '0', '10', 0, '20', 0]).flat()
+    await expect(importDxf(dxfOf([], points), 'p.dxf')).rejects.toThrow('it holds 50,001 drawn things, and Plotline reads up to 50,000')
+    // a block put in a 1000 × 1001 array opens into too many lines
+    const blocks = ['0', 'SECTION', '2', 'BLOCKS', '0', 'BLOCK', '2', 'TICK', '10', 0, '20', 0, '0', 'LINE', '8', '0', '10', 0, '20', 0, '11', 1, '21', 0, '0', 'ENDBLK', '0', 'ENDSEC']
+    const many = dxfOf([], ['0', 'INSERT', '2', 'TICK', '8', '0', '10', 0, '20', 0, '70', 1000, '71', 1001, '44', 2, '45', 2]).replace('0\nSECTION\n2\nENTITIES', [...blocks, '0', 'SECTION', '2', 'ENTITIES'].join('\n'))
+    await expect(importDxf(many, 'm.dxf')).rejects.toThrow('its blocks open into more than 1,000,000 lines')
   })
 })
 

@@ -13,6 +13,13 @@ import { ROLE_WORDS, buildPlan, guessScale, roleOf, type ArcPrim, type Drawing, 
 import { parseDims } from '../trace/text'
 import type { ImportResult } from './types'
 
+/**
+ * The most a DXF may hold before it is refused in plain words (from Maheer's Plotline 2.0, raised to what ours reads: the
+ * corpus's biggest plan, a 3.7 MB apartment block, holds 7 701 entities that open into 259 595 lines and reads in 0.6 s)
+ */
+export const MAX_DXF_ENTITIES = 50_000
+export const MAX_DXF_LINES = 1_000_000
+
 /** $INSUNITS → metres per unit (0 = unitless: guessed from the extent) */
 const INSUNITS: Record<number, [number, string]> = { 1: [0.0254, 'inches'], 2: [0.3048, 'feet'], 3: [1609.344, 'miles'], 4: [0.001, 'millimetres'], 5: [0.01, 'centimetres'], 6: [1, 'metres'], 7: [1000, 'kilometres'], 8: [0.0254 / 1000, 'microinches'], 9: [0.0254 / 1000, 'mils'], 10: [0.9144, 'yards'], 14: [0.1, 'decimetres'] }
 
@@ -292,6 +299,7 @@ function flatten(dxf: IDxf, entities: IEntity[], xf: Xf, out: Flat, block: strin
     poly(e, pts, closed)
   }
   for (const e of entities) {
+    if (out.segs.length > MAX_DXF_LINES) throw new Error(`its blocks open into more than ${MAX_DXF_LINES.toLocaleString('en')} lines — save only the floor plan from your CAD program and drop that`)
     if (e.inPaperSpace || frozen.has(e.layer)) {
       skip(e.inPaperSpace ? 'paper space entities' : 'entities on frozen / hidden layers')
       continue
@@ -424,19 +432,24 @@ function flatten(dxf: IDxf, entities: IEntity[], xf: Xf, out: Flat, block: strin
   }
 }
 
-/** `mine`: the person's corrections of what a layer holds (the Studio keeps them for the next file) */
-export async function importDxf(text: string, name: string, mine?: LayerRoles): Promise<ImportResult> {
+/** `mine`: the person's corrections of what a layer holds (the Studio keeps them for the next file); `progress`: what it is doing */
+export async function importDxf(text: string, name: string, mine?: LayerRoles, progress?: (stage: string, fraction: number | null) => void): Promise<ImportResult> {
+  // (AutoCAD's binary DXF starts with its own signature: dxf-parser would only say "EOF group not read")
+  if (text.startsWith('AutoCAD Binary DXF')) throw new Error('it is a binary DXF — save it as ASCII DXF in your CAD program and drop that')
   // a DXF Plotline wrote, untouched since: the drawing itself (dxfWrite.ts); a changed one is read from its lines below
   const own = ownDrawingOf(text)
   if (own) {
     const notes = [`Written by Plotline and not changed since: opened exactly as it was exported (${own.walls.length} walls, ${own.walls.reduce((a, w) => a + w.openings.length, 0)} openings, ${own.roomLabels.length} names). Changed in a CAD program, it would be read from its lines.`]
     return { format: 'dxf', storeys: [{ name: own.name || 'Floor', elevationM: 0, unit: own }], notes, unitScale: 1, origin: { x: 0, y: 0 } }
   }
+  progress?.('reading the lines', null)
   const parser = new DxfParser()
   parser.registerEntityHandler(Hatch as unknown as new () => IGeometry)
   parser.registerEntityHandler(Mline as unknown as new () => IGeometry)
   const dxf = parser.parseSync(text)
   if (!dxf) throw new Error('This file is not a DXF Plotline can read')
+  const n = dxf.entities?.length ?? 0
+  if (n > MAX_DXF_ENTITIES) throw new Error(`it holds ${n.toLocaleString('en')} drawn things, and Plotline reads up to ${MAX_DXF_ENTITIES.toLocaleString('en')} — save only the floor plan from your CAD program and drop that`)
   const notes: string[] = []
   const h = dxf.header ?? {}
   const ver = String(h['$ACADVER'] ?? 'unknown')
@@ -497,6 +510,7 @@ export async function importDxf(text: string, name: string, mine?: LayerRoles): 
   const ownLayers = Object.keys(dxf.tables?.layer?.layers ?? {}).some((l) => /^PLOTLINE_(ZONES|KERBS)$/.test(l))
   if (ownLayers) notes.push('Exported by Plotline (its own layers are in the file): read to the letter — each wall piece its outline, each opening its block.')
   const drawing: Drawing = { segs: flat.segs, arcs: flat.arcs, texts: flat.texts, loops: flat.loops, scale, columnLayer, own: ownLayers, layerRoles: mine }
+  progress?.('finding the walls', null)
   const plan = buildPlan(drawing, name.replace(/\.dxf$/i, ''))
   const north = Number(h['$NORTHDIRECTION'] ?? 0)
   plan.unit.northDeg = Number.isFinite(north) ? ((north % 360) + 360) % 360 : 0

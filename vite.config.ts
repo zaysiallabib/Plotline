@@ -28,7 +28,7 @@ export default defineConfig({
   define: SUPABASE_URL && SUPABASE_KEY ? { 'import.meta.env.VITE_SUPABASE_URL': JSON.stringify(SUPABASE_URL), 'import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY': JSON.stringify(SUPABASE_KEY) } : {},
   server: { port: 5173 },
   build: { chunkSizeWarningLimit: 2000 },
-  // the IFC reader's worker (src/import/ifc.worker.ts) loads web-ifc and its wasm lazily: that needs an ES-module worker
+  // the readers' worker (src/import/read.worker.ts: IFC, DXF) loads web-ifc and its wasm lazily: that needs an ES-module worker
   worker: { format: 'es' },
   test: { environment: 'node', include: ['src/**/*.test.ts'] },
 })
