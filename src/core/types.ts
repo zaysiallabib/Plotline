@@ -260,6 +260,12 @@ export interface Unit {
    * founder 2026-11-19).
    */
   shell?: Shell
+  /**
+   * A whole floor of many flats (an architect's storey, s31 bigifc): the flats, by name (core.deriveFlats), the 3D furnishes
+   * and lights; every other flat stands bare — walls, floors, doors and windows. Rooms in no flat (the core) as ever; a
+   * flat arranged by hand keeps its pieces. Absent: every room is furnished.
+   */
+  furnishFlats?: string[]
 }
 
 /** A stored exact outside shape and where it stands in the unit's plan frame. */

@@ -45,15 +45,17 @@ interface Props {
   names: Rect[]
   /** a "×7" badge's rows: lit in the list while the mouse is on it (`pin`: clicked, kept); null: the mouse left */
   onLight: (keys: string[] | null, pin: boolean) => void
+  /** s31 bigifc, a big model's floor: the room a spot lies in (-1: none) — the marks in one room share its badge */
+  roomOf?: (p: Pt) => number
 }
 
 /** a badge's radius (px); a "×7" badge is as wide as its count */
 const R = 9
 const countText = (s: Spot) => `×${s.marks.length}`
 
-export function IssueLayer({ marks, fixes, toScreen, width, height, active, hot, picked, onActivate, onFix, onName, clickable, names, onLight }: Props) {
+export function IssueLayer({ marks, fixes, toScreen, width, height, active, hot, picked, onActivate, onFix, onName, clickable, names, onLight, roomOf }: Props) {
   const pts = (ps: Pt[]) => ps.map((p) => toScreen(p)).map((p) => `${p.x},${p.y}`).join(' ')
-  const spots = spotsOf(marks, toScreen)
+  const spots = spotsOf(marks, toScreen, undefined, roomOf)
   /** a spot holding the open / hovered / picked row (a twin row: its issue's) */
   const has = (s: Spot, k: string | null | undefined) => !!k && s.marks.some((m) => m.key === k)
   const lit = (s: Spot) => has(s, active) || has(s, hot) || has(s, picked)

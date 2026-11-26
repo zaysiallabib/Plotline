@@ -21,6 +21,9 @@ const flatsOf = (u: Unit | undefined): string => {
   if (!flatCache.has(u)) flatCache.set(u, deriveFlats(u, deriveRooms(u)).map((f) => f.name).join(', '))
   return flatCache.get(u)!
 }
+/** a drawing's flats by name, west → east (derived, never stored; per unit object) — the 3D's "Furnish in 3D" picks */
+const nameCache = new WeakMap<Unit, string[]>()
+const flatNames = (u: Unit): string[] => nameCache.get(u) ?? nameCache.set(u, deriveFlats(u, deriveRooms(u)).map((f) => f.name)).get(u)!
 /** a number box kept as typed (a cleared box is not a 0 yet), clamped when used */
 const num = (s: string, lo: number, hi: number) => Math.max(lo, Math.min(hi, Math.round(Number(s) || 0)))
 /** the floor menu's "This floor only" (never a unit id: ids have no spaces) */
@@ -75,6 +78,8 @@ interface Props {
   /** store, then open drawing `id` in the Studio (null: an empty Studio) */
   onOpen: (ps: Project[], id: Id | null) => void
   onRename: (name: string) => void
+  /** s31 bigifc: the flats of the open drawing the 3D furnishes (undefined: all of them) */
+  onFurnish: (names: string[] | undefined) => void
   onShow: () => void
   onOldWay: () => void
   onClose: () => void
@@ -86,7 +91,7 @@ interface Props {
 /** what a kept drawing is, in the list: "Elevation · south" */
 const SHEET_WORDS: Record<string, string> = { elevation: 'Elevation', section: 'Section', site: 'Site plan', schedule: 'Schedule', interior: 'Interior elevation', detail: 'Detail', title: 'Title page', other: 'Drawing', plan: 'Plan' }
 
-export function FloorList({ projects, project, drawing, unit, fresh, onStore, onCreate, onActivate, onOpen, onRename, onShow, onOldWay, onClose, onToast, onSheet }: Props) {
+export function FloorList({ projects, project, drawing, unit, fresh, onStore, onCreate, onActivate, onOpen, onRename, onFurnish, onShow, onOldWay, onClose, onToast, onSheet }: Props) {
   const [also, setAlso] = useState<Record<Id, string>>({})
   // a clicked button lets go of the keys (Enter / Space on it again must not draw another floor)
   const blur = (e: React.MouseEvent) => e.target instanceof HTMLButtonElement && e.target.blur()
@@ -199,6 +204,10 @@ export function FloorList({ projects, project, drawing, unit, fresh, onStore, on
     if (onStore(fresh().filter((p) => p.id !== pid))) onActivate(null)
   }
   const inProject = !!drawing && !!project.units[drawing]
+  // a whole floor of many flats (an architect's storey): which of them the 3D furnishes — the others stand bare
+  const flatsHere = inProject ? flatNames(unit) : []
+  const furnished = (f: string) => !unit.furnishFlats || unit.furnishFlats.includes(f)
+  const pick = (on: Set<string>) => onFurnish(flatsHere.every((f) => on.has(f)) ? undefined : flatsHere.filter((f) => on.has(f)))
 
   return (
     <aside className="floors" onClick={blur}>
@@ -238,6 +247,41 @@ export function FloorList({ projects, project, drawing, unit, fresh, onStore, on
               onKeyDown={(e) => e.key === 'Enter' && e.currentTarget.blur()}
             />
           </label>
+          {flatsHere.length > 1 && (
+            <div className="furnish-flats">
+              <div className="name">
+                <span className="label">Furnish in 3D</span>
+                <span>
+                  <button className="link" title="Every flat of this drawing furnished and lit" onClick={() => pick(new Set(flatsHere))}>
+                    All
+                  </button>
+                  <button className="link" title="No flat furnished: the floor stands bare (its lobby and stairs as ever)" onClick={() => pick(new Set())}>
+                    None
+                  </button>
+                </span>
+              </div>
+              <div className="ticks">
+                {flatsHere.map((f) => (
+                  <label key={f} className="check">
+                    <input
+                      type="checkbox"
+                      checked={furnished(f)}
+                      onChange={(e) => {
+                        const on = new Set(flatsHere.filter(furnished))
+                        if (e.target.checked) on.add(f)
+                        else on.delete(f)
+                        pick(on)
+                      }}
+                    />
+                    {f}
+                  </label>
+                ))}
+              </div>
+              <p className="muted">
+                {flatsHere.filter(furnished).length} of {flatsHere.length} flats furnished and lit in Preview 3D, the walk and the Building view; the others stand bare — walls, floors, doors and windows.
+              </p>
+            </div>
+          )}
           <button className="link danger" onClick={deleteDrawing}>
             Delete this drawing
           </button>

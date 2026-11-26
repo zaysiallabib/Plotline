@@ -26,7 +26,7 @@
  * Plants and the glass shower screen may stand in front of a window.
  */
 import type { FurniturePlacement, Id, Opening, Room, RoomKind, Unit, Wall } from '../core'
-import { isOutdoor, pointInPolygon, polygonCentroid, roomAt, roomInnerPolygon, roomPolygon, wallFrame, type Pt } from '../core'
+import { deriveFlats, isOutdoor, pointInPolygon, polygonCentroid, roomAt, roomInnerPolygon, roomPolygon, wallFrame, type Pt } from '../core'
 import { heightRange, isCeilingLight, kitAsset, objectKind, placementSize } from './kit'
 import { ART_SETS, ART_W, BED_STYLES, CURTAIN_D, CURTAINS, PERGOLA_POST, planterId, STAIR_W, stairId, TRUNK_CLEAR } from './procedural.meta'
 
@@ -1380,15 +1380,23 @@ export function openingOnFace(unit: Unit, rooms: Room[], face: { p: Pt; n: Pt })
 }
 
 /** Deterministic preset placements for every room (rooms in the given order), then the curtains on their windows. */
+/** The rooms a whole floor leaves bare (Unit.furnishFlats): those of its flats not picked; null when every room is furnished. */
+export function bareRooms(unit: Unit, rooms: Room[]): Set<Id> | null {
+  if (!unit.furnishFlats) return null
+  const keep = new Set(unit.furnishFlats)
+  return new Set(deriveFlats(unit, rooms).flatMap((f) => (keep.has(f.name) ? [] : f.roomIds)))
+}
+
 export function furnish(unit: Unit, rooms: Room[]): FurniturePlacement[] {
   const out: FurniturePlacement[] = []
+  const bare = bareRooms(unit, rooms)
   const beds = rooms.filter((r) => r.kind === 'bed').sort((a, b) => b.areaSqm - a.areaSqm)
   const k = rooms.find((r) => r.kind === 'kitchen')
   const kitchenAt = k && k.loop.length >= 3 ? polygonCentroid(roomInnerPolygon(k, unit)) : null
   for (const room of rooms) {
     const help = isHelpRoom(room)
     const fn = isStair(room) && !isOutdoor(room.kind) ? stairwell : help ? helpRoom : BY_KIND[room.kind]
-    if (!fn || room.loop.length < 3 || room.slope) continue // nothing stands on a ramp
+    if (!fn || room.loop.length < 3 || room.slope || bare?.has(room.id)) continue // nothing stands on a ramp, nor in a flat not picked
     const ctx = makeCtx(room, unit, rooms, kitchenAt, BED_STYLES[Math.max(0, beds.indexOf(room)) % BED_STYLES.length])
     fn(ctx)
     // after the room's own pieces, so their ids stay put; 'free' placements, so they move nothing

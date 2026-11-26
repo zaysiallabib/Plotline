@@ -29,7 +29,10 @@ export interface Flat {
 }
 
 const CORE_KINDS: ReadonlySet<RoomKind> = new Set<RoomKind>(['lobby', 'shaft', 'gym', 'community', 'guard'])
-const CORE_NAME = /\b(lobby|stairs?|staircase|lifts?|hoistway|elevators?|fire corridor)\b/i
+// (s31 bigifc: and the stair and lift of a European IFC — Treppenhaus, Aufzug, trappenhuis, hiss, porras, escalier, ascensore …)
+const EU_RUNS_UP = /trepp\w*|stiege\w*|aufz[uü]g\w*|fahrstuhl|trappenhuis|trapphus|trappa|hiss|hissi|porras\w*|escalier\w*|ascenseur\w*|escalera\w*|ascensor\w*|scala|scale/.source
+// (and its corridor: "Gang" — a Vienna block's flats all opened onto one and were read as one flat)
+const CORE_NAME = new RegExp(String.raw`\b(lobby|stairs?|staircase|lifts?|hoistway|elevators?|fire corridor|${EU_RUNS_UP}|gang|laubengang)\b`, 'i')
 const SFT = /(\d[\d,]{2,6})\s*(?:sft|sq\.?\s*ft|s\.f\.t)/i
 
 /** In no flat by itself: the common core (a pin decides instead when there is one). */
@@ -38,7 +41,7 @@ export const LOW_WALL_M = 1.2
 
 export const isCore = (r: Pick<Room, 'kind' | 'name'>): boolean => CORE_KINDS.has(r.kind) || isOutdoor(r.kind) || (r.kind === 'other' && CORE_NAME.test(r.name))
 
-const RUNS_UP = /\b(stairs?|staircase|lifts?|hoistway|elevators?)\b/i
+const RUNS_UP = new RegExp(String.raw`\b(stairs?|staircase|lifts?|hoistway|elevators?|${EU_RUNS_UP})\b`, 'i')
 /** A room of the core that runs up floor to floor — a stair, a lift, its lobby or hoistway — the part a tower's roof carries a head room over. */
 export const runsUp = (r: Pick<Room, 'kind' | 'name'>): boolean => (r.kind === 'other' || r.kind === 'shaft') && RUNS_UP.test(r.name)
 

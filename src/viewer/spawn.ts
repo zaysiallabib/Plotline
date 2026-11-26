@@ -218,16 +218,20 @@ export function entrySpawn(unit: Unit, rooms: Room[], portrait = false): { p: Pt
     const off = w.thicknessM / 2 + 0.05
     return [{ w, door, f, at, front: core.roomAt(add(at, f.normal, off), rooms, unit), back: core.roomAt(add(at, f.normal, -off), rooms, unit) }]
   })
-  const flats = rooms.some(isCore) ? core.deriveFlats(unit, rooms) : []
-  const first = new Set(flats.length > 1 ? flats[0].roomIds : []) // a floor of several flats: the first one's
+  const flats = rooms.some(isCore) || unit.furnishFlats ? core.deriveFlats(unit, rooms) : []
+  // a floor of several flats: the first one's — the first of those picked to be furnished, when some are (Unit.furnishFlats:
+  // the walk never starts in a bare flat)
+  const picked = unit.furnishFlats ? flats.find((f) => unit.furnishFlats!.includes(f.name)) : undefined
+  const inFirst = new Set(picked?.roomIds ?? (flats.length > 1 ? flats[0].roomIds : []))
   const fromCore = doors.filter((d) => (isCore(d.front) && enterable(d.back)) || (isCore(d.back) && enterable(d.front)))
+  const intoPicked = (d: (typeof doors)[number]) => !!picked && inFirst.has(d.front?.id ?? '') !== inFirst.has(d.back?.id ?? '') && enterable(inFirst.has(d.front?.id ?? '') ? d.front : d.back)
   const entrance = rooms.some(isCore)
-    ? (fromCore.find((d) => first.has((isCore(d.front) ? d.back : d.front)!.id)) ?? fromCore[0])
-    : (doors.find((d) => (outside(d.front) && enterable(d.back)) || (outside(d.back) && enterable(d.front))) ?? doors[0])
+    ? (fromCore.find((d) => inFirst.has((isCore(d.front) ? d.back : d.front)!.id)) ?? fromCore[0])
+    : (doors.find(intoPicked) ?? doors.find((d) => (outside(d.front) && enterable(d.back)) || (outside(d.back) && enterable(d.front))) ?? doors[0])
   // (a loop of at most one: `break` = no usable entry, the fallback below)
   for (const { w, f, at, front, back } of entrance ? [entrance] : []) {
     let side = 0
-    if (enterable(front) && enterable(back)) side = front.areaSqm >= back.areaSqm ? 1 : -1
+    if (enterable(front) && enterable(back)) side = picked && inFirst.has(front.id) !== inFirst.has(back.id) ? (inFirst.has(front.id) ? 1 : -1) : front.areaSqm >= back.areaSqm ? 1 : -1
     else if (enterable(front)) side = 1
     else if (enterable(back)) side = -1
     if (!side) break // a door between two shafts/lobbies: the unit has no usable entry

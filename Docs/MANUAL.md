@@ -868,6 +868,15 @@ had.
     opening the new size does not fit stays as it was, and a note says how many. **Delete them all** removes them.
 - **Issues** — problems in the drawing: red breaks the 3D, amber is worth a look, grey is cosmetic. **Join walls** fixes
   every overlap and crossing in one click. Click an issue: the plan zooms to it with its fixes.
+  - **A big floor** (over 200 walls — an architect's whole storey, a university building's 1 800 walls): five or more of
+    one kind are ONE row with the count — "34 loose wall ends", "250 rooms with no name", "… walls crossing", "… room
+    names outside a room" — and their marks stay off the plan, so it reads as a drawing. Each row has its fix for all of
+    them, one Ctrl+Z: **Keep them all — they stand alone** (loose ends: the walls are meant to end there, nothing moves),
+    **Name them "VÅNING 3 · 1" to "VÅNING 3 · 250"** (rooms the file gives no name: the floor's name and a number, west to
+    east; rename any one with R), **Join all that touch** (crossings; offered only when it leaves fewer). Names outside a
+    room have no fix for all: which room is whose is your call. Click a row to open it: its rows are listed under it,
+    each with its own fixes, and its marks show on the plan — one badge per room, with its count. Click it again to fold
+    it and take its marks off. The rows listed one by one are numbered first.
 
 | Problem | Fixes offered |
 |---|---|
@@ -1117,7 +1126,7 @@ To see each kind without a file of your own: **Try a sample ▾** in the empty S
 
 | File | What happens |
 |---|---|
-| **IFC** `.ifc`, `.ifczip` (Revit, ArchiCAD, …: a building model with its walls, doors and rooms) | One storey opens as the drawing. Several make a whole **project** in one go — basements, ground, floors, rooftop — each storey its own drawing, the outside shape saved once for the building; the first floor above ground opens (a house's: its attic — click **Open** beside **Ground floor** in the list for the main rooms). Walls the file leaves touching are joined, two of its rooms in one open space are split by flush zone lines where the file draws their boundary (two names the file gives one outline — a bath and its hall — stay a row in Issues that asks which room is which, below), a room the walls leave open (a balcony edged only by a railing, a roof terrace, a stair open to the floor above) is closed by flush zone lines along the file's own outline of it — the railing itself shows in the outside shape — and a space that only holds other rooms (a gross area) gives no room name — "What was read from the file" says how many of each |
+| **IFC** `.ifc`, `.ifczip` (Revit, ArchiCAD, …: a building model with its walls, doors and rooms) | One storey opens as the drawing. Several make a whole **project** in one go — basements, ground, floors, rooftop — each storey its own drawing, the outside shape saved once for the building; the first floor above ground opens (a house's: its attic — click **Open** beside **Ground floor** in the list for the main rooms). Walls the file leaves touching are joined, two of its rooms in one open space are split by flush zone lines where the file draws their boundary (two names the file gives one outline — a bath and its hall — stay a row in Issues that asks which room is which, below), a room the walls leave open (a balcony edged only by a railing, a roof terrace, a stair open to the floor above) is closed by flush zone lines along the file's own outline of it — the railing itself shows in the outside shape — and a space that only holds other rooms (a gross area) gives no room name — "What was read from the file" says how many of each. A European file's room words are understood (Zimmer / Slaapkamer / Sovrum a bedroom, Bad / Badkamer a bath, Küche / Keuken a kitchen, Wohnzimmer / Wohnküche a living room, Terrasse / Balkon a balcony; Treppenhaus, Aufzug, Trappenhuis, Hiss, Escalier, Ascensore and the corridor Gang are the shared core), so the flats of a whole floor are found — a word Plotline does not know stays "other": give the room its kind with V. A room the file gives no name of its own takes its zone's name, else its floor's name and a number ("Level 2 · 3"); a floor where the file names no rooms at all keeps "Space N", said once in the notes, and on a big floor Issues offers **Name them …** in one click |
 | **DXF** `.dxf`, **SVG** `.svg` (a drawing made of lines) | One floor's walls, openings and room names read from the file, to check and finish as usual. A DXF's walls may be line pairs, polylines, hatches or multilines; an SVG's groups are its layers ("Walls", "A-WALL"); an SVG with no named groups (a CAD print saved as SVG) has its lines sorted by pen like a PDF — the heaviest pen and grey wall fills are the walls. An SVG has no scale: the printed dimensions give it — check with S |
 | **DWG** `.dwg` (AutoCAD's own) | Once DWG is turned on ([SETUP_FORMATS.md](SETUP_FORMATS.md)): sent to an online converter, back as a DXF ("converting the DWG to DXF"); 10 a day. Not turned on: refused with how to save it as DXF — AutoCAD: type SAVEAS, pick "AutoCAD DXF" under Files of type; DraftSight: File → Save As → DXF; no CAD program: LibreCAD (free) opens the .dwg, then File → Save As → DXF. Drop the .dxf: nothing a plan needs is lost |
 | **PDF** `.pdf` (a brochure, or a print from the drawing program) | One page that is one floor plan opens at once. Several pages (an architect's set, a brochure), a page of several drawings, or an elevation on its own: **What is in this set** lists every drawing by kind (below, "Drop a whole set"); click a drawing's picture there to open it alone. A page whose lines make a clean plan opens as the drawing — a PDF has no layers, so its lines are sorted by pen: the heaviest pen and grey wall fills are the walls ("What was read from the file" names them); the scale printed on the sheet (`1/4" = 1'-0"`, `1:100`) is the scale, else the printed dimensions measured against their lines — check with S; a stair's "UP" / "DN" and a door or window tag ("D-16", "Win-18") never name a room; a page with no scale printed as words (a brochure page whose words are drawn as outlines) opens straight as the plan picture, its lines not read; any other page becomes the **plan picture** for S and Auto-trace. The message offers the other way: **Use it as a picture instead** / **Read its lines instead** |
@@ -1126,7 +1135,12 @@ To see each kind without a file of your own: **Try a sample ▾** in the empty S
 | A **folder**, a **.zip** or several files | The best file opens (an IFC first, then a 3D model, then a DXF / PDF; an architectural IFC before a structural one); the rest are its pictures and data. Several PDFs and nothing better (an architect's set sent as one PDF a sheet): all their pages in **What is in this set**, in the order of their names. A zip of pictures opens its first picture |
 
 While it reads, a box at the top says what it is doing with a bar for how far ("building the 3D (53 %)", "floor 3 of
-7"); the Studio keeps working (a 64 MB building takes about half a minute), and **Cancel** stops it. Afterwards the panel
+7"); the Studio keeps working (a 64 MB building takes about half a minute; the 35 MB LTU university building 13 s, the
+39 MB Nordic office about 10 s), and **Cancel** stops it. A glass front (curtain wall) that turns a corner is read as
+the straight runs of its panels, one glass wall per run; a "column" wider than a wall both ways (over 1.5 m) is no
+column and is left to the outside shape — the notes say how many of each. A whole big floor opens in Preview 3D too (the
+LTU building's 2nd floor, 285 rooms and 1 644 walls: about half a minute to Enter); on a floor that big the daylight inside
+is worked out on a coarser grid, so it is ready in a second instead of never. Afterwards the panel
 lists **What was read from the file** — its unit, what was guessed, what it lacked — until **Dismiss**. After a DXF or
 an SVG the list ends with its **layers**, each with what Plotline took it as ("Plotline decides: Walls"); a layer it
 could not place is named in the notes. Pick another meaning in a layer's box — **Walls**, **Kerbs**, **Zone lines**,
@@ -1244,7 +1258,11 @@ another drawing asks first (that drawing is kept). **Copy** makes a new plan fro
 little; it is on no floor until you give it some.
 
 **Under the list:** **Open now** (the open drawing's name, to rename it) and **Delete this drawing** (it leaves every floor;
-asks first). **The project itself** (top of the list): **Rename**, **Delete** (asks first), **Close** (nothing is lost; open
+asks first). A drawing with two flats or more (a whole floor: an architect's storey of ten student flats) shows **Furnish
+in 3D** between them: a tick per flat (Flat 1, Flat 2 … or its Type name), **All**, **None**. Only the ticked flats are
+furnished and lit in Preview 3D, the walk and the Building view; the others stand bare — walls, floors, doors and windows
+— and the walk starts in the first ticked one. The lobby, stairs and lifts stay as they are; a flat you arranged by hand
+keeps its pieces. All ticked (as at first) = every flat furnished. **The project itself** (top of the list): **Rename**, **Delete** (asks first), **Close** (nothing is lost; open
 it again with **Building** → **Or open a project**, a list of your projects by name; a reload keeps it closed). After
 Close the drawing you were on stays on the screen and is still the project's copy: what you change on it goes into the
 project. **Start over** then empties the Studio without asking and says so ("An empty Studio — the project BTI Demo

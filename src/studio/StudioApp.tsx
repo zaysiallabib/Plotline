@@ -1,5 +1,5 @@
 import { Fragment, Suspense, lazy, useCallback, useEffect, useMemo, useReducer, useRef, useState, type ReactNode } from 'react'
-import { deriveFlats, deriveRooms, formatFeetInches, nearestWall, newId, parseLength, pillarCorners, roomAt, unitBounds, vertexById, wallFrame } from '../core'
+import { deriveFlats, deriveRooms, formatFeetInches, nearestWall, newId, parseLength, pillarCorners, roomAt, roomPolygon, unitBounds, vertexById, wallFrame } from '../core'
 import type { Id, OpeningKind, Pt, RoomKind, Shell, Site, Slope, Unit } from '../core'
 import { draw, flatNames, roomNames, wallFaceDots, type Hit, type Hover } from './draw'
 import { GRID_M, movePiece, pieceAt, pieceLabel, placePiece, layoutFor, refurnish, resizePiece, sideDots, type Move } from './furniture'
@@ -34,13 +34,13 @@ import {
   type Target,
   type Tool,
 } from './model'
-import { AI_KEY, ANSWERS_KEY, LOOKS_RIGHT, SHOW_ME, STRIPS_KEY, TRACKER_KEY, answerId, logAnswer, openReview, studioReducer, type Review } from './review'
+import { AI_KEY, ANSWERS_KEY, LOOKS_RIGHT, SHOW_ME, STRIPS_KEY, TRACKER_KEY, answerId, logAnswer, openReview, roomIndexAt, studioReducer, type Review } from './review'
 import type { AutoTraceResult, Gray } from '../trace/types'
 import type { Preview, TraceIn, TraceJob, TraceMsg } from './autotrace.worker'
 import type { FixesIn, FixesOut } from './fixes.worker'
 import { KindSelect, LevelFields, Panel, WALL_KEYS, formatArea } from './Panel'
 import { IssueLayer } from './IssueLayer'
-import { exportedReview, fixSig, leaksAround, markIssues, rowAnswers, type Fix, type Mark, type MarkFixes } from './issues'
+import { BIG_WALLS, bulkRows, exportedReview, fixSig, leaksAround, markIssues, rowAnswers, type Fix, type Mark, type MarkFixes } from './issues'
 import { UNTRUSTED, askRow, rowPicture, type AiNote } from './localAI'
 import { ProjectPanel } from './ProjectPanel'
 import { NorthArrow, SitePanel } from './SitePanel'
@@ -406,11 +406,24 @@ export default function StudioApp() {
   // drops them (never a fix from a stale plan), but a mark the edit did not reach gets its fixes back at once (fixSig)
   const review = useMemo(() => openReview(state, rooms), [state.review, unit, rooms]) // eslint-disable-line react-hooks/exhaustive-deps
   const marks = useMemo(() => markIssues(unit, rooms, issues, review), [unit, rooms, issues, review])
+  // s31 bigifc: on a big model's floor the many rows of one kind are one row each (issues.ts bulkRows); their marks are
+  // drawn, one badge per room, and their fixes worked out only while that row is open
+  const bulks = useMemo(() => bulkRows(unit, marks), [unit, marks])
+  const [openBulk, setOpenBulk] = useState<string | null>(null)
+  const shownMarks = useMemo(() => {
+    const hidden = new Set(bulks.filter((b) => b.key !== openBulk).flatMap((b) => b.marks.map((m) => m.key)))
+    return hidden.size ? marks.filter((m) => !hidden.has(m.key)) : marks
+  }, [marks, bulks, openBulk])
+  const roomOf = useMemo(() => {
+    if (unit.walls.length <= BIG_WALLS) return undefined
+    const polys = rooms.map((r) => roomPolygon(r, unit))
+    return (p: Pt) => roomIndexAt(p, rooms, polys)
+  }, [unit, rooms])
   /** per mark key, its fixes — an entry (maybe with none) once worked out; null while the plan is changing */
   const [fixes, setFixes] = useState<Map<string, MarkFixes> | null>(null)
   const fixCache = useRef(new Map<string, { unit: Unit; sig: unknown[]; got: MarkFixes }>())
   // (by key: the rows' answers stored below change the review, not the marks' fixes — no second round)
-  const markKeys = marks.map((m) => m.key).join('\n')
+  const markKeys = shownMarks.map((m) => m.key).join('\n')
   /** rowAnswers for the rows among `ms` whose fixes (and their issue's) are worked out */
   const answersOf = (u: Unit, ms: Mark[], found: Map<string, MarkFixes>) => {
     const p = stateRef.current.planImage
@@ -423,9 +436,9 @@ export default function StudioApp() {
     setFixes(null)
     const cache = fixCache.current
     const found = new Map<string, MarkFixes>()
-    const byKey = new Map(marks.map((m) => [m.key, m]))
+    const byKey = new Map(shownMarks.map((m) => [m.key, m]))
     const sigs = new Map<string, unknown[]>()
-    let left = marks.length
+    let left = shownMarks.length
     let shown = 0
     const take = (key: string, got: MarkFixes) => {
       found.set(key, got)
@@ -438,13 +451,13 @@ export default function StudioApp() {
       if (left) return
       // s27 AI-prep: the rows' answers (= these buttons) and sheet boxes go into the draft, saved with it — once all are
       // worked out (a row clicked before that gets its own first: answer)
-      dispatch({ type: 'answers', unit, rows: answersOf(unit, marks, found) })
+      dispatch({ type: 'answers', unit, rows: answersOf(unit, shownMarks, found) })
       for (const k of cache.keys()) if (!found.has(k)) cache.delete(k)
     }
     const seq = ++fixSeq.current
     const start = () => {
       // a mark the edit did not reach keeps its fixes (fixSig); the others are worked out in the worker, one by one
-      const todo = marks.filter((m) => {
+      const todo = shownMarks.filter((m) => {
         const c = cache.get(m.key)
         const sig = c?.unit === unit ? c.sig : fixSig(unit, m, rooms) // (a row dismissed: the plan is the same)
         sigs.set(m.key, sig)
@@ -2628,7 +2641,8 @@ export default function StudioApp() {
           {siteOpen && <SitePanel unit={unit} onSite={setSite} onNorth={(northDeg) => dispatch({ type: 'set-meta', patch: { northDeg } })} onClose={() => setSiteOpen(false)} />}
           {trace !== 'pick' && (
             <IssueLayer
-              marks={marks}
+              marks={shownMarks}
+              roomOf={roomOf}
               fixes={fixes}
               toScreen={toScreen}
               width={size.w}
@@ -2853,6 +2867,7 @@ export default function StudioApp() {
             onActivate={activate}
             onOpen={openDrawing}
             onRename={(name) => dispatch({ type: 'set-meta', patch: { name } })}
+            onFurnish={(furnishFlats) => dispatch({ type: 'set-meta', patch: { furnishFlats } })}
             onShow={showProject}
             onOldWay={() => setBuildingOpen(true)}
             onClose={() => setListOpen(false)}
@@ -2867,6 +2882,9 @@ export default function StudioApp() {
           flats={flats}
           issues={issues}
           marks={marks}
+          bulks={bulks}
+          openBulk={openBulk}
+          onBulk={setOpenBulk}
           fixes={fixes}
           active={activeKey}
           picked={pickedKey}
