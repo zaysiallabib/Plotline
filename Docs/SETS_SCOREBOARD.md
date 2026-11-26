@@ -85,6 +85,121 @@ miss; the Dhaka brochures miss only what has no words at all (the location maps)
   set with a ground floor numbers up from it (Dhaka, the UK). A set that has a ground floor and *also* counts its 1st
   floor as the ground (rare) needs its floors typed once — the next set from that architect remembers.
 
+## Stage 2 — levels from plans (session 31, levels lane)
+
+**What changed for a person.** Build the project now (1) leaves the sheet's own symbols out of the walls, (2) puts every
+plan on the floors the set says — a typical floor on every floor the brochure says the building has — and stacks the floors
+over each other on the walls they share, (3) joins a floor drawn in parts, and asks once about a brochure's page-a-flat,
+(4) asks before adding a set to the project open now, with Undo, and (5) takes a folder of DXF / SVG files as a set. How a
+person uses it: [MANUAL §5 "Drop a whole set"](MANUAL.md). Measured in node with the Studio's own code (the quick loop:
+`E:/dev/tmp/s31/levels/probe.mjs`, `levels.mjs`, `align.mjs`, `dxfalign.mjs`) and proven through the real drop in Firefox
+(`build.mjs`, `add.mjs`, `toruset.mjs`; shots in `E:/dev/plotline-shots/s31/levels/`). The page-by-page reading above is
+unchanged: 205 / 187 / 212 of 238 / 238 / 215 (node and Firefox).
+
+### 1. Sheet symbols are not walls
+
+A symbol is drawn at a size on paper whatever the scale, so it is found by paper size (`plan2d.ts sheetSymbols`, 5 tests):
+a circle 2–20 mm across with a short text in it (an elevation or section marker, a grid bubble, a tag, a north arrow) and
+the lines it carries within 2.4 radii (its triangle); an arrowhead (two short equal lines from a tip, 20–100° open, the barbs'
+far ends free or joined to each other) with its shaft back to where it meets another line (the stair's UP / DN arrow, every
+note's leader); a break line (a long line, a slanted zigzag crossing it, the line again on its line). A door drawn open at
+45° is read as a door (`bezierArc` reads any circular curve, not only a quarter).
+
+| Farmhouse floor | walls before → after | Issues before → after | rooms | symbol pieces that were walls (by eye, shot) |
+|---|---|---|---|---|
+| Ground (1ST FLOOR PLAN, a drawing) | 97 → 79 | 22 → 11 | 7 → 7 | 14 → 0 (six elevation markers' triangles, the stair's break line and arrow) |
+| Floor 1 (2ND FLOOR PLAN) | 203 → 184 | 19 → 6 | 5 → 5 | the same markers gone; still a picture to trace (its stair treads, bath fixtures and porch roof pair as walls: 37 walls a room) |
+| Roof (ROOF PLAN) | 91 → 91 | 68 → 68 | 0 | none — a roof of slopes is no floor: a picture |
+
+The doors: 0 → 2 swings read as doors on the ground floor. Quinta Monroy level 1: 332 walls, Issues 95 → 94 (its junk is
+drawn furniture, not symbols). twindo's sample table unchanged. Shots: `farm2-built.png` (the Studio, Issues 11),
+`farm6sym.png` (`E:/dev/tmp/s31/levels/`: what was left out in magenta).
+
+### 2. Levels, not pages
+
+How tall the building is, read from any page: "2B+G+12", "B+G+M+12" (the mezzanine is floor 1), "G+9", "Basement + Ground
+Floor + 9", "10 Storied" / "Number of Storied : 10" / "Floors: 09" (a storey count includes the ground) — a typical floor
+with no numbers goes on every floor up to the top (`sheets.ts storeysOf`). Also read: "TYPICAL FLOOR PLAN 3RD–8TH",
+"(2ND-9TH)", "PLANTA TIPO"; a house of a ground floor and a "2ND FLOOR" counts its ground as the 1st.
+
+| Set | levels the building has | found before | found after | what told it |
+|---|---|---|---|---|
+| Farmhouse (US) | 3 | 3 | 3 | titles |
+| Quinta Monroy (Chile) | 3 | 3 | 3 | titles |
+| Fourplex 02 (Canada) | 2 | 1 | 2 | GROUND + 2ND FLOOR: the 2nd is floor 1 |
+| Rangs The Sanctuary | 16 | 10 | 10 | "2B+G+12": the 12 floors stand (floors 2, 3, 5, 7, 9, 11 have no page: the Building view stands the floor below in) |
+| Rangs White Lake | 23 | 21 | 21 | G and Roof: their titles are broken in the brochure's font |
+| Rangs The Majestic | 16 | 16 | 16 | "B+G+M+12" agrees |
+| Eastern Housing Pearl | 11 | 11 | 11 | ": 10 Storied" agrees |
+| Eastern Housing Noboneer | 10 | 3 | **10** | "Floors: 09": TYPICAL FLOOR PLAN on floors 1–8 (was floor 1 only) |
+| Akter Aleena | 12 | 4 | **12** | "Basement + Ground Floor + 9 (10 storied": Typical Floor Plan on 1–9 |
+| Rangs Noorani Heights | 9 | 6 | 6 | its pages print the 2nd–4th and 3rd–7th floors only |
+| Rangs Torukabbo | 14 | 14 | 14 | titles |
+| **All** | **119** | **92** | **108** | |
+
+**Floors stacked.** Each floor read at a known scale (printed, or its dimensions agree; a brochure's guessed scale is not
+used) is put on the floor it shares most walls with (`projects.ts alignPlans`, `stackFloors`, 6 tests): every pair of corners
+votes a shift, the 40 best, the columns' shift and the files' own frame (one PDF's page layout, one CAD model's coordinates)
+are scored by the wall length they put on walls; the files' frame wins within 3 % (exact); under a quarter of the smaller
+plan's walls is not placed. A floor that is a picture to trace gets its picture lined up the same way.
+
+| Set | floors | core offset before (each in its own frame) | after | how |
+|---|---|---|---|---|
+| Farmhouse | G → 1 (a picture, its lines read) | 0.09 m | 0.00 m | the page layout (both plans print at one place), confirmed by the walls (51 % shared, 6 cm) |
+| Quinta Monroy | level 1 → level 3 (a drawing) | 4.31 m | on its walls: 3.4 cm root-mean-square | the walls (63 % shared): the upper floors' stairs over the ground floor's (shot `E:/dev/tmp/s31/levels/q13.png`) |
+| Quinta Monroy | level 1 → level 2 (a picture) | 4.28 m | 4.0 cm | the walls (75 % shared) |
+| Loughborough pair of houses (DXF folder) | ground → first | 0.07 m | 0.00 m | the CAD model's coordinates (78 % of the walls shared) |
+| Dhaka brochures (Sanctuary, Pearl, Noboneer, White Lake, Majestic, Torukabbo) | — | not stacked | not stacked | no scale on their pages (a picture to trace each, guessed or no scale): the person sets the scale (S) and traces |
+
+Roof plans of slopes (the farmhouse) share too little and are left where their own drawing puts them.
+
+### 3. Several plans for one floor
+
+Two drawings on one page for one floor whose titles differ only by the part ("(LEFT PART)" / "(RIGHT PART)", "PART A" /
+"PART B") are one drawing; titled apart ("Ground Floor" / "Ground Floor – Enhanced Accessible") they stay two (4 tests).
+A brochure that prints a page a flat for the same floors asks once (a tick at the top of Plans):
+
+| Brochure | flats on a typical floor | placed before | placed after | |
+|---|---|---|---|---|
+| Rangs Torukabbo (TYPE-A, B, C/G/K, D/H/L, E/I/M, F/J/N; LEVEL 1 to 11) | 14 (6 drawings, four used three times) | 1 (TYPE-A only) | ticked: 6 drawings side by side on floors 1–11, one picture to trace (shot `toru-floor.png`) | not where they stand: each page's key plan (the flat dark in a small outline of the towers) is not read yet — the person moves them |
+| Rangs White Lake, Rangs Noorani Heights | 2 (TYPE A + TYPE B on each floor's page) | 2 | 2 | a whole floor a page: nothing to join |
+| Akter Aleena | its Typical Floor Plan holds every flat | the typical plan | the typical plan | one drawing already: its flat pages ("1400 sft South-East facing") name no type and are left out |
+
+### 4. Build adds to an open project
+
+With a project open, Build the project asks "Add the set's floors (G, 1, 2) to the project open now, … ? Or make a new
+project" (**Add to this project** / **New project** / Cancel); a floor that has a drawing is replaced only after a second yes
+(the old drawing stays in the project on no floor); the set stacks on the project's own drawn floors. Undo in the message
+puts the projects back. Firefox, Quinta Monroy built twice (`add.mjs`): after the first build 3 drawings on G, 1, 2; added
+again with Replace: 6 drawings, the new ones on G, 1, 2, all 3 stacked on the old; Undo: 3 drawings, as before (shots
+`add-ask-add.png`, `add-ask-replace.png`, `add-added.png`, `add-undone.png`).
+
+### 5. A folder of DXFs / SVGs is a set
+
+Several drawing files dropped together — a folder, its .zip, PDFs among them — open What is in this set: each DXF / SVG one
+drawing, read as a file alone is, its kind and floor from its biggest title inside or its name (`sheets.ts fileView`: GF, 1F,
+RF, TYP, B1, E-1, S-2, A-201; 2 tests), its picture drawn from its lines; one drawing saved as DXF and PDF is read from the
+DXF; a DWG beside its DXF is left out; of two plans of one floor the one with more rooms is used.
+
+| Folder | files | drawings listed | plans → floors | kept | stacked |
+|---|---|---|---|---|---|
+| Loughborough matched pair of semi-detached houses (`Floorplan_Site_Elevations.zip`: 9 DXF, 9 DWG, 9 PDF) | 27 | 11 (9 DXF + 2 PDF prints of other names) | Internal walls ground → G, first → 1 (the External-walls-only twins and the PDF prints left out) | 4 elevations (east, north, south, west) + the site plan, with their pictures | first on ground, by the model's coordinates |
+
+Shots: `lboro-set.png`, `lboro-built.png`, `lboro-building.png` (two storeys standing one over the other).
+
+### Still not done
+
+- **The key plan.** A brochure's flat page shows where its flat stands in a small outline of the floor; it is not read, so
+  joined flats are side by side, not in place (Torukabbo). The typical floor plan, when the brochure has one, is still the
+  better drawing.
+- **The farmhouse's upper floor stays a picture.** Its stair treads, bath fixtures and the porch roof drawn with the same pen
+  as the walls pair into 184 "walls" for 5 rooms; a rule for stair treads (equal parallel lines at tread spacing) would be the
+  next step.
+- **Brochure pages are not stacked**: they have no scale; once the person sets each picture's scale (S), lining them up is
+  the Studio's own "Use its scale and position" or by hand.
+- **Floors with no page** (Sanctuary's 2nd, 3rd, 5th …) are not guessed from the nearest page: the Building view stands the
+  floor below in, as before.
+
 ## Page by page
 
 ### Farmhouse drawing set (Amatect, US)
