@@ -2,7 +2,7 @@ import { describe, expect, test } from 'vitest'
 import * as core from '../core'
 import type { Unit } from '../core'
 import * as THREE from 'three'
-import { bakeDaylight, bakeSteps, dayMap, daylightTexture, facing, factorAt, formFactor, HI, isCovered, LAMP_RANGE, lightPiece, LO, mapDaylight, openToSky, pieceDayUv, RANGE, setDaylight, setLampShare, SHORT_WALL_M, zRaise } from './daylight'
+import { MAX_SAMPLES, bakeDaylight, bakeSteps, dayMap, daylightTexture, facing, factorAt, formFactor, HI, isCovered, LAMP_RANGE, lightPiece, LO, mapDaylight, openToSky, pieceDayUv, RANGE, setDaylight, setLampShare, SHORT_WALL_M, zRaise } from './daylight'
 import { batch } from './batch'
 import { GROUND_SAMPLE } from '../data/fixtures/ground-sample'
 import { wallGeometry } from './details'
@@ -407,5 +407,44 @@ describe('the lamps baked for Lite (session 31 perf: no lamp light in the shader
     expect(data[0]).toBe(0) // the neutral block: faces toward the outside stay dark
     setDaylight(null)
     expect(lampMap.value).not.toBe(t) // a new atlas: baked again for it
+  })
+})
+
+describe('a big floor bakes in bounded work (s31 bigifc: the LTU A-House floor never opened in Preview 3D)', () => {
+  /** a glazed corridor round a courtyard of `n` × `n` offices: one 2 m ring, every office a window and a door on it */
+  function campus(n: number): Unit {
+    const S = 6 // office size, m
+    const W = n * S
+    const v: Unit['vertices'] = []
+    const walls: Unit['walls'] = []
+    const at = (x: number, y: number) => {
+      const id = `v${x},${y}`
+      if (!v.some((q) => q.id === id)) v.push({ id, x, y })
+      return id
+    }
+    const wall = (a: string, b: string, openings: Unit['walls'][number]['openings'] = []) => walls.push({ id: `w${walls.length}`, a, b, thicknessM: 0.15, heightM: 3, openings })
+    const win = (k: number) => [{ id: `o${k}`, kind: 'window' as const, offsetM: 1, widthM: 4, heightM: 1.5, sillM: 0.9 }]
+    const door = (k: number) => [{ id: `d${k}`, kind: 'door' as const, offsetM: 2.5, widthM: 0.9, heightM: 2.1, sillM: 0 }]
+    // a row of offices along the top, their doors onto a corridor 2 m below, the corridor's outer wall glazed
+    for (let i = 0; i < n; i++) {
+      wall(at(i * S, 0), at((i + 1) * S, 0), win(i))
+      wall(at(i * S, S), at((i + 1) * S, S), door(i))
+      wall(at(i * S, S + 2), at((i + 1) * S, S + 2), win(1000 + i))
+    }
+    for (let i = 0; i <= n; i++) wall(at(i * S, 0), at(i * S, S))
+    wall(at(0, S), at(0, S + 2))
+    wall(at(W, S), at(W, S + 2))
+    return { id: 'campus', projectName: 'p', name: 'Level 2', northDeg: 0, vertices: v, walls, roomLabels: [], furniture: [], finishSlots: [], areaSqft: 0 }
+  }
+  test("a flat keeps its 25 cm grid; a 240 m glazed corridor coarsens, and its whole bake stays quick", () => {
+    const a = typeA as unknown as Unit
+    const flat = bakeDaylight(a, core.deriveRooms(a))
+    expect(Math.max(...[...flat.regions.values()].map((r) => Math.max(r.du, r.dv)))).toBeLessThanOrEqual(0.25 + 1e-9)
+    const u = campus(40)
+    const day = bakeDaylight(u, core.deriveRooms(u))
+    const corridor = [...day.regions.entries()].find(([k, r]) => k.startsWith('floor:') && r.nu * r.du > 200)!
+    expect(corridor[1].du).toBeGreaterThan(0.25)
+    expect(Math.max(...[...day.regions.values()].map((r) => r.nu * r.nv))).toBeLessThanOrEqual(1.5 * MAX_SAMPLES) // (a thin face's rounding: a little over)
+    expect(day.ms).toBeLessThan(3000)
   })
 })

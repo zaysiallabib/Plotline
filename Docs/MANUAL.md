@@ -1138,7 +1138,9 @@ While it reads, a box at the top says what it is doing with a bar for how far ("
 7"); the Studio keeps working (a 64 MB building takes about half a minute; the 35 MB LTU university building 13 s, the
 39 MB Nordic office about 10 s), and **Cancel** stops it. A glass front (curtain wall) that turns a corner is read as
 the straight runs of its panels, one glass wall per run; a "column" wider than a wall both ways (over 1.5 m) is no
-column and is left to the outside shape — the notes say how many of each. Afterwards the panel
+column and is left to the outside shape — the notes say how many of each. A whole big floor opens in Preview 3D too (the
+LTU building's 2nd floor, 285 rooms and 1 644 walls: about half a minute to Enter); on a floor that big the daylight inside
+is worked out on a coarser grid, so it is ready in a second instead of never. Afterwards the panel
 lists **What was read from the file** — its unit, what was guessed, what it lacked — until **Dismiss**. After a DXF or
 an SVG the list ends with its **layers**, each with what Plotline took it as ("Plotline decides: Walls"); a layer it
 could not place is named in the notes. Pick another meaning in a layer's box — **Walls**, **Kerbs**, **Zone lines**,
