@@ -10,7 +10,7 @@ import { describe, expect, test } from 'vitest'
 import { FT } from '../core'
 import type { Seg } from './plan2d'
 import type { SheetText } from './sheets'
-import { heightsOf, levelValue, markOf, parseStoreys, readHeights, setHeights, splitMark, storeysOf, storeysWords, towerHeights, type Heights } from './heights'
+import { heightsOf, levelValue, markOf, parseStoreys, readHeights, setHeights, splitMark, storeysOf, storeysWords, type Heights } from './heights'
 
 type Fx = { title: string; scale: number; texts: [string, number, number, number, number, number, number][]; segs: [number, number, number, number][] }
 const fixture = (f: string): { texts: SheetText[]; segs: Seg[]; mPerUnit: number } => {
@@ -208,27 +208,6 @@ describe('the set: views vote', () => {
       { title: 'SOUTH', kind: 'elevation', heights: { floors: { 0: 0, 1: 3 }, roofM: 6.2 } },
     ])
     expect([s.ceilingM, s.eaveM, s.ridgeM, s.roofM]).toEqual([5.8, 6.1, 8.9, undefined])
-  })
-})
-
-describe('the tower from the heights', () => {
-  test('the farmhouse: G and 1 as printed, the roof on the ceiling and a slab, walls a slab under the next floor', () => {
-    const t = towerHeights({ floors: { 0: 0, 1: ft(10) }, ceilingM: ft(19), eaveM: ft(20), ridgeM: ft(29, 2) }, 0, 1, 3.2)
-    expect(t.levels[0]).toBe(0)
-    expect(t.levels[1]).toBeCloseTo(ft(10), 6)
-    expect(t.levels[2]).toBeCloseTo(ft(19) + 0.15, 6)
-    expect(t.walls[0]).toBeCloseTo(ft(10) - 0.15, 6)
-    expect(t.walls[1]).toBeCloseTo(ft(9), 6)
-    expect([t.eaveM, t.ridgeM]).toEqual([ft(20), ft(29, 2)])
-  })
-  test('a building taller than its section: the floors over it repeat the last storey, the top keeps the section\'s top storey', () => {
-    const t = towerHeights({ floors: { 0: 0, 1: 4.5, 2: 7.55 }, roofM: 10.7, parapetM: 1 }, -1, 5, 3.2)
-    expect([t.levels[-1], t.levels[3], t.levels[5]].map((x) => +x.toFixed(2))).toEqual([-4.5, 10.6, 16.7])
-    expect(+t.levels[6].toFixed(2)).toBe(19.85)
-    expect(t.parapetM).toBe(1)
-  })
-  test('a floor in a gap takes its share of it', () => {
-    expect(towerHeights({ floors: { 0: 0, 3: 9 } }, 0, 3, 3).levels[1]).toBe(3)
   })
 })
 
