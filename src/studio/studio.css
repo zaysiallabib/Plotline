@@ -306,6 +306,9 @@
 .set-group .what strong { font-weight: 500; }
 .set-group .what .muted { font-size: var(--fs-xs); }
 .set-group .which.bad { border-color: var(--danger); }
+/* the one question a set of flat pages asks (several flats of the same floors): a tick and its sentence */
+.set-ask { display: flex; align-items: flex-start; gap: var(--s-3); margin: 0 0 var(--s-2); font-size: var(--fs-sm); color: var(--ink-2); max-width: 80ch; }
+.set-ask input { margin-top: 3px; flex: none; }
 .set-foot {
   position: sticky; bottom: 0; display: flex; align-items: center; gap: var(--s-2); margin: var(--s-2) calc(-1 * var(--s-5)) 0;
   padding: var(--s-3) var(--s-5) var(--s-4); background: var(--surface); border-top: 1px solid var(--line);

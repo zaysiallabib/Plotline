@@ -9,7 +9,7 @@ import type IGeometry from 'dxf-parser/dist/entities/geomtry'
 import type { IArcEntity, ICircleEntity, IDimensionEntity, IDxf, IEllipseEntity, IEntity, IInsertEntity, ILineEntity, ILwpolylineEntity, IMtextEntity, IPolylineEntity, ISolidEntity, ISplineEntity, ITextEntity } from 'dxf-parser'
 import type { Pt } from '../core'
 import { ownDrawingOf } from './dxfWrite'
-import { ROLE_WORDS, buildPlan, guessScale, roleOf, type ArcPrim, type Drawing, type LayerRoles, type Loop, type Seg, type TextPrim } from './plan2d'
+import { ROLE_WORDS, bigTexts, buildPlan, guessScale, previewPath, roleOf, type ArcPrim, type Drawing, type LayerRoles, type Loop, type Seg, type TextPrim } from './plan2d'
 import { parseDims } from '../trace/text'
 import type { ImportResult } from './types'
 
@@ -542,5 +542,5 @@ export async function importDxf(text: string, name: string, { layerRoles: mine, 
   notes.push(...plan.notes)
   for (const [what, n] of flat.skipped) notes.push(`Skipped ${n} ${what}.`)
   if (plan.issues.some((i) => i.level === 'error')) notes.push(`${plan.issues.filter((i) => i.level === 'error').length} thing(s) to check in the Studio (loose wall ends, labels outside rooms).`)
-  return { format: 'dxf', storeys: [{ name: 'Floor', elevationM: 0, unit: plan.unit }], notes, unitScale: scale, origin: plan.origin, layers: list }
+  return { format: 'dxf', storeys: [{ name: 'Floor', elevationM: 0, unit: plan.unit }], notes, unitScale: scale, origin: plan.origin, layers: list, texts: bigTexts(flat.texts), preview: previewPath(flat.segs, flat.arcs, scale, plan.origin) }
 }

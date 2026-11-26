@@ -5,15 +5,46 @@
  * titles name, ticked to become the project's drawings on those floors; elevations, sections, the site plan, schedules and
  * interior elevations ticked to be kept with the project as pictures; details and title pages left out. One click changes a
  * kind, the floors, a tick — remembered by the drawing's title for the next set from the same architect. Build makes the
- * project in one go; a row's picture opens that one drawing alone, as the page picker did.
+ * project in one go; a row's picture opens that one drawing alone, as the page picker did. A folder of DXF / SVG files is a
+ * set too (session 31 levels): each file read as the Studio reads one dropped alone, one drawing a file, its kind and floor
+ * from the title inside it or its name (sheets.ts fileView), its picture drawn from its lines.
  */
 import { useEffect, useMemo, useState } from 'react'
+import { deriveRooms } from '../core'
 import type { PdfDoc } from '../import/pdf'
-import { KEPT, SHEET_KINDS, norm, parseSlots, readSheet, setChoices, slotsWords, type Box, type SetSlot, type SheetKind, type SheetRead, type View } from '../import/sheets'
+import type { ImportResult } from '../import'
+import { KEPT, SHEET_KINDS, fileView, norm, parseSlots, readSheet, setChoices, slotsWords, type Box, type SetSlot, type SheetKind, type SheetRead, type Storeys, type View } from '../import/sheets'
 
+/** a file of the set: a PDF (its pages), or a DXF / SVG (one drawing); `folder`: the folder or .zip it was dropped in */
 export interface SetFile {
   name: string
-  doc: PdfDoc
+  doc?: PdfDoc
+  file?: File
+  folder?: string
+}
+const pagesOf = (f: SetFile) => f.doc?.numPages ?? 1
+/** a DXF's / SVG's closed rooms */
+const roomsOf = (r: ImportResult | undefined) => (r?.storeys[0] ? deriveRooms(r.storeys[0].unit).filter((x) => x.areaSqm >= 1).length : 0)
+
+/** A DXF's / SVG's lines (ImportResult.preview, plan metres) drawn on a white canvas, its longer side `longPx`: the list's picture, a kept drawing's */
+export function drawPreview(path: string, longPx: number): HTMLCanvasElement {
+  const n = path.match(/-?\d+(?:\.\d+)?/g)?.map(Number) ?? []
+  let [x0, y0, x1, y1] = [Infinity, Infinity, -Infinity, -Infinity]
+  for (let i = 0; i + 1 < n.length; i += 2) (x0 = Math.min(x0, n[i])), (x1 = Math.max(x1, n[i])), (y0 = Math.min(y0, n[i + 1])), (y1 = Math.max(y1, n[i + 1]))
+  if (!(x1 > x0)) [x0, y0, x1, y1] = [0, 0, 1, 1]
+  const pad = 0.03 * Math.max(x1 - x0, y1 - y0)
+  const k = longPx / (Math.max(x1 - x0, y1 - y0) + 2 * pad)
+  const c = document.createElement('canvas')
+  c.width = Math.max(1, Math.ceil((x1 - x0 + 2 * pad) * k))
+  c.height = Math.max(1, Math.ceil((y1 - y0 + 2 * pad) * k))
+  const g = c.getContext('2d')!
+  g.fillStyle = '#ffffff'
+  g.fillRect(0, 0, c.width, c.height)
+  g.setTransform(k, 0, 0, k, (pad - x0) * k, (pad - y0) * k)
+  g.strokeStyle = '#000000'
+  g.lineWidth = Math.max(1, longPx / 1200) / k
+  g.stroke(new Path2D(path))
+  return c
 }
 
 /** one drawing of the set, as listed */
@@ -33,6 +64,8 @@ export interface SetRow {
   tick: boolean | null
   /** set from what the person chose for this title before */
   yours: boolean
+  /** a DXF / SVG of the set: the file as read */
+  read?: ImportResult
   thumb?: string
 }
 
@@ -40,6 +73,8 @@ export interface SetRow {
 export interface SetChoice extends SetRow {
   slots: SetSlot[]
   used: boolean
+  /** another flat of the same floors: it joins this row's floor drawing (its key) */
+  with?: string
 }
 
 const KIND_WORDS: Record<SheetKind, string> = {
@@ -76,17 +111,23 @@ const readChoices = (): Record<string, Choice> => {
   }
 }
 const keyOf = (r: SetRow) => (r.view.title ? norm(r.view.title) : '')
+/** a DXF's / SVG's frame: the whole drawing */
+const WHOLE: Box = { x0: -1e9, y0: -1e9, x1: 1e9, y1: 1e9 }
 
 interface Props {
   files: SetFile[]
+  /** a DXF / SVG of the set read as the Studio reads one dropped alone (its layer and unit choices) */
+  onRead: (file: File) => Promise<ImportResult>
   onOpenOne: (row: SetRow, files: SetFile[]) => void
-  onBuild: (rows: SetChoice[], files: SetFile[]) => void
+  /** `storeys`: how tall the set says the building is (a brochure's "2B+G+12"), when a page says it */
+  onBuild: (rows: SetChoice[], files: SetFile[], storeys: Storeys | null) => void
   onClose: () => void
 }
 
-export default function SetPanel({ files, onOpenOne, onBuild, onClose }: Props) {
+export default function SetPanel({ files, onRead, onOpenOne, onBuild, onClose }: Props) {
   const [rows, setRows] = useState<SetRow[]>([])
-  const [reading, setReading] = useState<{ at: number; of: number } | null>({ at: 0, of: files.reduce((a, f) => a + f.doc.numPages, 0) })
+  const [storeys, setStoreys] = useState<(Storeys & { page: number }) | null>(null)
+  const [reading, setReading] = useState<{ at: number; of: number } | null>({ at: 0, of: files.reduce((a, f) => a + pagesOf(f), 0) })
   // every page read in turn (a frame between pages, so the list grows on screen), then each drawing's small picture
   useEffect(() => {
     const live = { current: true } // (this run's own: closed and opened again, the old run stops)
@@ -95,16 +136,30 @@ export default function SetPanel({ files, onOpenOne, onBuild, onClose }: Props) 
       const mine = readChoices()
       const all: SetRow[] = []
       let at = 0
-      for (const [fi, f] of files.entries())
-        for (let p = 1; p <= f.doc.numPages && live.current; p++) {
+      for (const [fi, f] of files.entries()) {
+        if (f.file) {
+          // a DXF / SVG: one drawing, read whole (in the reader's worker), its kind and floor from its title or its name
+          setReading((x) => x && { ...x, at: ++at })
+          const read = await onRead(f.file).catch(() => undefined)
+          if (!live.current) return
+          const view: View = { ...fileView(f.name, read?.texts ?? [], roomsOf(read)), box: WHOLE }
+          const r: SetRow = { key: `${fi}:1:0`, file: fi, page: 1, frame: WHOLE, view, kind: view.kind, which: null, tick: null, yours: false, ...(read ? { read } : {}) }
+          const c = mine[keyOf(r)]
+          all.push(c ? { ...r, kind: c.kind, which: c.which, tick: c.tick, yours: true } : r)
+          setRows([...all])
+          continue
+        }
+        for (let p = 1; p <= f.doc!.numPages && live.current; p++) {
           setReading((x) => x && { ...x, at: ++at })
           await new Promise((ok) => requestAnimationFrame(ok))
           let read: SheetRead
           try {
-            read = readSheet(await pdf.readSheetPage(f.doc, p))
+            read = readSheet(await pdf.readSheetPage(f.doc!, p))
           } catch {
             read = { views: [{ kind: 'other', title: '', box: { x0: -1e9, y0: -1e9, x1: 1e9, y1: 1e9 }, by: 'shape' }] }
           }
+          const said = read.storeys
+          if (said && live.current) setStoreys((x) => x ?? { ...said, page: p })
           const got = read.views.map((view, i): SetRow => {
             const r: SetRow = { key: `${fi}:${p}:${i}`, file: fi, page: p, frame: view.box, view, ...(read.number ? { number: read.number } : {}), kind: view.kind, which: null, tick: null, yours: false }
             const c = mine[keyOf(r)]
@@ -113,29 +168,45 @@ export default function SetPanel({ files, onOpenOne, onBuild, onClose }: Props) 
           all.push(...got)
           if (live.current) setRows([...all])
         }
+      }
       if (!live.current) return
       setReading(null)
       for (const r of all) {
         if (!live.current) return
-        const thumb = await pdf
-          .renderView(files[r.file].doc, r.page, r.frame, 240)
-          .then((x) => x.canvas.toDataURL('image/jpeg', 0.8))
-          .catch(() => '')
+        const doc = files[r.file].doc
+        const thumb = doc
+          ? await pdf
+              .renderView(doc, r.page, r.frame, 240)
+              .then((x) => x.canvas.toDataURL('image/jpeg', 0.8))
+              .catch(() => '')
+          : r.read?.preview
+            ? drawPreview(r.read.preview, 240).toDataURL('image/jpeg', 0.8)
+            : ''
         if (live.current) setRows((rs) => rs.map((x) => (x.key === r.key ? { ...x, thumb } : x)))
       }
     })()
     return () => void (live.current = false)
-  }, [files])
+  }, [files, onRead])
   useEffect(() => {
     const key = (e: KeyboardEvent) => e.key === 'Escape' && (e.stopPropagation(), onClose())
     addEventListener('keydown', key, true)
     return () => removeEventListener('keydown', key, true)
   }, [onClose])
 
+  // a brochure's page a flat for the same floors (TYPE-A, TYPE-B …): asked once — one floor drawing of them side by side, or the first only
+  const [joinFlats, setJoinFlats] = useState(false)
+  const picks = useMemo(
+    () => rows.map((r) => ({ kind: r.kind, level: r.kind === r.view.kind ? r.view.level : null, use: r.view.use, slots: r.kind === 'plan' && r.which !== null ? parseSlots(r.which) ?? [] : null, tick: r.tick, ...(r.read ? { rooms: roomsOf(r.read) } : {}), ...(r.view.flat ? { flat: r.view.flat } : {}) })),
+    [rows],
+  )
+  const flatsOfFloor = useMemo(() => {
+    const j = setChoices(picks, storeys?.floors ?? 0, true)
+    return rows.filter((_, i) => j[i].with !== undefined || j.some((x) => x.with === i))
+  }, [picks, rows, storeys])
   const choices = useMemo<SetChoice[]>(() => {
-    const made = setChoices(rows.map((r) => ({ kind: r.kind, level: r.kind === r.view.kind ? r.view.level : null, use: r.view.use, slots: r.kind === 'plan' && r.which !== null ? parseSlots(r.which) ?? [] : null, tick: r.tick })))
-    return rows.map((r, i) => ({ ...r, slots: made[i].slots, used: made[i].tick }))
-  }, [rows])
+    const made = setChoices(picks, storeys?.floors ?? 0, joinFlats)
+    return rows.map((r, i) => ({ ...r, slots: made[i].slots, used: made[i].tick, ...(made[i].with !== undefined ? { with: rows[made[i].with!].key } : {}) }))
+  }, [picks, rows, storeys, joinFlats])
 
   if (import.meta.env.DEV) Object.assign(window, { __plotlineSet: { rows: choices, reading: !!reading } }) // the sets scoreboard reads what the list holds
   /** a change to a row, remembered by its title for the next set */
@@ -158,10 +229,11 @@ export default function SetPanel({ files, onOpenOne, onBuild, onClose }: Props) 
       }),
     )
 
-  const plans = choices.filter((c) => c.kind === 'plan' && c.used)
+  const plans = choices.filter((c) => c.kind === 'plan' && c.used && !c.with)
   const kept = choices.filter((c) => c.kind !== 'plan' && c.used)
+  const joined = choices.filter((c) => c.with).length
   const floors = slotsWords([...new Set(plans.flatMap((c) => c.slots))])
-  const pages = files.reduce((a, f) => a + f.doc.numPages, 0)
+  const pages = files.reduce((a, f) => a + pagesOf(f), 0)
   const which = (c: SetChoice): string => (c.which !== null ? c.which : c.kind === 'plan' ? slotsWords(c.slots) : c.kind === 'elevation' ? (c.view.facade ?? '') : c.kind === 'section' ? (c.view.mark ?? '') : '')
   const bad = (c: SetChoice) => c.kind === 'plan' && c.which !== null && parseSlots(c.which) === null
   // (as slotsFor: a set naming no ground floor puts its 1st floor on the ground — said once, under the plans)
@@ -172,7 +244,9 @@ export default function SetPanel({ files, onOpenOne, onBuild, onClose }: Props) 
     <div className="pages-sheet set-sheet" role="dialog" aria-label="What is in this set?">
       <div className="head">
         <strong>
-          {files.length === 1 ? files[0].name : `${files.length} files`} · {pages} pages{rows.length > pages ? ` · ${rows.length} drawings` : ''}
+          {files.some((f) => f.file)
+            ? `${files[0].folder ?? `${files.length} files`} · ${files.length} files · ${rows.length} drawings`
+            : `${files.length === 1 ? files[0].name : `${files.length} files`} · ${pages} pages${rows.length > pages ? ` · ${rows.length} drawings` : ''}`}
         </strong>
         <button className="x" title="Close (Esc)" onClick={onClose}>
           ×
@@ -193,6 +267,21 @@ export default function SetPanel({ files, onOpenOne, onBuild, onClose }: Props) 
             <h3 className="label">
               {GROUP_WORDS[k]} <span>{of.length}</span>
             </h3>
+            {k === 'plan' && flatsOfFloor.length > 1 && (
+              <label className="check set-ask">
+                <input type="checkbox" checked={joinFlats} onChange={(e) => setJoinFlats(e.target.checked)} />
+                <span>
+                  {flatsOfFloor.length} plans are flats of the same floors ({flatsOfFloor.map((r) => r.view.flat).join(', ')}), and nothing on their pages says where each
+                  stands on the floor. Tick to put them side by side on one floor drawing (move each into place in the Studio); else only {flatsOfFloor[0].view.flat} goes on
+                  those floors.
+                </span>
+              </label>
+            )}
+            {k === 'plan' && storeys && (
+              <p className="muted">
+                Page {storeys.page} says “{storeys.words}”: {storeys.basements ? `${storeys.basements} basement${storeys.basements > 1 ? 's' : ''}, ` : ''}the ground and {storeys.floors} floor{storeys.floors === 1 ? '' : 's'} over it — a typical floor with no numbers goes on every floor left up to {storeys.floors}.
+              </p>
+            )}
             {k === 'plan' && firstOnGround && <p className="muted">This set has no ground-floor plan, so its 1st floor is the ground floor (as American and Chilean sets count). Type the floors to change it: G, 1, 2–8, B1, Roof.</p>}
             <ol>
               {of.map((c) => (
@@ -204,7 +293,7 @@ export default function SetPanel({ files, onOpenOne, onBuild, onClose }: Props) 
                   <span className="what">
                     <strong>{c.view.title || (c.view.by === 'number' ? `Sheet ${c.number}` : 'No title on the page')}</strong>
                     <span className="muted">
-                      {files.length > 1 ? `${files[c.file].name} · ` : ''}Page {c.page}
+                      {c.read ? files[c.file].name : `${files.length > 1 ? `${files[c.file].name} · ` : ''}Page ${c.page}`}
                       {c.number ? ` · ${c.number}` : ''}
                       {c.view.scale ? ` · 1 : ${+c.view.scale.toFixed(1)}` : ''}
                       {c.view.use ? ` · ${c.view.use}` : ''}
@@ -237,10 +326,10 @@ export default function SetPanel({ files, onOpenOne, onBuild, onClose }: Props) 
       })}
       <div className="set-foot">
         <span className="muted">
-          {plans.length ? `${plans.length} drawing${plans.length === 1 ? '' : 's'} on ${floors}` : 'No plan ticked'} · {kept.length} kept · {choices.length - plans.length - kept.length} left out
+          {plans.length ? `${plans.length} drawing${plans.length === 1 ? '' : 's'} on ${floors}${joined ? ` (${joined} more flat${joined === 1 ? '' : 's'} joined in)` : ''}` : 'No plan ticked'} · {kept.length} kept · {choices.length - plans.length - joined - kept.length} left out
         </span>
         <button onClick={onClose}>Cancel</button>
-        <button className="primary" disabled={!!reading || (!plans.length && !kept.length) || choices.some((c) => c.used && bad(c))} onClick={() => onBuild(choices, files)}>
+        <button className="primary" disabled={!!reading || (!plans.length && !kept.length) || choices.some((c) => c.used && bad(c))} onClick={() => onBuild(choices, files, storeys)}>
           Build the project
         </button>
       </div>

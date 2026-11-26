@@ -54,4 +54,8 @@ export interface ImportResult {
   origin: Pt
   /** a DXF's / SVG's layers, most used first: what each was taken as (`yours`: the person set it), for the Studio's layer list */
   layers?: { name: string; role: Role; count: number; yours: boolean }[]
+  /** a DXF's / SVG's words, biggest first (no dimensions): what kind of drawing a file of a set is, and of which floor (sheets.ts fileView) */
+  texts?: { text: string; height: number }[]
+  /** a DXF's / SVG's lines as one SVG path in the plan frame (plan2d previewPath): the set's list draws its picture from it */
+  preview?: string
 }

@@ -7,7 +7,7 @@ import { existsSync, readdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { describe, expect, test } from 'vitest'
 import { deriveRooms, validate } from '../core'
 import { importPdf, readsAsPlan } from './pdf'
-import { buildPlan, penRoles, printedScale, sheetScale } from './plan2d'
+import { bezierArc, bigTexts, buildPlan, penRoles, previewPath, printedScale, sheetScale, sheetSymbols, type ArcPrim, type Seg } from './plan2d'
 
 const bytes = (path: string): ArrayBuffer => {
   const b = readFileSync(path)
@@ -170,5 +170,75 @@ describe('texts that name no room', () => {
     const text = (t: string, height: number) => ({ at: { x: 2, y: 1.5 }, text: t, layer: 'TEXT', height })
     const r = buildPlan({ segs: [...box(-0.1), ...box(0.1)], arcs: [], loops: [], scale: 1, texts: [text('UP', 0.3), text('Win-18', 0.2), text('D-3', 0.2), text('Room-4', 0.1)] }, 'tags')
     expect(r.unit.roomLabels.map((l) => l.name)).toEqual(['Room-4'])
+  })
+})
+
+describe("the sheet's symbols are not walls (session 31 levels: the farmhouse set's markers and stair break became wall pieces)", () => {
+  const PT = 0.0254 / 72
+  const mm = 0.001 / PT // a paper millimetre in points
+  const seg = (ax: number, ay: number, bx: number, by: number, layer = 'pen 1.08 0'): Seg => ({ a: { x: ax, y: ay }, b: { x: bx, y: by }, layer })
+  /** a polyline: each line starts where the last one ended (one drawn path) */
+  const path = (...p: [number, number][]): Seg[] => p.slice(1).map((q, i) => seg(p[i][0], p[i][1], q[0], q[1]))
+  /** a circle as four quarter arcs, centre (x, y), radius r */
+  const circle = (x: number, y: number, r: number): ArcPrim[] => [0, 1, 2, 3].map((k) => ({ c: { x, y }, r, a0: (k * Math.PI) / 2, a1: ((k + 1) * Math.PI) / 2, layer: '' }))
+  const text = (t: string, x: number, y: number) => ({ at: { x, y }, text: t, layer: '', height: 2 * mm })
+  test('a curve that is an arc of a circle: a quarter, a door drawn open at 45°; a curve that is not, none', () => {
+    const k = 0.5523
+    expect(bezierArc({ x: 10, y: 0 }, { x: 10, y: 10 * k }, { x: 10 * k, y: 10 }, { x: 0, y: 10 })).toMatchObject({ c: { x: expect.closeTo(0, 3), y: expect.closeTo(0, 3) }, r: expect.closeTo(10, 3) })
+    // a 45° arc (the farmhouse WC door): tangents 4/3·tan(θ/4)·r long
+    const h = (4 / 3) * Math.tan(Math.PI / 16) * 36
+    const e = { x: 36 * Math.cos(Math.PI / 4), y: 36 * Math.sin(Math.PI / 4) }
+    const a = bezierArc({ x: 36, y: 0 }, { x: 36, y: h }, { x: e.x + h * Math.sin(Math.PI / 4), y: e.y - h * Math.cos(Math.PI / 4) }, e)!
+    expect(a.r).toBeCloseTo(36, 1)
+    expect(a.a1 - a.a0).toBeCloseTo(Math.PI / 4, 2)
+    expect(bezierArc({ x: 0, y: 0 }, { x: 5, y: 8 }, { x: 10, y: -8 }, { x: 15, y: 0 })).toBeNull() // an S
+  })
+  test('an elevation marker (a circle with its number, its two triangle sides) goes; a column (a square with its X) stays', () => {
+    const r = 4 * mm
+    const marker = path([-1.41 * r, 0], [0, 1.41 * r], [1.41 * r, 0]) // the diamond's top half round the bubble
+    const column = path([100, 100], [103, 100], [103, 103], [100, 103], [100, 100]).concat(seg(100, 100, 103, 103), seg(103, 100, 100, 103))
+    const wall = [seg(-60, -5, 60, -5), seg(-60, 5, 60, 5)] // a wall passing the bubble: its lines run far past it
+    const segs = [...marker, ...column, ...wall]
+    const out = sheetSymbols(segs, circle(0, 0, r), [text('A3.1', 0, -r / 3), text('1', 0, r / 3)], PT)
+    expect([...out.segs].sort((p, q) => p - q)).toEqual([0, 1])
+    expect(out.arcs.size).toBe(4)
+    // the same circle with nothing written in it (a round column, a woodstove): kept
+    expect(sheetSymbols(segs, circle(0, 0, r), [], PT).segs.size).toBe(0)
+  })
+  test("a stair's arrow (its head and the run of lines behind it) goes; a wall's corner does not look like one", () => {
+    const head = [seg(0, 0, -1.5 * mm, -2 * mm), seg(0, 0, 1.5 * mm, -2 * mm)] // the farmhouse's: 90° open, 2 mm barbs
+    const shaft = path([0, 0], [0, -20 * mm], [10 * mm, -30 * mm]) // with a bend
+    // (a chamfered wall corner: two short faces from one point, a long line between them — but the faces go on)
+    const corner = path([50 + 20 * mm, 3 * mm], [50 + 3 * mm, 0], [50, 0], [50, 3 * mm], [50 + 3 * mm, 20 * mm]).concat(path([50, 0], [50 + 20 * mm, 20 * mm]))
+    const out = sheetSymbols([...head, ...shaft, ...corner], [], [text('UP', 0, -25 * mm)], PT)
+    expect([...out.segs].sort((p, q) => p - q)).toEqual([0, 1, 2, 3])
+    expect(out.why.get(2)).toBe('arrow')
+  })
+  test('a break line (a long line, a slanted zigzag across it, the line again) goes; a wall end cap (square to it) stays', () => {
+    const brk = path([0, 0], [30 * mm, 0], [32 * mm, 3 * mm], [34 * mm, -3 * mm], [36 * mm, 0], [70 * mm, 0])
+    const cap = path([0, 50], [30 * mm, 50], [30 * mm, 50 + 2 * mm], [29 * mm, 50 + 2 * mm], [29 * mm, 50 + 4 * mm], [0, 50 + 4 * mm])
+    const out = sheetSymbols([...brk, ...cap], [], [], PT)
+    expect([...out.segs].sort((p, q) => p - q)).toEqual([0, 1, 2, 3, 4])
+    expect(out.why.get(0)).toBe('break')
+  })
+  test('a door drawn open at 45° is a door (its swing hinged on the wall), not a passage', () => {
+    // a 4 m wall, 20 cm thick, with a 0.9 m gap at 1–1.9 m; its leaf drawn 45° open, hinged at (1, 0.1) on the wall's face
+    const face = (y: number): Seg[] => [seg(0, y, 1, y, 'WALL'), seg(1.9, y, 4, y, 'WALL')]
+    const swing: ArcPrim = { c: { x: 1, y: 0.1 }, r: 0.9, a0: 0, a1: Math.PI / 4, layer: '' }
+    const r = buildPlan({ segs: [...face(-0.1), ...face(0.1)], arcs: [swing], loops: [], texts: [], scale: 1 }, 'door45')
+    expect(r.unit.walls.flatMap((w) => w.openings).map((o) => o.kind)).toEqual(['door'])
+  })
+})
+
+describe('a DXF / SVG of a set: its words and its picture', () => {
+  test('its words biggest first, dimensions left out, one line each; its lines as one path in the plan frame', () => {
+    const t = (text: string, height: number, layer = 'TEXT') => ({ at: { x: 0, y: 0 }, text, height, layer })
+    expect(bigTexts([t('209_Kitchen', 0.12), t('Internal walls,\nground floor', 0.16), t('3200', 0.5, 'DIM:A-DIMS')])).toEqual([
+      { text: 'Internal walls,', height: 0.16 },
+      { text: 'ground floor', height: 0.16 },
+      { text: '209_Kitchen', height: 0.12 },
+    ])
+    // a line from (2, 5) to (4, 5) in millimetres from the origin (1, 6): plan metres, y down
+    expect(previewPath([{ a: { x: 2000, y: 5000 }, b: { x: 4000, y: 5000 }, layer: '' }], [], 0.001, { x: 1000, y: 6000 })).toBe('M1 1L3 1')
   })
 })

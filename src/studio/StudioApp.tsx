@@ -46,16 +46,17 @@ import { UNTRUSTED, askRow, rowPicture, type AiNote } from './localAI'
 import { ProjectPanel } from './ProjectPanel'
 import { NorthArrow, SitePanel } from './SitePanel'
 import { FloorList, NewProject } from './FloorList'
-import { getPicture, putPicture } from './pictures'
+import { deletePicture, getPicture, putPicture } from './pictures'
 import { putShell } from './shells'
 import type { SetChoice, SetFile, SetRow } from './SetPanel'
+import type { Storeys } from '../import/sheets'
 import PrintBox from './PrintBox'
 import { SAMPLES, sampleLine, type Sample } from './samples'
 import { CONVERTED_PICTURE, toPlanPicture } from '../import/picture'
 import type { PdfDoc } from '../import/pdf'
 import type { Box } from '../import/sheets'
 import { IMPORT_ACCEPT, expandZips, filesOfDrop, importFile, importFormatOf, lockedFormatOf, mainFile, siblingsOf, type DropFile, type ImportResult, type ImportedStorey, type LayerRole, type LayerRoles } from '../import'
-import { PROJECTS_KEY, drawingName, keepApartments, keepReview, newProject, projectWith, parseProjects, projectTower, readProjects, saveProjects, setSlot, slotLabel, slotsOf, syncUnit, type Project, type ProjectPlan, type Slot } from '../data/building/projects'
+import { PROJECTS_KEY, drawingName, keepApartments, keepReview, newProject, planOf as planOfProject, projectWith, parseProjects, projectTower, readProjects, saveProjects, setSlot, slotLabel, slotsOf, slotsText, stackFloors, syncUnit, type Project, type ProjectPlan, type Slot } from '../data/building/projects'
 import { finishesKey, keptFor, layoutKey, putKept, readFinishes, splitKept } from '../data/building/apartments'
 import { floorIn, roleIn, stemIn } from '../data/building'
 import { HARD, snapMove, snapPoint, type Snap } from './snap'
@@ -70,7 +71,7 @@ import TopBar from './TopBar'
 import KeysSheet from './KeysSheet'
 import { fitSheet, frameOf, mToPx, mToScreen, screenToM, screenToPx } from './transform'
 import './studio.css'
-import { ask, askText } from '../lib/ask'
+import { ask, askChoice, askText } from '../lib/ask'
 
 const DRAFT_KEY = 'plotline.studio.draft'
 /** the Set panel and what it reads (sheets.ts, the 2D engine's scale words) load when a set is first dropped */
@@ -591,7 +592,9 @@ export default function StudioApp() {
   // ----- reducer toasts → note
   useEffect(() => {
     if (state.toast) {
-      setNote({ text: state.toast.text, error: state.toast.error, on: state.unit })
+      const t = state.toast
+      // (an offer on screen — Build the project's Undo, "Use it as a picture instead" — is not lost: the drawing's own message joins it)
+      setNote((n) => (n?.link && !n.error && !t.error ? { ...n, text: `${n.text}. ${t.text}` } : { text: t.text, error: t.error, on: state.unit }))
       dispatch({ type: 'clear-toast' })
     }
   }, [state.toast])
@@ -1057,14 +1060,19 @@ export default function StudioApp() {
    * pages, a page of several drawings, an elevation alone — opens the Set panel (SetPanel): every page read for what it is,
    * the plans built onto their floors in one go, or one drawing opened alone. A drawing opened alone whose lines make a
    * plan (two or more closed rooms) opens as the drawing; else it becomes the plan picture to trace (a brochure page is a
-   * photo, or a picture with its words turned into outlines). Either way the message offers the other.
+   * photo, or a picture with its words turned into outlines). Either way the message offers the other. A DXF or SVG among
+   * them (a folder of an architect's files: session 31 levels) is one drawing of the set, read when the list opens.
    */
-  const openPdfFiles = async (files: File[]) => {
+  const openPdfFiles = async (files: File[], folder?: string) => {
     const pdf = await import('../import/pdf')
     const docs: SetFile[] = []
     for (const file of files) {
+      if (!/\.pdf$/i.test(file.name)) {
+        docs.push({ name: file.name, file, ...(folder ? { folder } : {}) })
+        continue
+      }
       try {
-        docs.push({ name: file.name, doc: await pdf.openPdf(await file.arrayBuffer()) })
+        docs.push({ name: file.name, doc: await pdf.openPdf(await file.arrayBuffer()), ...(folder ? { folder } : {}) })
       } catch (e) {
         showError(`Could not read ${file.name}: ${e instanceof Error ? e.message : String(e)}`)
       }
@@ -1072,9 +1080,9 @@ export default function StudioApp() {
     if (!docs.length) return
     // (the last PDFs stay open while a message offers "as a picture" / "its lines": the next ones close them)
     for (const d of openPdfDocs.current) void d.loadingTask.destroy()
-    openPdfDocs.current = docs.map((d) => d.doc)
-    if (docs.length === 1 && docs[0].doc.numPages === 1) {
-      const { name, doc } = docs[0]
+    openPdfDocs.current = docs.flatMap((d) => (d.doc ? [d.doc] : []))
+    if (docs.length === 1 && docs[0].doc && docs[0].doc.numPages === 1) {
+      const { name, doc } = docs[0] as { name: string; doc: PdfDoc }
       const one = await (async () => {
         const { readSheet } = await import('../import/sheets')
         return readSheet(await pdf.readSheetPage(doc, 1)).views
@@ -1088,6 +1096,8 @@ export default function StudioApp() {
   }
   const openPdfFile = (file: File) => openPdfFiles([file])
   const closeSet = useCallback(() => setSetFiles(null), [])
+  /** a DXF / SVG of a set read as one dropped alone is (its layers and unit as the person set them) */
+  const readSetFile = useCallback((file: File) => importFile(file, { layerRoles: readLayerRoles(), unitScale: stored<Record<string, number>>(READ_IN_KEY)[file.name] }), [])
   const readPdfPage = async (name: string, doc: PdfDoc, page: number, frame: Box | null = null, printed?: number) => {
     const stop = new AbortController()
     setReading({ name, stage: doc.numPages > 1 ? `page ${page}` : 'the page', fraction: null, stop })
@@ -1122,66 +1132,196 @@ export default function StudioApp() {
   /** one drawing of the set opened alone, as the page picker did */
   const openOne = (row: SetRow, files: SetFile[]) => {
     closeSet()
-    void readPdfPage(files[row.file].name, files[row.file].doc, row.page, row.frame, row.view.scale).catch((e) => showError(`Could not read page ${row.page}: ${e instanceof Error ? e.message : String(e)}`))
+    const doc = files[row.file].doc
+    if (!doc) return void (row.read ? takeImport(row.read, files[row.file].name) : importArchitect(files[row.file].file!))
+    void readPdfPage(files[row.file].name, doc, row.page, row.frame, row.view.scale).catch((e) => showError(`Could not read page ${row.page}: ${e instanceof Error ? e.message : String(e)}`))
   }
   /**
    * Build the project from the set (Stage 1): each ticked plan becomes a drawing on its floors — its own lines when they
    * make a plan, else its picture to trace (scaled when the sheet prints its scale); each ticked elevation, section, site
    * plan, schedule or interior elevation is kept with the project as a picture (Project.sheets). The project's floors are
-   * the floors read; its first drawing opens.
+   * the floors read; its first drawing opens. With a project open it asks first: add the floors to it (a floor that has a
+   * drawing already is replaced only after a yes; the set stacks on its floors) or make a new project. Undo (the message's
+   * link) puts the projects back as they were.
    */
-  const buildSet = async (rows: SetChoice[], files: SetFile[]) => {
+  const buildSet = async (rows: SetChoice[], files: SetFile[], storeys: Storeys | null = null) => {
+    const name = files[0].folder ?? files[0].name.replace(/\.[^.]+$/, '')
+    const plans = rows.filter((r) => r.kind === 'plan' && r.used && r.slots.length)
+    const kept = rows.filter((r) => r.kind !== 'plan' && r.used)
+    const all = [...new Set(plans.flatMap((r) => r.slots))]
+    const numbers = all.filter((s): s is number => typeof s === 'number')
+    const shape = { basements: Math.max(0, storeys?.basements ?? 0, ...numbers.map((s) => -s)), floors: Math.max(1, storeys?.floors ?? 0, ...numbers), rooftop: all.includes('R') }
+    // where it goes: the open project (asked), else a new one; a drawing open in no project is replaced (asked, as an import does)
+    const before = fresh()
+    const prev = projRef.current
+    const open = prev ? before.find((x) => x.id === prev.id) : undefined
+    const loose = !open && hasDrawing(stateRef.current.unit) ? { unit: stateRef.current.unit, pic: stateRef.current.planImage } : null
+    let into: Project | null = null
+    const skip = new Set<Slot>()
+    if (open) {
+      const i = await askChoice(`Add the set's floors (${slotsText(all) || 'none'}) to the project open now, ${open.name}? Or make a new project of ${name}.`, ['New project', 'Add to this project'])
+      if (i === null) return
+      if (i === 1) {
+        into = open
+        const taken = slotsOf(open).filter((r) => r.unitIds.length && all.includes(r.slot))
+        if (taken.length && !(await ask(`${taken.map((r) => r.label).join(', ')} ${taken.length === 1 ? 'has' : 'have'} a drawing in ${open.name} already. Put the set's drawing there instead? (The other drawing is kept, on no floor; Undo brings it all back.)`, 'Replace')))
+          for (const r of taken) skip.add(r.slot)
+      }
+    } else if (loose && !(await ask(`Build ${name}? The drawing on screen is in no project and is replaced (Undo brings it back).`, 'Build the project'))) return
     closeSet()
     const pdf = await import('../import/pdf')
     const stop = new AbortController()
-    const name = files[0].name.replace(/\.pdf$/i, '')
-    const plans = rows.filter((r) => r.kind === 'plan' && r.used && r.slots.length)
-    const kept = rows.filter((r) => r.kind !== 'plan' && r.used)
-    const all = [...plans.flatMap((r) => r.slots)]
-    const numbers = all.filter((s): s is number => typeof s === 'number')
-    let p = newProject(newId(), name, { basements: Math.max(0, ...numbers.map((s) => -s)), floors: Math.max(1, ...numbers), rooftop: all.includes('R') })
+    const was = into && planOfProject(into)
+    let p = into && was ? { ...into, plan: { basements: Math.max(was.basements, shape.basements), floors: Math.max(was.floors, shape.floors), rooftop: was.rooftop || shape.rooftop } } : newProject(newId(), name, shape)
+    const made: Id[] = [] // the pictures this build keeps (Undo deletes them)
     const pictureOf = async (r: SetChoice, px: number): Promise<{ pic: PlanImage; pxPerPt: number }> => {
-      const { canvas, pxPerPt } = await pdf.renderView(files[r.file].doc, r.page, r.frame, px)
+      const doc = files[r.file].doc
+      if (!doc) {
+        // a DXF / SVG: its lines drawn (a kept elevation of a folder set)
+        const canvas = (await import('./SetPanel')).drawPreview(r.read?.preview ?? '', px)
+        return { pic: { dataUrl: canvas.toDataURL('image/webp', 0.9), naturalW: canvas.width, naturalH: canvas.height, name: `${files[r.file].name.replace(/\.[^.]+$/, '')}.webp` }, pxPerPt: 0 }
+      }
+      const { canvas, pxPerPt } = await pdf.renderView(doc, r.page, r.frame, px)
       return { pic: { dataUrl: canvas.toDataURL('image/webp', 0.9), naturalW: canvas.width, naturalH: canvas.height, name: `${files[r.file].name.replace(/\.pdf$/i, '')} p${r.page}.webp` }, pxPerPt }
     }
     let first: Id | null = null
     let pictures = 0
+    let stacked = 0
+    let sideBySide = 0
     try {
-      for (const [i, r] of [...plans, ...kept].entries()) {
+      // every plan read first, then the floors stacked on what they share (session 31 levels): the lowest drawn floor is the
+      // building's frame, each other floor read at a known scale lands on the floor it shares most walls with — the page's own
+      // placement offered as a hint (a CAD set prints its plans where the model has them). A floor drawn as a picture to trace is
+      // put there too: its picture lined up so what is traced on it stands over the floor below.
+      const reads: (ImportResult | null)[] = []
+      for (const [i, r] of plans.entries()) {
         if (stop.signal.aborted) return toast('Stopped building the project')
         setReading({ name, stage: `drawing ${i + 1} of ${plans.length + kept.length}`, fraction: i / (plans.length + kept.length), stop })
-        if (r.kind === 'plan') {
-          const read = await pdf.importPdf(files[r.file].doc, files[r.file].name, r.page, r.frame, r.view.scale).catch(() => null)
-          let u: Unit
-          if (read && pdf.readsAsPlan(read)) u = read.storeys[0].unit
-          else {
-            // its lines make no plan: the drawing's picture, to trace (scaled when the sheet prints its scale: 1 : n)
-            const { pic, pxPerPt } = await pictureOf(r, 4000)
-            u = { ...emptyUnit(), ...(r.view.scale ? { planImage: { src: pic.name, pxPerM: pxPerPt / (r.view.scale * (0.0254 / 72)), originPx: { x: 0, y: 0 } } } : {}) }
+        const doc = files[r.file].doc
+        reads.push(doc ? await pdf.importPdf(doc, files[r.file].name, r.page, r.frame, r.view.scale).catch(() => null) : (r.read ?? null))
+      }
+      const sure = (x: ImportResult | null): x is ImportResult => !!x && !!x.storeys[0]?.unit.walls.length && !x.notes.some((n) => /^Scale: [^.]*guessed|^Scale not set/.test(n))
+      const rank = (r: SetChoice) => Math.min(...r.slots.map((s) => (s === 'R' ? 1e3 : s)))
+      // (flats joined side by side on one floor are not stacked: nothing says where they stand)
+      const joined = (r: SetChoice) => !!r.with || plans.some((m) => m.with === r.key)
+      const order = plans.map((_, i) => i).filter((i) => sure(reads[i]) && !joined(plans[i])).sort((a, b) => rank(plans[a]) - rank(plans[b]) || +pdf.readsAsPlan(reads[b]!) - +pdf.readsAsPlan(reads[a]!))
+      const ref = order[0] !== undefined ? reads[order[0]]! : null
+      // (one PDF's pages share its page frame; an architect's DXF / SVG files share the drawing's model frame)
+      const hint = (x: ImportResult, r: SetChoice): Pt | undefined =>
+        ref && (r.file === plans[order[0]].file || (!!r.read && !!plans[order[0]].read)) && Math.abs(x.unitScale - ref.unitScale) < 1e-6 * ref.unitScale ? { x: (x.origin.x - ref.origin.x) * x.unitScale, y: -(x.origin.y - ref.origin.y) * x.unitScale } : undefined
+      // (added to a project: its drawn floors stand where they are, and the set stacks on them)
+      const there = into ? Object.entries(projectTower(into).FLATS).filter(([stem, f]) => !stem.endsWith('-m') && f.unit.walls.length) : []
+      const stack = stackFloors([...there.map(([, f]) => ({ unit: f.unit, at: f.offset })), ...order.map((i) => ({ unit: reads[i]!.storeys[0].unit, hint: there.length ? undefined : hint(reads[i]!, plans[i]) }))]).slice(there.length)
+      const placeOf = new Map(order.map((i, k) => [i, stack[k]]))
+      for (const [i, r] of plans.entries()) {
+        if (r.with) continue // (a flat joined to another's floor: drawn with it below)
+        const read = reads[i]
+        const at = placeOf.get(i)
+        if (at && (there.length || i !== order[0])) stacked++
+        const group = plans.map((m, k) => ({ m, read: reads[k] })).filter(({ m }) => m === r || m.with === r.key)
+        if (group.length > 1) {
+          // flats of the same floors, nothing saying where each stands: side by side, 2 m apart, each named by its page
+          // ("TYPE-A") — their own lines when every one makes a plan, else one picture of them all to trace
+          const drawn = group.every(({ m, read }) => read && (m.read ? read.storeys[0]?.unit.walls.length : pdf.readsAsPlan(read)))
+          let u: Unit = { ...emptyUnit() }
+          if (drawn) {
+            let x = 0
+            for (const { m, read } of group) {
+              const v = read!.storeys[0].unit
+              const b = unitBounds(v)
+              const dx = x - b.minX, dy = -b.minY
+              const at = (p: { x: number; y: number }) => ({ x: p.x + dx, y: p.y + dy })
+              u = { ...u, vertices: [...u.vertices, ...v.vertices.map((q) => ({ ...q, ...at(q) }))], walls: [...u.walls, ...v.walls], roomLabels: [...u.roomLabels, ...v.roomLabels.map((l) => ({ ...l, ...at(l) })), ...(m.view.flat ? [{ id: newId(), name: m.view.flat, kind: 'other' as const, ...at({ x: (b.minX + b.maxX) / 2, y: b.minY + 0.4 }) }] : [])], pillars: [...(u.pillars ?? []), ...(v.pillars ?? []).map((q) => ({ ...q, ...at(q) }))] }
+              x += b.maxX - b.minX + 2
+            }
+          } else {
+            const docs = group.map(({ m }) => ({ m, doc: files[m.file].doc! })).filter((g) => g.doc)
+            const W = docs.reduce((a, { m }) => a + m.frame.x1 - m.frame.x0, 0), H = Math.max(...docs.map(({ m }) => m.frame.y1 - m.frame.y0))
+            const gap = 0.1 * H
+            const k = Math.min(4000 / (W + gap * (docs.length - 1)), 4000 / H)
+            const parts = []
+            for (const { m, doc } of docs) parts.push((await pdf.renderView(doc, m.page, m.frame, k * Math.max(m.frame.x1 - m.frame.x0, m.frame.y1 - m.frame.y0))).canvas)
+            const canvas = document.createElement('canvas')
+            canvas.width = Math.ceil(parts.reduce((a, c) => a + c.width, 0) + gap * k * (parts.length - 1))
+            canvas.height = Math.ceil(Math.max(...parts.map((c) => c.height)))
+            const g = canvas.getContext('2d')!
+            g.fillStyle = '#ffffff'
+            g.fillRect(0, 0, canvas.width, canvas.height)
+            let px = 0
+            for (const c of parts) g.drawImage(c, px, 0), (px += c.width + gap * k)
+            const scale = docs.every(({ m }) => m.view.scale && m.view.scale === docs[0].m.view.scale) ? docs[0].m.view.scale! * (0.0254 / 72) : 0
+            const pic: PlanImage = { dataUrl: canvas.toDataURL('image/webp', 0.9), naturalW: canvas.width, naturalH: canvas.height, name: `${name} ${group.map(({ m }) => m.view.flat).join(' ')}.webp` }
+            u = { ...u, ...(scale ? { planImage: { src: pic.name, pxPerM: k / scale, originPx: { x: 0, y: 0 } } } : {}) }
             await putPicture(u.id, pic)
+            made.push(u.id)
             pictures++
           }
-          u = { ...u, name: drawingName(p, r.slots[0]), projectName: name }
-          for (const s of r.slots) p = setSlot(p, s, u)
+          u = { ...u, name: drawingName(p, r.slots[0]), projectName: p.name }
+          const free = r.slots.filter((s) => !skip.has(s))
+          for (const s of free) p = setSlot(p, s, u)
+          if (!free.length) p = { ...p, units: { ...p.units, [u.id]: u } }
+          sideBySide += group.length
           first ??= u.id
-        } else {
-          const id = newId()
-          await putPicture(id, (await pictureOf(r, 2400)).pic)
-          const which = r.which ?? (r.kind === 'elevation' ? r.view.facade : r.kind === 'section' ? r.view.mark : undefined)
-          p = { ...p, sheets: [...(p.sheets ?? []), { id, kind: r.kind, title: r.view.title || `Page ${r.page}`, ...(which ? { which } : {}), ...(r.view.scale ? { scale: r.view.scale } : {}), file: files[r.file].name, page: r.page }] }
+          continue
         }
+        let u: Unit
+        let offset: Pt = { x: 0, y: 0 }
+        // (a DXF / SVG plan is its own lines whatever it makes: the file's lines are exact)
+        if (read && (r.read ? read.storeys[0]?.unit.walls.length : pdf.readsAsPlan(read))) (u = read.storeys[0].unit), (offset = at?.offset ?? offset)
+        else {
+          // its lines make no plan: the drawing's picture, to trace — scaled when the sheet's scale is known (printed 1 : n, or
+          // its dimensions agree), lined up on the floors it stacks on (its picture's pixel for the building frame's origin)
+          const { pic, pxPerPt } = await pictureOf(r, 4000)
+          const s = r.view.scale ? r.view.scale * (0.0254 / 72) : sure(read) ? read.unitScale : 0
+          const pxPerM = s ? pxPerPt / s : 0
+          const d = at?.offset ?? { x: 0, y: 0 }
+          const originPx = read && at ? { x: (read.origin.x - r.frame.x0) * pxPerPt - d.x * pxPerM, y: (r.frame.y1 - read.origin.y) * pxPerPt - d.y * pxPerM } : { x: 0, y: 0 }
+          u = { ...emptyUnit(), ...(pxPerM ? { planImage: { src: pic.name, pxPerM, originPx } } : {}) }
+          await putPicture(u.id, pic)
+          made.push(u.id)
+          pictures++
+        }
+        u = { ...u, name: drawingName(p, r.slots[0]), projectName: p.name }
+        const free = r.slots.filter((s) => !skip.has(s))
+        for (const s of free) p = setSlot(p, s, u, offset)
+        if (!free.length) p = { ...p, units: { ...p.units, [u.id]: u } } // (its floors kept theirs: it waits on no floor)
+        first ??= u.id
+      }
+      for (const [i, r] of kept.entries()) {
+        if (stop.signal.aborted) return toast('Stopped building the project')
+        setReading({ name, stage: `drawing ${plans.length + i + 1} of ${plans.length + kept.length}`, fraction: (plans.length + i) / (plans.length + kept.length), stop })
+        const id = newId()
+        await putPicture(id, (await pictureOf(r, 2400)).pic)
+        made.push(id)
+        const which = r.which ?? (r.kind === 'elevation' ? r.view.facade : r.kind === 'section' ? r.view.mark : undefined)
+        p = { ...p, sheets: [...(p.sheets ?? []), { id, kind: r.kind, title: r.view.title || `Page ${r.page}`, ...(which ? { which } : {}), ...(r.view.scale ? { scale: r.view.scale } : {}), file: files[r.file].name, page: r.page }] }
       }
     } catch (e) {
       return showError(`Could not build the project: ${e instanceof Error ? e.message : String(e)}`)
     } finally {
       setReading((x) => (x?.stop === stop ? null : x))
     }
-    const ps = [...fresh(), p]
+    const ps = into ? before.map((x) => (x.id === p.id ? p : x)) : [...before, p]
     if (!storeProjects(ps)) return
     setActive({ id: p.id })
     setListOpen(true)
     if (first) openDrawing(ps, first)
-    toast(`${name}: ${plans.length} drawing${plans.length === 1 ? '' : 's'} on their floors${pictures ? ` (${pictures} as pictures to trace)` : ''}, ${kept.length} kept with the project — the list on the right`)
+    // Undo: the projects as they were, the drawing that was open opened again (one in no project loaded back), this build's pictures gone
+    const undo = () => {
+      if (!storeProjects(before)) return
+      for (const id of made) void deletePicture(id).catch(() => {})
+      if (prev && before.some((x) => x.id === prev.id)) {
+        setActive(prev)
+        openDrawing(before, prev.drawing ?? null)
+      } else {
+        setActive(null)
+        openDrawing(before, null)
+        if (loose) dispatch({ type: 'set-plan-image', image: loose.pic }), dispatch({ type: 'load-unit', unit: loose.unit, fresh: true })
+      }
+      toast(into ? `${name}'s floors taken out of ${into.name}` : `The project ${name} is gone`)
+    }
+    const drawings = plans.filter((r) => !r.with).length
+    toast(`${name}: ${drawings} drawing${drawings === 1 ? '' : 's'} on their floors${into ? ` of ${into.name}` : ''}${pictures ? ` (${pictures} as pictures to trace)` : ''}${stacked ? `, ${stacked} stacked on the floor${stacked === 1 ? '' : 's'} they share walls with` : ''}${sideBySide ? `, ${sideBySide} flats side by side on one floor (move each into place)` : ''}, ${kept.length} kept with the project — the list on the right`, { label: 'Undo', onClick: undo })
   }
   useEffect(() => {
     if (!sheetView) return
@@ -1283,9 +1423,18 @@ export default function StudioApp() {
     const name = (p: string) => p.split('/').pop() ?? p
     const asFile = (f: DropFile) => (f.data instanceof File && f.data.name === name(f.path) ? f.data : new File([f.data], name(f.path), { type: MIME[f.path.toLowerCase().split('.').pop() ?? ''] ?? '' }))
     const main = mainFile(files.map((f) => f.path))
-    // a drawing set: several PDFs (and nothing that holds more, an IFC or a model) are listed together in the Set panel
-    const pdfs = files.filter((f) => /\.pdf$/i.test(f.path)).sort((a, b) => a.path.localeCompare(b.path, undefined, { numeric: true }))
-    if (main && /\.pdf$/i.test(main) && pdfs.length > 1) return void openPdfFiles(pdfs.map(asFile))
+    // a drawing set: several PDFs, DXFs or SVGs — a folder of the architect's files — and nothing that holds more (an IFC, a
+    // model) are listed together in the Set panel; of one drawing saved both ways ("Ground.dxf", "Ground.pdf") the DXF is read
+    const kind = (p: string) => ['dxf', 'svg', 'pdf'].indexOf(p.toLowerCase().split('.').pop() ?? '')
+    const twins = new Map<string, DropFile>()
+    for (const f of files.filter((f) => kind(f.path) >= 0)) {
+      const k = name(f.path).replace(/\.[^.]+$/, '').toLowerCase()
+      const had = twins.get(k)
+      if (!had || kind(f.path) < kind(had.path)) twins.set(k, f)
+    }
+    const sheets = [...twins.values()].sort((a, b) => a.path.localeCompare(b.path, undefined, { numeric: true }))
+    const folder = files[0].path.includes('/') ? files[0].path.split('/')[0] : undefined
+    if (main && kind(main) >= 0 && sheets.length > 1) return void openPdfFiles(sheets.map(asFile), folder)
     if (main) return void importArchitect(asFile(files.find((f) => f.path === main)!), files.length > 1 ? siblingsOf(files, main) : undefined)
     const usable = files.find((f) => /\.(png|jpe?g|webp|tiff?|heic|heif|json)$/i.test(f.path)) ?? files.find((f) => lockedFormatOf(f.path)) ?? files[0]
     onFile(asFile(usable))
@@ -1393,7 +1542,9 @@ export default function StudioApp() {
     if (!p || !storeProjects(ps)) return
     const t = projectTower(p)
     const mine = a?.drawing && p.units[a.drawing] ? stemIn(t, p.units[a.drawing]) : undefined
-    const stem = (mine && roleIn(t, mine) === 'flat' ? mine : undefined) ?? Object.keys(t.FLATS).find((s) => roleIn(t, s) === 'flat') ?? mine ?? Object.keys(t.LEVELS ?? {})[0]
+    // (on a floor with something drawn: a set's floor still a picture to trace shows nothing to stand on)
+    const drawn = (s: string) => t.FLATS[s].unit.walls.length > 0
+    const stem = (mine && roleIn(t, mine) === 'flat' && drawn(mine) ? mine : undefined) ?? Object.keys(t.FLATS).find((s) => roleIn(t, s) === 'flat' && drawn(s)) ?? (mine && drawn(mine) ? mine : undefined) ?? Object.keys(t.FLATS).find(drawn) ?? mine ?? Object.keys(t.LEVELS ?? {})[0]
     if (!stem) return toast('Put a drawing on a floor first: Draw, or Use drawing…')
     const k = t.LEVELS?.[stem]
     openBuilding(`/u/${encodeURIComponent(stem)}?floor=${floorIn(t, stem)}&view=building${k !== undefined ? `&pick=${k}` : ''}`)
@@ -2783,7 +2934,7 @@ export default function StudioApp() {
           {printOpen && <PrintBox unit={unit} onClose={() => setPrintOpen(false)} />}
           {setFiles && (
             <Suspense fallback={null}>
-              <SetPanel files={setFiles} onOpenOne={openOne} onBuild={(rows, files) => void buildSet(rows, files)} onClose={closeSet} />
+              <SetPanel files={setFiles} onRead={readSetFile} onOpenOne={openOne} onBuild={(rows, files, storeys) => void buildSet(rows, files, storeys)} onClose={closeSet} />
             </Suspense>
           )}
           {sheetView && (

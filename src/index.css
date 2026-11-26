@@ -204,7 +204,7 @@ button, input, select, textarea { font: inherit; color: inherit; }
 }
 .ask input::placeholder { color: var(--muted); }
 .ask input:focus { outline: none; border-color: var(--accent); }
-.ask-row { display: flex; justify-content: flex-end; gap: var(--s-2); }
+.ask-row { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: var(--s-2); }
 .ask button {
   height: var(--control); padding: 0 var(--s-4); border: 1px solid var(--line); border-radius: var(--r-sm); background: transparent;
   color: var(--ink); font-size: var(--fs-md); cursor: pointer; transition: background var(--dur-fast) var(--ease);

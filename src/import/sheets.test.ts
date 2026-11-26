@@ -6,7 +6,7 @@
 import { describe, expect, test } from 'vitest'
 import type { Pt } from '../core'
 import type { ArcPrim, Seg } from './plan2d'
-import { drawingArea, kindOfNumber, kindOfTitle, levelOf, parseSlots, readSheet, setChoices, sheetNumberOf, shapeKind, slotsFor, slotsWords, type SheetPage, type SheetText } from './sheets'
+import { drawingArea, fileView, kindOfNumber, kindOfTitle, levelOf, parseSlots, readSheet, setChoices, sheetNumberOf, shapeKind, slotsFor, slotsWords, storeysOf, type SheetPage, type SheetText } from './sheets'
 
 /** a text: its start at (x, y) on its baseline, as wide as its letters */
 const T = (text: string, x: number, y: number, h = 12): SheetText => {
@@ -150,6 +150,13 @@ describe('a page', () => {
     expect(r.views).toHaveLength(1)
     expect(inBox({ x: 300, y: 300 }, r.views[0].box) && inBox({ x: 900, y: 300 }, r.views[0].box)).toBe(true)
   })
+  test('a floor in halves titled by their parts is one view; two ways to build one floor stay two', () => {
+    const two = (a: string, b: string) => readSheet(page([T(a, 120, 690, 12), T(b, 720, 690, 12)], [...drawing(100, 100, 500, 680), ...drawing(700, 100, 1100, 680)])).views
+    expect(two('GROUND FLOOR PLAN (LEFT PART)', 'GROUND FLOOR PLAN (RIGHT PART)')).toHaveLength(1)
+    expect(two('2ND FLOOR PLAN - PART A', '2ND FLOOR PLAN - PART B')).toHaveLength(1)
+    expect(two('Ground Floor', 'Ground Floor – Enhanced Accessible (U2a)')).toHaveLength(2) // the Canadian fourplex: its accessible unit
+    expect(two('5/7/9 FLOOR PLAN', '6/8/10 FLOOR PLAN')).toHaveLength(2)
+  })
   test('a sheet of details (most of its titles say so) or of schedules is one page, not split', () => {
     const r = readSheet(page([T('FOUNDATION DETAIL', 300, 33, 12.5), T('WAINSCOT DETAIL', 300, 600, 12.5), T('TYPICAL INTERIOR WALL', 60, 285, 12.5)], [...drawing(300, 60, 500, 300), ...drawing(300, 620, 500, 780), ...drawing(60, 300, 250, 560)]))
     expect(r.views.map((v) => v.kind)).toEqual(['detail'])
@@ -195,12 +202,36 @@ describe('the set', () => {
   test('a set with a ground floor numbers its upper floors from 1 (Dhaka, the UK); words counted from the ground never move', () => {
     expect(slotsFor([levelOf('GROUND FLOOR'), levelOf('1ST FLOOR'), levelOf('BASEMENT 1')])).toEqual([[0], [1], [-1]])
     expect(slotsFor([levelOf('GRUNDRISS 1. OG')])).toEqual([[1]])
+    // a house of a ground floor and its "2ND FLOOR" (no 1st, nothing higher: the Canadian fourplex) counts its ground as the 1st
+    expect(slotsFor([levelOf('GROUND FLOOR'), levelOf('2ND FLOOR')])).toEqual([[0], [1]])
+    // a tower whose brochure skips the 1st floor's page keeps its numbers (Rangs Noorani Heights: 2nd & 4th, 3rd & 7th)
+    expect(slotsFor([levelOf('Ground Floor'), levelOf('2nd & 4th Floor'), levelOf('3rd & 7th Floor')])).toEqual([[0], [2, 4], [3, 7]])
   })
   test('a mezzanine takes floor 1 when free, an attic the floor over the highest, a typical floor every floor left up to the highest', () => {
     expect(slotsFor([levelOf('GROUND FLOOR'), levelOf('MEZZANINE'), levelOf('3RD FLOOR PLAN')])).toEqual([[0], [1], [3]])
     expect(slotsFor([levelOf('BASEMENT'), levelOf('1ST FLOOR'), levelOf('2ND FLOOR'), levelOf('ATTIC FLOOR PLAN')])).toEqual([[-1], [0], [1], [2]])
     expect(slotsFor([levelOf('GROUND FLOOR'), levelOf('1ST FLOOR'), levelOf('TYPICAL FLOOR PLAN'), levelOf('8TH FLOOR')])).toEqual([[0], [1], [2, 3, 4, 5, 6, 7], [8]])
     expect(slotsFor([levelOf('GROUND FLOOR'), levelOf('TYPICAL FLOOR PLAN'), levelOf('ROOF')])).toEqual([[0], [1], ['R']])
+  })
+  test('how tall the building is, as the brochure says it: a typical floor with no numbers runs up to its top floor', () => {
+    expect(storeysOf('2B+G+12')).toMatchObject({ basements: 2, floors: 12 }) // Rangs The Sanctuary
+    expect(storeysOf('B+G+M+12')).toMatchObject({ basements: 1, floors: 13 }) // The Majestic: the mezzanine is floor 1
+    expect(storeysOf('G + 9')).toMatchObject({ basements: 0, floors: 9 })
+    expect(storeysOf('Basement + Ground Floor + 9 (10 storied')).toMatchObject({ basements: 1, floors: 9 }) // Akter Aleena
+    expect(storeysOf(': 10 Storied')).toMatchObject({ floors: 9 }) // Eastern Housing Pearl: the ground is a storey
+    expect(storeysOf('Floors: 09')).toMatchObject({ floors: 8 }) // Noboneer
+    expect(storeysOf('14-STOREY')).toMatchObject({ floors: 13 })
+    for (const t of ['Storey', 'UP TO BASEMENT-01', 'Unit Per Floor: 01', 'FLOOR : 2', `TOILET 5'-0" x 8'-0"`]) expect(storeysOf(t)).toBeNull()
+    expect(slotsFor([levelOf('GROUND FLOOR PLAN'), levelOf('TYPICAL FLOOR PLAN'), levelOf('ROOF FLOOR PLAN')], 8)).toEqual([[0], [1, 2, 3, 4, 5, 6, 7, 8], ['R']])
+    expect(setChoices([{ kind: 'plan', level: levelOf('GROUND FLOOR PLAN') }, { kind: 'plan', level: levelOf('TYPICAL FLOOR PLAN') }], 8).map((x) => x.slots)).toEqual([[0], [1, 2, 3, 4, 5, 6, 7, 8]])
+  })
+  test("a typical floor's floors in a run of their own, and the Spanish planta tipo (not planta tipo A, a flat)", () => {
+    expect(levelOf('TYPICAL FLOOR PLAN 3RD–8TH')).toEqual({ at: [3, 4, 5, 6, 7, 8], typical: true })
+    expect(levelOf('TYPICAL FLOOR PLAN (2ND-9TH)')?.at).toEqual([2, 3, 4, 5, 6, 7, 8, 9])
+    expect(levelOf('Typical Floor Plan (1st to 13th)')?.at).toHaveLength(13)
+    expect(levelOf('FLOORS 2-8')?.at).toEqual([2, 3, 4, 5, 6, 7, 8])
+    expect(levelOf('PLANTA TIPO')).toEqual({ at: [], typical: true })
+    expect(levelOf('PLANTA TIPO A')).toBeNull()
   })
   test('ticks: the first floor plan of each floor becomes its drawing; a ceiling plan of the same floor is kept out; elevations and sections are kept, details left out; the person decides last', () => {
     const c = setChoices([
@@ -221,6 +252,35 @@ describe('the set', () => {
     expect(setChoices([{ kind: 'plan', level: null }, { kind: 'plan', level: null }])).toEqual([{ slots: [0], tick: true }, { slots: [], tick: false }])
     expect(setChoices([{ kind: 'plan', level: levelOf('GROUND FLOOR') }, { kind: 'plan', level: null, tick: true }]).map((x) => x.slots)).toEqual([[0], [1]])
     expect(setChoices([{ kind: 'plan', level: levelOf('GROUND FLOOR'), slots: [2, 3] }]).map((x) => x.slots)).toEqual([[2, 3]])
+  })
+  test('a folder of DXF / SVG files: each file by its title inside or its name (GF, 1F, RF, TYP, B1, E-1, S-2, A-201)', () => {
+    const fv = (name: string, words: string[] = [], rooms = 0) => fileView(name, words.map((text) => ({ text })), rooms)
+    // Loughborough's matched pair of houses: words drawn in the file, the name says the side
+    expect(fv('Internal_Ground.dxf', ['West House (209)', 'East House (207)', 'Internal walls, ground floor', '209_Kitchen'])).toMatchObject({ kind: 'plan', level: { at: [0] } })
+    expect(fv('External_First.dxf', ['West', 'House', 'External walls, first floor', '1:50'])).toMatchObject({ kind: 'plan', level: { at: [1] } })
+    expect(fv('Elevation_East.dxf', ['East', 'House', '(207)', 'Elevation'])).toMatchObject({ kind: 'elevation', facade: 'east' })
+    expect(fv('Siteplan.dxf', ['Site plan, neighbouring dwellings,'])).toMatchObject({ kind: 'site' })
+    expect(['GF', '1F', 'RF', 'TYP', 'B1', 'tower 3F plan', 'Level 2'].map((n) => fv(`${n}.dxf`).level)).toEqual([{ at: [0] }, { at: [1] }, { at: ['R'] }, { at: [], typical: true }, { at: [-1] }, { at: [3] }, { at: [2] }])
+    expect(['E-1', 'S-2', 'A-101', 'A-201'].map((n) => fv(`${n}.dxf`).kind)).toEqual(['elevation', 'section', 'plan', 'elevation'])
+    // nothing said: its lines decide
+    expect([fv('drawing.dxf', [], 5).kind, fv('drawing.dxf', [], 1).kind]).toEqual(['plan', 'other'])
+  })
+  test("a brochure's page a flat (TYPE-A, TYPE-B … all LEVEL 1 to 11): named on the page, joined to the first flat's floor when asked", () => {
+    const flatPage = (flat: string) => readSheet(page([T(flat, 300, 120, 30), T('TOWER-1', 300, 90, 12), T('LEVEL 1 to 11', 300, 75, 12)], drawing(100, 200, 900, 700))).views
+    expect(flatPage('TYPE-A')).toMatchObject([{ kind: 'plan', flat: 'TYPE-A', level: { at: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11] } }])
+    expect(flatPage('TYPE-C/G/K')[0].flat).toBe('TYPE-C/G/K')
+    const picks = ['TYPE-A', 'TYPE-B', 'TYPE-C/G/K'].map((flat) => ({ kind: 'plan' as const, level: levelOf('LEVEL 1 to 11'), flat }))
+    expect(setChoices(picks).map((x) => x.tick)).toEqual([true, false, false]) // as before: the first flat on the floors
+    expect(setChoices(picks, 0, true).map((x) => [x.tick, x.with])).toEqual([[true, undefined], [true, 0], [true, 0]])
+    // the same flat twice (a page and its larger copy) never joins itself
+    expect(setChoices([...picks.slice(0, 1), ...picks.slice(0, 1)], 0, true).map((x) => x.tick)).toEqual([true, false])
+  })
+  test('of two plans of one floor read already, the one with more rooms becomes its drawing', () => {
+    const c = setChoices([
+      { kind: 'plan', level: levelOf('External walls, first floor'), rooms: 0 },
+      { kind: 'plan', level: levelOf('Internal walls, first floor'), rooms: 11 },
+    ])
+    expect(c.map((x) => x.tick)).toEqual([false, true])
   })
   test('floors in short and back: "B1, G, 2–8, Roof"', () => {
     const ss = [-1, 0, 2, 3, 4, 5, 6, 7, 8, 'R'] as const
