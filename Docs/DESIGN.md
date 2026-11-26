@@ -138,8 +138,12 @@ One accent on the page: the primary button. Everything else is ink on marble.
   openings as the architect draws them. Hover: `--accent-line`.
 - Left: the tool rail (icons 20 px, a tooltip with the key, the picked tool white with `--shadow-sm`). Top: one bar —
   the wordmark, the drawing's name and floor, Undo / Redo, Auto-trace, Preview 3D (the one primary button), Building, ⋯.
-- Right: the inspector (320 px, white, hairline left edge): Steps as a quiet list, Selection, Issues with the three
-  severity dots (terracotta / amber / grey).
+- Right: the project's column (280 px, marble, hairline left edge) — the frame of every drop: the project's name in the
+  serif at `--fs-2xl`, then the inscription FLOORS over the floor rows (the floor in 500, its drawing's name, where it came
+  from in muted 11 px under it; the open floor a white row with `--shadow-sm`), the floor plans, KEPT FROM THE DRAWING SET
+  as folding groups by kind (name, count, ▸ / ▾), SITE and TEAM as one line each (inscription, words, link). Beside it
+  the inspector (320 px, white, hairline left edge): Steps as a quiet list (Share's links under its step), Selection,
+  Issues with the three severity dots (terracotta / amber / grey).
 - Marks on the plan, so the sheet reads as a drawing, not an error list: terracotta = a numbered badge (it breaks the
   3D), amber = an 8 px dot whose number shows only when the mouse is near or its row is picked, grey = not drawn (the
   row is in the list); several at one spot share one outlined badge with their count.

@@ -204,9 +204,13 @@ interface Props {
   /** a DXF's unit (metres per file unit; `yours`: picked by the person) and its "Read in" pick: a unit, Plotline's, or one known length */
   readIn?: { scale: number; yours: boolean } | null
   onReadIn?: (pick: number | 'auto' | 'length') => void
+  /** the Steps, as the source of the drawing open asks (model.stepsOf), unnumbered: [label, done] */
+  steps: [string, boolean][]
+  /** what Share does, under its step once something is drawn: a buyer link, a DXF, the 3D model, a print */
+  shareActs?: { label: string; title: string; onClick: () => void }[]
 }
 
-export function Panel({ state, dispatch, rooms, flats, issues, marks, bulks = [], openBulk = null, onBulk, fixes, active, picked = null, lit = null, onPick, onHot, onOpen, onFix, onAnswer, ai, pieces, placing, onPlace, notes, onDismissNotes, layers, onLayerRole, readIn, onReadIn }: Props) {
+export function Panel({ state, dispatch, rooms, flats, issues, marks, bulks = [], openBulk = null, onBulk, fixes, active, picked = null, lit = null, onPick, onHot, onOpen, onFix, onAnswer, ai, pieces, placing, onPlace, notes, onDismissNotes, layers, onLayerRole, readIn, onReadIn, steps, shareActs }: Props) {
   const piece = pieces?.find((p) => state.selection.length === 1 && p.id === state.selection[0])
   const { unit } = state
   const review = marks.filter((m) => m.review)
@@ -329,20 +333,6 @@ export function Panel({ state, dispatch, rooms, flats, issues, marks, bulks = []
   )
   const stats = state.review?.unitId === unit.id ? state.review.stats : null
   const count = stats && roomCount(unit, rooms, stats, flats)
-  const errors = issues.filter((i) => i.level === 'error').length
-  // a drawing whose walls stand with no picture under them came in real sizes (an IFC / DXF / PDF file's lines, a
-  // drawing made by hand): nothing to load or scale (newcomer lane s31: an IFC's Steps waited on "2 Set scale")
-  const real = !state.planImage && !unit.planImage && unit.walls.length > 0
-  const steps: [string, boolean][] = [
-    ['1 Load plan', !!state.planImage || real],
-    ['2 Set scale', !!unit.planImage || real],
-    ['3 Trace walls', unit.walls.length > 0],
-    ['4 Wall thickness', unit.walls.some((w) => w.thicknessM >= 0.2)],
-    ['5 Openings', unit.walls.some((w) => w.openings.length > 0)],
-    ['6 Rooms', unit.roomLabels.length > 0],
-    ['7 Check', unit.walls.length > 0 && errors === 0],
-    ['8 Export', state.exported],
-  ]
   const next = steps.findIndex(([, done]) => !done) // the step to do now (marked in the list)
   return (
     <aside className="panel">
@@ -371,7 +361,16 @@ export function Panel({ state, dispatch, rooms, flats, issues, marks, bulks = []
                   </svg>
                 )}
               </span>
-              {label}
+              {i + 1} {label}
+              {label === 'Share' && !!shareActs?.length && unit.walls.length > 0 && (
+                <span className="acts">
+                  {shareActs.map((a) => (
+                    <button key={a.label} className="link" title={a.title} onClick={a.onClick}>
+                      {a.label}
+                    </button>
+                  ))}
+                </span>
+              )}
             </li>
           ))}
         </ol>
