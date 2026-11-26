@@ -15,3 +15,4 @@ dist
 .vscode
 vite.walk.local.config.ts
 *.traineddata
+Plotline2.O-main.zip
