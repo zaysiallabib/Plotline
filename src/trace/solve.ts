@@ -3532,11 +3532,13 @@ export function pickFloor(p: PreparedSolve): AutoTraceResult {
 }
 
 /** the hover (previewFlat) on a prepared sheet, a turned one's turned back onto the sheet */
-export function preview(p: PreparedSolve, px: Px): ReturnType<typeof previewFlat> {
+export function preview(p: PreparedSolve, px: Px): ReturnType<typeof previewFlat> & { regionAngle?: number } {
   const t = p.turn
   if (!t) return previewFlat(p.traces, px)
   const v = previewFlat(p.traces, t.fwd(px))
-  return { polys: v.polys.map((q) => q.map(t.back)), names: v.names.map((n) => ({ ...n, at: t.back(n.at) })), region: v.region.map((r) => boxBack(r, t)) }
+  // the flood's rectangles stay rectangles turned with the sheet (their corner + `regionAngle`), not the upright boxes
+  // round them that tinted past the flat (from Maheer's Plotline 2.0)
+  return { polys: v.polys.map((q) => q.map(t.back)), names: v.names.map((n) => ({ ...n, at: t.back(n.at) })), region: v.region.map((r) => ({ ...r, ...t.back(r) })), regionAngle: (t.deg * Math.PI) / 180 }
 }
 
 /**

@@ -27,7 +27,7 @@ export interface TraceJob {
 /** the plan picture handed over as a bitmap: its grey + colour rasters are made here, off the page (from Maheer's Plotline 2.0) */
 type BitmapJob = Omit<TraceJob, 'pickPx' | 'gray' | 'rgb'> & { bitmap: ImageBitmap }
 export type TraceIn = TraceJob | { type: 'prepare'; job: Omit<TraceJob, 'pickPx'> | BitmapJob } | { type: 'hover'; px: Px; seq: number } | { type: 'pick'; px: Px } | { type: 'floor' }
-export type Preview = { polys: Px[][]; names: { at: Px; text: string }[]; region: { x: number; y: number; w: number; h: number }[] }
+export type Preview = { polys: Px[][]; names: { at: Px; text: string }[]; region: { x: number; y: number; w: number; h: number }[]; regionAngle?: number }
 export type TraceMsg =
   | { type: 'progress'; stage: string; fraction: number }
   | { type: 'ready' }

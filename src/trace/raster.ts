@@ -800,13 +800,17 @@ export function turnOf(width: number, height: number, deg: number): Turn {
 /** a grey (1 channel) or colour (4) raster turned by `t`, bilinear, paper (255) outside the sheet */
 export function turnRaster<T extends { width: number; height: number; data: Uint8Array | Uint8ClampedArray }>(r: T, t: Turn): T {
   const { width: W, height: H, data } = r, ch = data.length / (W * H)
-  const out = new Uint8Array(t.w * t.h * ch).fill(255)
+  const size = t.w * t.h * ch
+  const out = (data instanceof Uint8ClampedArray ? new Uint8ClampedArray(size) : new Uint8Array(size)).fill(255)
   for (let y = 0; y < t.h; y++)
     for (let x = 0; x < t.w; x++) {
       const p = t.back({ x, y }), x0 = Math.floor(p.x), y0 = Math.floor(p.y), fx = p.x - x0, fy = p.y - y0
-      if (x0 < 0 || y0 < 0 || x0 >= W - 1 || y0 >= H - 1) continue
+      if (x0 < -1 || y0 < -1 || x0 >= W || y0 >= H) continue
+      const base = (y0 * W + x0) * ch, below = base + W * ch
+      const left = x0 >= 0, right = x0 + 1 < W, top = y0 >= 0, bottom = y0 + 1 < H
       for (let k = 0; k < ch; k++) {
-        const a = data[(y0 * W + x0) * ch + k], b = data[(y0 * W + x0 + 1) * ch + k], c = data[((y0 + 1) * W + x0) * ch + k], d = data[((y0 + 1) * W + x0 + 1) * ch + k]
+        const a = top && left ? data[base + k] : 255, b = top && right ? data[base + ch + k] : 255
+        const c = bottom && left ? data[below + k] : 255, d = bottom && right ? data[below + ch + k] : 255
         out[(y * t.w + x) * ch + k] = Math.round(a + (b - a) * fx + (c - a) * fy + (a - b - c + d) * fx * fy)
       }
     }

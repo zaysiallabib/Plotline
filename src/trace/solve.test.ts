@@ -6,7 +6,7 @@ import type { Unit } from '../core'
 import { truthLines, registerTruth } from './eval'
 import { FIXTURES, SHOTS, loadPgm, loadPpm, writeUnitOverlay } from './evalio'
 import { findHints, greenMask } from './hints'
-import { KNOBS, areasIn, buildGraph, pick, prepare, dropForeignStubs, findStairs, glassMask, planterMask, mergeUnread, nameLike, namePieces, namesBeside, pickTraces, prepareTraces, previewFlat, solveTraces, tableRow, titleAreas, type SolveInputs } from './solve'
+import { KNOBS, areasIn, buildGraph, pick, prepare, dropForeignStubs, findStairs, glassMask, planterMask, mergeUnread, nameLike, namePieces, namesBeside, pickTraces, prepareTraces, preview, previewFlat, solveTraces, tableRow, titleAreas, type SolveInputs } from './solve'
 import { glazing } from './walls'
 import { turnOf, turnRaster } from './raster'
 import { oracleText } from './roomsEval'
@@ -616,6 +616,24 @@ describe('s27: a flat holds its own label, never another flat\'s; the floor has 
     const stamp = (x: number): TextItem => ({ text: '624 SFT', box: { x: P(x, 2.5).x - 40, y: P(x, 2.5).y - 8, w: 80, h: 16 }, kind: 'area', areaSqm: 58, conf: 0.9, source: 'ocr' })
     return { g, text: { items: [stamp(5), stamp(15)] } }
   }
+
+  test('on a turned sheet the hover\'s floor rectangles stay rectangles, turned with the sheet (from Maheer\'s Plotline 2.0)', () => {
+    const { g, text } = openPair()
+    const traces = prepareTraces(g, { text }, { pxPerM: K })
+    const turn = turnOf(g.width, g.height, 12)
+    const at = P(1, 1)
+    const flat = previewFlat(traces, at)
+    const rotated = preview({ traces, turn, review: [] }, turn.back(at))
+    expect(flat.region.length).toBeGreaterThan(0)
+    expect(rotated.region.map((r) => [r.w, r.h])).toEqual(flat.region.map((r) => [r.w, r.h]))
+    expect(rotated.region[0]).toMatchObject(turn.back(flat.region[0]))
+    expect(rotated).toHaveProperty('regionAngle', (12 * Math.PI) / 180)
+    // the far corner drawn from the corner, the size and the angle (draw.ts) is the sheet's own far corner
+    const r = rotated.region[0], f = flat.region[0], a = rotated.regionAngle!
+    const far = turn.back({ x: f.x + f.w, y: f.y + f.h })
+    expect(r.x + r.w * Math.cos(a) - r.h * Math.sin(a)).toBeCloseTo(far.x, 6)
+    expect(r.y + r.w * Math.sin(a) + r.h * Math.cos(a)).toBeCloseTo(far.y, 6)
+  })
 
   test('a click in one flat of an open floor: the hover glows its whole floor (no closed room there) and stops at the party wall — the next flat\'s stamp claims its side of the gap', () => {
     const { g, text } = openPair()
