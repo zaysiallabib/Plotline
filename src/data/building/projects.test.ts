@@ -1,7 +1,7 @@
 /** Project first (founder 2026-10-05): the floors said first, any drawing on any floor. The older flows: three/building.test.ts. */
 import { describe, expect, test } from 'vitest'
 import type { Unit } from '../../core'
-import { drawingName, forkFloor, keepReview, makeProject, newProject, parseFloors, parseProjects, planOf, projectTower, removeDrawing, setSlot, sharedAt, slotsOf, slotsText, type Project, type Slot } from './projects'
+import { alignPlans, stackFloors, drawingName, forkFloor, keepReview, makeProject, newProject, parseFloors, parseProjects, planOf, projectTower, removeDrawing, setSlot, sharedAt, slotsOf, slotsText, type Project, type Slot } from './projects'
 import { initialState } from '../../studio/model'
 import { studioReducer, type Review } from '../../studio/review'
 
@@ -197,5 +197,78 @@ describe('the Check these list kept with each drawing (manual walk s31: it went 
     expect(keepReview(ps, u.id, { ...r, items: [] })![0].reviews).toEqual({})
     expect(removeDrawing(ps[0], u.id).reviews).toEqual({})
     expect(keepReview([p], 'not-in-it', r)).toBeNull()
+  })
+})
+
+describe("a set's floors stacked on what they share (session 31 levels: each drawing was placed by its own frame)", () => {
+  /** a floor: an outer box w × h, a stair core 2.6 × 5 m at (cx, cy), and its own partitions; everything moved by (dx, dy) */
+  const floor = (id: string, d: { x: number; y: number }, parts: [number, number, number, number][], w = 12, h = 9, core = { x: 4, y: 2 }): Unit => {
+    const lines: [number, number, number, number][] = [
+      [0, 0, w, 0], [w, 0, w, h], [w, h, 0, h], [0, h, 0, 0],
+      [core.x, core.y, core.x + 2.6, core.y], [core.x + 2.6, core.y, core.x + 2.6, core.y + 5], [core.x + 2.6, core.y + 5, core.x, core.y + 5], [core.x, core.y + 5, core.x, core.y],
+      ...parts,
+    ]
+    const u = box(id)
+    u.vertices = lines.flatMap(([x0, y0, x1, y1], i) => [{ id: `${id}-a${i}`, x: x0 + d.x, y: y0 + d.y }, { id: `${id}-b${i}`, x: x1 + d.x, y: y1 + d.y }])
+    u.walls = lines.map((_, i) => ({ id: `${id}-w${i}`, a: `${id}-a${i}`, b: `${id}-b${i}`, thicknessM: 0.2, heightM: 3, openings: [] }))
+    return u
+  }
+  test('the upper floor (its own frame, other partitions) lands on the ground floor: its shift back, to the millimetre', () => {
+    const ground = floor('g', { x: 0, y: 0 }, [[7, 0, 7, 9], [7, 4.5, 12, 4.5]])
+    const upper = floor('f1', { x: -3.25, y: 1.7 }, [[2, 0, 2, 9], [9, 3, 12, 3], [9, 3, 9, 9]])
+    const a = alignPlans(ground, upper)!
+    expect(a.by).toBe('walls')
+    expect(a.offset.x).toBeCloseTo(3.25, 3)
+    expect(a.offset.y).toBeCloseTo(-1.7, 3)
+    expect(a.errM).toBeLessThan(0.001)
+    expect(a.share).toBeGreaterThan(0.6)
+  })
+  test('a floor that shares nothing with it is not placed; columns, when both have them, place it first', () => {
+    const ground = floor('g', { x: 0, y: 0 }, [])
+    const other: Unit = { ...box('o', 3, 2), vertices: box('o', 3, 2).vertices.map((v) => ({ ...v, x: v.x + 0.37, y: v.y + 0.61 })) }
+    expect(alignPlans(ground, other)).toBeNull()
+    const cols = (d: number) => [[0, 0], [6, 0], [12, 0], [0, 9], [12, 9]].map(([x, y], i) => ({ id: `c${i}`, x: x + d, y: y + d, wM: 0.4, hM: 0.4 }))
+    // columns propose a shift the walls then judge; with no walls drawn (a column layout) the columns place it
+    expect(alignPlans({ ...ground, walls: [], pillars: cols(0) }, { ...other, walls: [], pillars: cols(-2) })).toMatchObject({ by: 'columns', offset: { x: 2, y: 2 } })
+  })
+  test("the files' own frame (one CAD model) wins when its walls fit nearly as well as the best shift: it is exact, not refined", () => {
+    const ground = floor('g', { x: 0, y: 0 }, [[7, 0, 7, 9]])
+    const upper = floor('f1', { x: -3.25, y: 1.7 }, [[2, 0, 2, 9]])
+    // the model says 4 cm more: the same walls, 4 cm apart (the upper floor's walls drawn a little off its lower ones)
+    expect(alignPlans(ground, upper, { x: 3.29, y: -1.7 })).toMatchObject({ by: 'frame', offset: { x: 3.29, y: -1.7 } })
+    // a frame far off (another page's placement): the walls decide
+    expect(alignPlans(ground, upper, { x: 8, y: 8 })).toMatchObject({ by: 'walls' })
+  })
+  test('a stack of floors: each finds the floor it shares most with (the roof its top floor, not the ground); a stranger stays put', () => {
+    const ground = floor('g', { x: 0, y: 0 }, [[7, 0, 7, 9]], 16, 9) // a wider ground floor (a shop front)
+    const upper = floor('f1', { x: 1, y: 1 }, [[2, 0, 2, 9]])
+    const top = floor('f2', { x: -2, y: 0.5 }, [[2, 0, 2, 9], [9, 3, 12, 3]])
+    // (a plan drawn another way up — turned 30°: nothing of it lies along the others' walls)
+    const other: Unit = { ...box('o', 6, 4), vertices: box('o', 6, 4).vertices.map((v) => ({ ...v, x: v.x * Math.cos(0.52) - v.y * Math.sin(0.52), y: v.x * Math.sin(0.52) + v.y * Math.cos(0.52) })) }
+    const st = stackFloors([{ unit: ground }, { unit: upper }, { unit: top }, { unit: other }])
+    expect(st[0]).toMatchObject({ offset: { x: 0, y: 0 } })
+    expect(st[1]!.offset.x).toBeCloseTo(-1, 3)
+    expect(st[1]!.offset.y).toBeCloseTo(-1, 3)
+    expect(st[2]!.offset.x).toBeCloseTo(2, 3)
+    expect(st[2]!.offset.y).toBeCloseTo(-0.5, 3)
+    expect(st[2]!.on).toBe(1) // on floor 1, which it shares most with
+    expect(st[3]).toBeNull()
+    // the set added to a project that has its ground floor already (at its own place in the building): the set's floors stack on it
+    const added = stackFloors([{ unit: ground, at: { x: 5, y: 5 } }, { unit: upper }])
+    expect(added[0]!.offset).toEqual({ x: 5, y: 5 })
+    expect(added[1]!.offset.x).toBeCloseTo(4, 3)
+    expect(added[1]!.offset.y).toBeCloseTo(4, 3)
+  })
+  test('a drawing put on its floors at its place: a floor of flats and a level both carry it, the tower draws it there', () => {
+    const p0 = newProject('p', 'House', { basements: 0, floors: 2, rooftop: true })
+    const g = box('g'), f = box('f'), r = box('r')
+    const p = setSlot(setSlot(setSlot(p0, 0, g), 1, f, { x: 1.5, y: -2 }), 'R', r, { x: 0.5, y: 0.25 })
+    expect(p.flats.f.offset).toEqual({ x: 1.5, y: -2 })
+    expect(p.levels!.find((l) => l.kind === 'rooftop')!.offset).toEqual({ x: 0.5, y: 0.25 })
+    const t = projectTower(p)
+    expect(t.FLATS.f.offset).toEqual({ x: 1.5, y: -2 })
+    expect(t.FLATS.r.offset).toEqual({ x: 0.5, y: 0.25 })
+    // the same drawing on floor 2 too keeps the place it was given
+    expect(setSlot(p, 2, f).flats.f.offset).toEqual({ x: 1.5, y: -2 })
   })
 })

@@ -824,7 +824,9 @@ export class Look {
       if (!(w.heightM > 0) || !carriesRoof(w, s, unit, rooms, this.topY) || (s.some((r) => r && core.isOutdoor(r.kind)) && s.every(open))) return []
       return s.some((r) => r) && s.every((r) => !r || core.isOutdoor(r.kind)) ? underCover(w).map(([u0, u1]) => box(w, 0, u0, u1)) : [wallParts[i]]
     })
-    const slabGeo = mergeGeometries([...underFloors, ...footParts])
+    // (a drawing with nothing traced yet — a set's floor still a picture to trace — has no parts: an empty slab, not a crash)
+    const merged = (gs: THREE.BufferGeometry[]) => (gs.length ? mergeGeometries(gs) : new THREE.BufferGeometry())
+    const slabGeo = merged([...underFloors, ...footParts])
     // the roof's room undersides (single planes the shadow map stores) sit ROOF_LIFT higher than its wall boxes: 5 mm over
     // the wall tops, the shadow biases reached past them and lit the top few mm of every wall facing the sun — a thin sun
     // streak at the ceiling (founder, 2026-10-04). The boxes still close the wall tops, so no low sun gets in between.
@@ -834,7 +836,7 @@ export class Look {
     const over = cover.map((poly) => coverSlabGeometry(poly, SLAB_M))
     // (a room under the cover: the cover's own plane is its roof — two coplanar planes fought in stripes)
     const lifted = [...roomParts.filter((_, i) => !openToSky(rooms[i], cover) && !cover.some((c) => core.pointInPolygon(rooms[i].centroid, c))), ...over].map((g) => g.clone().translate(0, ROOF_LIFT, 0))
-    const roofGeo = mergeGeometries([...lifted, ...roofWalls])
+    const roofGeo = merged([...lifted, ...roofWalls])
     ;[...roomParts, ...underFloors, ...wallParts, ...footParts, ...lifted, ...over, ...roofWalls].forEach((g) => g.dispose())
     const slab = new THREE.Mesh(slabGeo, materialFor(EXTERIOR_PLASTER))
     slab.castShadow = slab.receiveShadow = true

@@ -1198,12 +1198,27 @@ swings make a plan, a ruled table a schedule, a page of words a title page). A p
 side by side, five kitchen elevations) is split into them, each its own row with its own picture and scale. Reading takes
 a few seconds (a 25-page set about 4 s); the line "Reading page 7 of 25…" counts.
 
+**A folder of DXF or SVG files is a set too** — drop the folder, its .zip, or the files picked together (PDFs may be among
+them). Each file is one drawing, read as a file dropped alone is (your layer and unit choices hold), its kind and floor from
+the biggest title written in it ("Internal walls, ground floor", "East Elevation") or from its name, with the short names
+architects give files: `GF` ground, `1F` / `2F` floor 1 / 2, `RF` roof, `TYP` typical, `B1` basement, `E-1` an elevation,
+`S-2` a section, a sheet number like `A-201`. Nothing said: a plan when its lines make two or more rooms, else Other. Its
+picture in the list is drawn from its lines; a kept elevation keeps that picture. A drawing saved both ways in the folder
+("Ground.dxf" and "Ground.pdf") is read once, from the DXF; a DWG beside its DXF is left out. Of two plans of one floor
+(the external walls only, and the whole floor) the one with more rooms becomes the floor's drawing. The files of one CAD
+model share its coordinates, so the floors stand over each other exactly as drawn. One DXF or SVG dropped alone opens as
+before.
+
 The list, grouped by kind — each row: a tick, the drawing's picture, its title as printed with "Page 7 · A1.3 · 1 : 48"
 under it, its kind, and its floors (a plan), side (an elevation) or mark (a section):
 - **Plans** — each ticked one becomes the drawing of its floors. The floors come from the title: G (ground), B1, 2, 2–8,
   Roof. A set with no ground-floor plan counts its 1st floor as the ground floor (American and Chilean sets do; a line
   under Plans says so). Of two plans for one floor the first is ticked; a reflected ceiling, electrical, plumbing or
-  foundation plan never is. A typical floor with no numbers goes on every floor left up to the highest one named. A plan
+  foundation plan never is. A typical floor with no numbers goes on every floor left up to the highest one named — or up
+  to the top floor the set itself names when a page says how tall the building is ("2B+G+12", "B+G+M+12", "G+9",
+  "10 Storied", "Floors: 09": a line under Plans says which page said it; a storey count includes the ground, so
+  "10 Storied" is the ground and 9 floors). "TYPICAL FLOOR PLAN 3RD–8TH" and the Spanish "PLANTA TIPO" are read too. A
+  house of a ground floor and a "2ND FLOOR" (no 1st) counts its ground as the 1st: its upper floor is floor 1. A plan
   whose title names no floor is left out when the others name theirs; when none does, the first goes on the ground and
   you type the others' floors (a set whose words are drawn as lines).
 - **Elevations, Sections, Site, Schedules, Interior elevations** — ticked: kept with the project as pictures.
@@ -1219,12 +1234,36 @@ to open that one drawing alone, as before (its lines when they make a plan, else
 **Build the project** (the bottom line says what it will make: "3 drawings on G, 1, Roof · 20 kept · 10 left out"): a new
 project named after the file, its floors filled in from the floors read — basements, ground, floors, rooftop — each ticked
 plan the drawing of its floors (named Floor plan A, Ground floor, Rooftop… as always), read from its own lines when they
-make a plan, else its picture to trace, already scaled when the sheet prints its scale. The border, the title block and a
-notes column beside the drawing are left out of what is read. The first drawing opens and the floor list stays on the
+make a plan, else its picture to trace, already scaled when the sheet's scale is known (printed under the drawing, or
+three of its dimensions agree). The border, the title block and a notes column beside the drawing are left out of what is
+read, and so are the sheet's own symbols: the elevation and section markers round the plan (a circle with its number and
+its triangle), grid bubbles, door and window tags, north arrows, the stair's UP / DN arrow and every note's arrow, and the
+zigzag break line where the plan cuts through a stair. A door drawn open at 45° comes in as a door, hinged where it is
+drawn. **The floors stand over each other:** the lowest drawn floor is where the building stands, and every other floor
+read at a known scale is put on the floor it shares the most walls with (outer walls, the stair and lift shafts,
+columns) — the message says how many were stacked. A floor that is a picture to trace is lined up the same way, so what
+you trace on it lands over the floor below. A floor that shares too little with the others (a roof plan of slopes, a
+brochure page with no scale) stays where its own drawing puts it. The first drawing opens and the floor list stays on the
 right; at its bottom, **Kept from the drawing set** lists every kept drawing ("Elevation · south — FRONT ELEVATION
 (SOUTH)"): click one to see it big (× or Esc closes). Nothing is traced on them: they wait for the next stages (floor
 heights from the sections, windows from the elevations). Their pictures are kept with the project's other pictures (in
 this browser, and online for your company when signed in).
+
+**A floor drawn in parts joins:** two drawings on one page for the same floor whose titles differ only by the part
+("GROUND FLOOR PLAN (LEFT PART)" / "(RIGHT PART)", "PART A" / "PART B") are one drawing, as two halves under one title
+already were; two titled apart ("Ground Floor" and "Ground Floor – Enhanced Accessible") stay two ways to build it. A
+brochure that prints a page a flat for the same floors ("TYPE-A", "TYPE-B" … each "LEVEL 1 to 11") asks in one row at the
+top of Plans: tick it to put those flats **side by side on one floor drawing** (each named by its page; their own lines when
+every one makes a plan, else one picture of them all to trace) — nothing on the pages says where each flat stands, so you
+move each into place in the Studio; left unticked, only the first flat goes on those floors, as before.
+
+**With a project open,** Build the project asks first: "Add the set's floors (G, 1, 2) to the project open now? Or make
+a new project" — **Add to this project**, **New project** or **Cancel** (Esc). Added, the set's floors stack on the
+project's own drawn floors, and its shape grows to hold them (more floors, a rooftop). A floor that already has a drawing
+is asked about once more, naming the floors: **Replace** puts the set's drawing there (the old one stays in the project,
+on no floor, under Floor plans); Cancel keeps yours (the set's drawing for that floor then waits on no floor). A drawing
+open in no project is replaced only after a yes. Every build's message has **Undo**: the projects as they were, the
+drawing you had open opened again, the build's pictures gone.
 
 What it reads today, set by set: [SETS_SCOREBOARD.md](SETS_SCOREBOARD.md).
 

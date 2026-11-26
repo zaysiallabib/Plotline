@@ -20,7 +20,7 @@
  *
  * Frame: the page as it is shown (pdf.ts turns a rotated page), y up, PDF points. Nothing here knows pdf.js.
  */
-import type { Pt } from '../core'
+import { flatTypeOf, type Pt } from '../core'
 import type { ArcPrim, Seg } from './plan2d'
 import { printedScale } from './plan2d'
 
@@ -77,12 +77,23 @@ export interface View {
   box: Box
   /** what told its kind */
   by: 'words' | 'number' | 'shape'
+  /** the flat a page of one plan draws, as it prints it ("TYPE-A", "TYPE-C/G/K"): a brochure's page a flat */
+  flat?: string
 }
 
 export interface SheetRead {
   views: View[]
   /** the sheet number in the title block (A2.5, M-501), when read */
   number?: string
+  /** how tall the building is, when the page says it (storeysOf) */
+  storeys?: Storeys
+}
+
+/** how tall the building is: basements, floors over the ground (a mezzanine counted), and the words that said it */
+export interface Storeys {
+  basements: number
+  floors: number
+  words: string
 }
 
 // ---------- words ----------
@@ -140,7 +151,7 @@ export function levelOf(raw: string): Level | null {
   const t = norm(raw)
   const at: Floor[] = []
   let above = false
-  const typical = /\bTYP(?:ICAL|\.)?\b|\bTIPIC[OA]\b|\bREGELGESCHOSS\b|\bETAGE COURANT\b/.test(t)
+  const typical = /\bTYP(?:ICAL|\.)?\b|\bTIPIC[OA]\b|\b(?:PLANTA|PISO|PAVIMENTO|NIVEL) TIPO\b(?!\s+[A-Z0-9]\b)|\bREGELGESCHOSS\b|\bETAGE COURANT\b/.test(t)
   // basements
   for (const m of t.matchAll(/\b(?:BASEMENT|CELLAR|SOTANO|SUBSUELO|KELDER|SEMINTERRATO)\b\s*[-:]?\s*(\d{1,2})?|\bB-?(\d)\b|\b(\d)?\s*\.?\s*(?:UG|UNTERGESCHOSS)\b|\bSOUS[- ]SOL\s*(\d)?|\bR\s*-\s*(\d)\b|\bLEVEL\s+-\s?(\d)\b|\bLOWER GROUND\b/g)) {
     const n = Number(m[1] ?? m[2] ?? m[3] ?? m[4] ?? m[5] ?? m[6] ?? 1)
@@ -164,6 +175,8 @@ export function levelOf(raw: string): Level | null {
       at.push(...floorList(m[1].replace(/(?:LEVEL|FLOOR|L)\s*[-:.]?\s*/g, '')))
     // "5/7/9/11 FLOOR PLAN", "6/8/10/12/14/16/18" — a slashed run of numbers is a list of floors
     for (const m of t.matchAll(/\b(\d{1,2}(?:\s*\/\s*\d{1,2}){2,})\b/g)) at.push(...floorList(m[1]))
+    // a typical floor's floors as a run of ordinals of their own: "TYPICAL FLOOR PLAN 3RD–8TH", "(2ND-9TH)", "(1ST TO 13TH)"
+    if (typical) for (const m of t.matchAll(/\b(\d{1,3}(?:ST|ND|RD|TH)(?:\s*(?:,|&|\/|AND|-|–|TO)\s*\d{1,3}(?:ST|ND|RD|TH))+)\b/g)) at.push(...floorList(m[1]))
     // "PRESENTATION PLAN- 2A, 3A, 5A": flats named by floor and letter
     const flats = [...t.matchAll(/\b(\d{1,2})[A-H]\b/g)].map((m) => Number(m[1]))
     if (flats.length >= 2 && /\bPLAN\b/.test(t)) at.push(...flats)
@@ -173,6 +186,26 @@ export function levelOf(raw: string): Level | null {
   return { at: uniq, ...(typical ? { typical } : {}), ...(above ? { above } : {}) }
 }
 const rankOf = (f: Floor): number => (f === 'R' ? 1000 : f === 'attic' ? 999 : f === 'mezz' ? 0.5 : f)
+
+/**
+ * How tall the building is, as a brochure or a cover sheet says it: "2B+G+12" (two basements, the ground, 12 floors over
+ * it), "B+G+M+12" (a mezzanine is floor 1: 13 over the ground), "G+9", "Basement + Ground Floor + 9"; "10 STORIED",
+ * "Number of Storied : 10", "Floors: 09", "14-STOREY" count the ground as a storey (Dhaka's way: "B + G + 9 (10 storied)"),
+ * so 9 over it. Null when the words say nothing of it.
+ */
+export function storeysOf(raw: string): Storeys | null {
+  const t = norm(raw)
+  const words = raw.trim().replace(/\s+/g, ' ')
+  const bg = /\b(\d)?\s*B\s*\+\s*G\s*(\+\s*M\s*)?\+\s*(\d{1,2})\b/.exec(t)
+  if (bg) return { basements: Number(bg[1] ?? 1), floors: Number(bg[3]) + (bg[2] ? 1 : 0), words }
+  const named = /\bBASEMENTS?\s*\+\s*GROUND(?:\s+FLOOR)?\s*\+\s*(\d{1,2})\b/.exec(t)
+  if (named) return { basements: 1, floors: Number(named[1]), words }
+  const g = /(?:^|[\s(])G\s*\+\s*(\d{1,2})\b/.exec(t)
+  if (g) return { basements: 0, floors: Number(g[1]), words }
+  const n = /\b(\d{1,2})\s*-?\s*(?:STORIED|STOREYED|STOREYS?|STORIES|STORY)\b/.exec(t) ?? /\b(?:STORIED|NO\.? OF (?:FLOORS|STOREYS|STORIES)|FLOORS)\s*:\s*(\d{1,2})\b/.exec(t)
+  if (n && Number(n[1]) >= 2) return { basements: 0, floors: Number(n[1]) - 1, words }
+  return null
+}
 
 /** a level mark on an elevation or a section ("1ST FLOOR (FINISH)", "F.F.L. +3.00", "T.O. SLAB"): never a title */
 const LEVEL_MARK = /\(FINISH\)|\bF\.?F\.?L\b|\bT\.O\.|\bB\.O\.|\bEL\.|\bELEV\.\s*[+-]?\d|[+±]\s*\d+[.,]\d|\bCEILING \(/
@@ -184,7 +217,7 @@ const SCHEDULE = /\bSCHEDULES?\b|\bPLANILLAS?\b|\bCUADRO DE\b|\b(?:TUR|FENSTER|R
 const ELEV = /\bELEVATIONS?\b|\bELEVACION(?:ES)?\b|\bALZADOS?\b|\bFACHADAS?\b|\bANSICHT(?:EN)?\b|\b(?:NORD|SUD|SUED|OST|WEST)ANSICHT\b|\bFASSADEN?\b|\bFACADES?\b|\bPROSPETT[OI]\b|\bAANZICHT(?:EN)?\b|\bGEVELS?\b/
 const INTERIOR = /\bINTERIOR\b|\bINTERNAL\b|\bKITCHEN\b|\bBATH(?:ROOM)?\b|\bW\.?C\.?\b|\bTOILET\b|\bWATER CLOSET\b|\bPOWDER\b|\bLAUNDRY\b|\bUTILITY\b|\bCLOSET\b|\bPANTRY\b|\bCABINET|\bVANITY\b|\bSHOWER\b|\bENSUITE\b|\bBEDROOM\b|\bLIVING\b|\bDINING\b|\bFIREPLACE\b|\bMILLWORK\b|\bCOCINA\b|\bBANO\b|\bKUCHE\b/
 const SECTION = /\bSECTIONS?\b|\bCROSS[- ]SECTION\b|\bCORTES?\b|\bSECCION(?:ES)?\b|\bSCHNITT(?:E)?\b|\bCOUPES?\b|\bDOORSNEDE\b|\bSEZION[EI]\b/
-const SITE = /\bSITE (?:PLAN|SURVEY|LAYOUT|MAP|ANALYSIS)\b|^SITE$|\bLOCATION (?:PLAN|MAP)\b|\bVICINITY MAP\b|\bKEY (?:PLAN|MAP)\b|\bPLOT PLAN\b|\bMASTER ?PLAN\b|\bLANDSCAPE PLAN\b|\bLAGEPLAN\b|\bPLAN DE (?:MASSE|SITUATION)\b|\b(?:PLANTA|PLANO) DE (?:UBICACION|EMPLAZAMIENTO|SITUACION|CONJUNTO)\b|\bEMPLAZAMIENTO\b|\bUBICACION\b|\bPLANIMETRIA\b|\bSITUATIE\b/
+const SITE = /\bSITE ?(?:PLAN|SURVEY|LAYOUT|MAP|ANALYSIS)\b|^SITE$|\bLOCATION (?:PLAN|MAP)\b|\bVICINITY MAP\b|\bKEY (?:PLAN|MAP)\b|\bPLOT PLAN\b|\bMASTER ?PLAN\b|\bLANDSCAPE PLAN\b|\bLAGEPLAN\b|\bPLAN DE (?:MASSE|SITUATION)\b|\b(?:PLANTA|PLANO) DE (?:UBICACION|EMPLAZAMIENTO|SITUACION|CONJUNTO)\b|\bEMPLAZAMIENTO\b|\bUBICACION\b|\bPLANIMETRIA\b|\bSITUATIE\b/
 const PLAN = /(?<![-\w])PLANS?\b|\bPLANTAS?\b|\bGRUNDRISS(?:E)?\b|\bPIANTA\b|\bPLATTEGROND\b|\bLAYOUT\b|\bFLOOR ?PLAN\b/
 const USE: [RegExp, string][] = [
   [/\bREFLECTED\b|\bCEILING\b|\bR\.?C\.?P\b/, 'ceiling'],
@@ -241,6 +274,39 @@ export function kindOfTitle(raw: string): Omit<View, 'box' | 'by' | 'scale'> | n
   if (NOTES.test(t)) return { kind: 'title', title }
   return null
 }
+
+/**
+ * What a file of a set is (session 31 levels: a folder of DXFs / SVGs is a set — one drawing a file): its biggest title
+ * inside ("Internal walls, first floor", "East Elevation") or its file name with the short codes architects name files by
+ * ("GF", "1F", "RF", "TYP", "B1", "E-1" an elevation, "S-2" a section, a sheet number "A-101"), whichever names more; a
+ * plan's floors from either. Neither: a plan when its lines make two or more closed rooms, else other. `texts`: the file's
+ * words biggest first (ImportResult.texts).
+ */
+export function fileView(name: string, texts: { text: string }[], rooms = 0): Pick<View, 'kind' | 'title' | 'level' | 'facade' | 'mark' | 'use' | 'by'> {
+  const base = name.replace(/\.[^.]+$/, '')
+  const said = norm(base.replace(/[_.]+/g, ' ').replace(/([a-z])([A-Z])/g, '$1 $2'))
+    .replace(/\bG\.?F\b/g, 'GROUND FLOOR')
+    .replace(/\b(\d{1,2})\s?F\b/g, '$1 FLOOR')
+    .replace(/\bR\.?F\b/g, 'ROOF')
+    .replace(/\bTYP\b/g, 'TYPICAL FLOOR')
+    .replace(/^E\s?-?\s?(\d{1,2})$/, 'ELEVATION $1')
+    .replace(/^S\s?-?\s?(\d{1,2})$/, 'SECTION $1')
+  const byName = kindOfTitle(said) ?? (levelOf(said) ? { kind: 'plan' as const, title: base, level: levelOf(said)! } : null)
+  const t = texts.map((x) => x.text).find((x) => !notATitle(x) && kindOfTitle(x) && kindOfTitle(x)!.kind !== 'title')
+  const byText = t ? kindOfTitle(t) : null
+  const byNo = SHEET_NO.test(said.replace(/\s+/g, '')) ? kindOfNumber(said.replace(/\s+/g, '')) : null
+  // the inside's title when it names a floor or the name names nothing; else the name, with the inside's floor or side
+  const pick = byText && (byText.level || byText.facade || !byName) ? byText : byName ? { ...byName, ...(byText?.kind === byName.kind && byText.level && !byName.level ? { level: byText.level } : {}) } : null
+  if (pick) {
+    const facade = pick.kind === 'elevation' && !pick.facade ? (kindOfTitle(`${said} ELEVATION`)?.facade ?? byText?.facade) : pick.facade
+    return { ...pick, title: pick === byText ? t! : base, ...(facade ? { facade } : {}), by: 'words' }
+  }
+  if (byNo) return { kind: byNo, title: base, by: 'number' }
+  return { kind: rooms >= 2 ? 'plan' : 'other', title: base, by: 'shape' }
+}
+
+/** the words that name a part of a floor drawn in halves: "(LEFT PART)", "PART B", "EAST WING", "SHEET 2 OF 2" */
+const PART = /\b(?:(?:LEFT|RIGHT|NORTH|SOUTH|EAST|WEST|UPPER|LOWER)\s+(?:PART|HALF|SIDE|WING|PORTION)|(?:PART|HALF|PORTION|SECTOR|ZONE)\s*[-:]?\s*[A-Z0-9]{1,2}|MATCH\s*LINE|SHEET\s*\d+\s*OF\s*\d+)\b/g
 
 /** a note, a sentence, a dimension: never a view's title */
 const notATitle = (s: string): boolean => {
@@ -398,9 +464,19 @@ interface Title {
 
 /**
  * Every view on a page: its kind (and level / facade / mark), its scale and its frame. One view (the whole page) when the
- * page has no title or one; a cover sheet is one view of kind 'title' whatever small plans it shows.
+ * page has no title or one; a cover sheet is one view of kind 'title' whatever small plans it shows. With how tall the
+ * building is when the page says so (storeysOf: a brochure's "2B+G+12", a cover's "10 STORIED").
  */
 export function readSheet(page: SheetPage): SheetRead {
+  const r = viewsOf(page)
+  const storeys = page.texts.map((t) => storeysOf(t.text)).find((s) => s)
+  // a page of one plan that names its flat in big letters ("TYPE-A" over "TOWER-1 LEVEL 1 to 11"): a flat's page
+  const plans = r.views.filter((v) => v.kind === 'plan')
+  const flat = plans.length === 1 ? [...page.texts].sort((a, b) => b.height - a.height).find((t) => t.text.trim().length <= 24 && flatTypeOf({ name: t.text, kind: 'other' })) : undefined
+  const views = flat ? r.views.map((v) => (v === plans[0] ? { ...v, flat: flat.text.trim() } : v)) : r.views
+  return { ...r, views, ...(storeys ? { storeys } : {}) }
+}
+function viewsOf(page: SheetPage): SheetRead {
   const { texts, segs, arcs, box } = page
   const number = sheetNumberOf(texts) ?? undefined
   // stacked lines of one heading ("GROUND" over "FLOOR PLAN") read as one
@@ -574,8 +650,10 @@ function split(page: SheetPage, titles: Title[], drawings: Title[], scaleNear: (
     const box = { x0: Math.max(f.x0, inner.x0), y0: Math.max(f.y0, inner.y0), x1: Math.min(f.x1, inner.x1), y1: Math.min(f.y1, inner.y1) }
     return detailByScale({ ...c.view, box: box.x1 > box.x0 && box.y1 > box.y0 ? box : f, by: 'words', ...(s ? { scale: s } : {}) })
   })
-  // one floor drawn as two halves (its two flats, each under the same "FLOOR : 2") is one view: the whole floor
-  const key = (v: View) => (v.kind === 'plan' && v.level ? norm(v.title) : null)
+  // one floor drawn as two halves (its two flats, each under the same "FLOOR : 2"; "GROUND FLOOR PLAN (LEFT PART)" beside its
+  // "(RIGHT PART)") is one view: the whole floor. Two plans of one floor titled apart otherwise ("Ground Floor", "Ground Floor –
+  // Enhanced Accessible") are two ways to build it: two views
+  const key = (v: View) => (v.kind === 'plan' && v.level ? `${v.level.at.join()} ${norm(v.title).replace(PART, ' ').replace(/[()[\]–-]+/g, ' ').replace(/\s+/g, ' ').trim()}` : null)
   const out: View[] = []
   for (const v of views) {
     const same = key(v) && out.find((o) => key(o) === key(v) && o.use === v.use)
@@ -596,13 +674,17 @@ export type SetSlot = number | 'R'
  * up in its words: "1. OG", "R+1") numbers its upper floors from 1; a set that does not starts at 1 on the ground (the US
  * "1ST FLOOR", the Chilean "PRIMER NIVEL", Dhaka's "Level-01" lobby): its floor n goes on project floor n − 1. A mezzanine
  * takes floor 1 when nothing else does; an attic the floor over the highest; a typical floor with no numbers every floor
- * from 1 up to the highest floor the set names (only floor 1 when it names none). `levels[i]` null: nothing named.
+ * from 1 up to the highest floor the set names, or `floors` when the set says how tall the building is (storeysOf: "G+9"),
+ * else only floor 1. `levels[i]` null: nothing named.
  */
-export function slotsFor(levels: (Level | null | undefined)[]): SetSlot[][] {
+export function slotsFor(levels: (Level | null | undefined)[], floors = 0): SetSlot[][] {
   const all = levels.filter((l): l is Level => !!l)
   const nums = all.flatMap((l) => l.at.filter((f): f is number => typeof f === 'number' && f >= 1))
   const ground = all.some((l) => l.at.includes(0) || l.above)
-  const shift = !ground && nums.length > 0 && Math.min(...nums) === 1 ? 1 : 0
+  // (a house of a ground floor and a "2ND FLOOR" over it, no 1st, no mezzanine and nothing higher — Canada's fourplex —
+  // counts its ground floor as the 1st: its 2nd floor is floor 1)
+  const house = ground && !all.some((l) => l.above || l.at.includes('mezz')) && nums.length > 0 && nums.every((n) => n === 2)
+  const shift = (!ground && nums.length > 0 && Math.min(...nums) === 1) || house ? 1 : 0
   const placed = (f: number) => (f >= 1 ? f - shift : f)
   const top = Math.max(0, ...nums.map(placed))
   const taken = new Set(all.flatMap((l) => l.at.filter((f): f is number => typeof f === 'number').map(placed)))
@@ -618,7 +700,7 @@ export function slotsFor(levels: (Level | null | undefined)[]): SetSlot[][] {
     if (l.typical && !l.at.some((f) => typeof f === 'number' && f >= 1)) {
       let lo = 1
       while (taken.has(lo)) lo++
-      for (let k = lo; k <= Math.max(lo, top); k++) if (!taken.has(k)) out.push(k)
+      for (let k = lo; k <= Math.max(lo, top, floors); k++) if (!taken.has(k)) out.push(k)
     }
     return [...new Set(out)]
   })
@@ -665,6 +747,10 @@ export interface SetPick {
   slots?: SetSlot[] | null
   /** ticked or not by the person */
   tick?: boolean | null
+  /** its closed rooms, when it was read already (a DXF / SVG of the set): of two plans for one floor the richer is ticked */
+  rooms?: number
+  /** the flat its page draws (View.flat) */
+  flat?: string
 }
 /** the kinds kept with the project as pictures when the set is built (plans become drawings; details, title pages and the rest are left out) */
 export const KEPT: SheetKind[] = ['elevation', 'section', 'site', 'schedule', 'interior']
@@ -673,23 +759,38 @@ export const KEPT: SheetKind[] = ['elevation', 'section', 'site', 'schedule', 'i
  * The set as it will be built: each plan's floors (as typed, else from its title through slotsFor, else the lowest floor
  * still free) and every view's tick — a plan is ticked when it is the first floor plan (not a ceiling, services or
  * foundation plan) for one of its floors, so a floor gets one drawing; elevations, sections, the site, schedules and
- * interior elevations are kept; the rest is left out. The person's own tick always stands.
+ * interior elevations are kept; the rest is left out. The person's own tick always stands. `floors`: how many floors over
+ * the ground the set says the building has (storeysOf), for a typical floor that names none. `joinFlats`: plans of other flats
+ * for exactly the same floors (a brochure's page a flat: "TYPE-A", "TYPE-B" … all "LEVEL 1 to 11") join the first one's
+ * floor drawing (`with`: its index) instead of being left out.
  */
-export function setChoices(picks: SetPick[]): { slots: SetSlot[]; tick: boolean }[] {
-  const auto = slotsFor(picks.map((p) => (p.kind === 'plan' && !p.slots ? p.level : null)))
+export function setChoices(picks: SetPick[], floors = 0, joinFlats = false): { slots: SetSlot[]; tick: boolean; with?: number }[] {
+  const auto = slotsFor(
+    picks.map((p) => (p.kind === 'plan' && !p.slots ? p.level : null)),
+    floors,
+  )
   const claimed = new Set<SetSlot>()
   // a plan naming no floor: in a set whose plans name theirs it is no floor's plan (a page read by its shape alone, a
   // diagram); in a set where none does, only the first is ticked (on the ground) — the person types the others' floors
   const named = picks.some((p, i) => p.kind === 'plan' && (p.slots ?? auto[i]).length)
   let first = true
-  const out = picks.map((p, i) => {
-    if (p.kind !== 'plan') return { slots: [] as SetSlot[], tick: p.tick ?? KEPT.includes(p.kind) }
+  const out: { slots: SetSlot[]; tick: boolean; with?: number }[] = []
+  // (in the set's order, but a plan read already with more rooms first: "Internal walls, first floor" before "External walls")
+  const order = picks.map((_, i) => i).sort((a, b) => (picks[b].rooms ?? 0) - (picks[a].rooms ?? 0) || a - b)
+  for (const i of order) {
+    const p = picks[i]
+    if (p.kind !== 'plan') {
+      out[i] = { slots: [], tick: p.tick ?? KEPT.includes(p.kind) }
+      continue
+    }
     const slots = p.slots ?? auto[i]
     const tick = p.tick ?? (!p.use && (slots.length ? slots.some((s) => !claimed.has(s)) : !named && first))
     if (!slots.length && tick && p.tick == null) first = false
     if (tick) for (const s of slots) claimed.add(s)
-    return { slots, tick }
-  })
+    // another flat's page for the very same floors: one floor drawing with the first (when asked)
+    const lead = joinFlats && !tick && p.tick == null && p.flat && slots.length ? order.slice(0, order.indexOf(i)).find((j) => out[j]?.tick && picks[j].flat && picks[j].flat !== p.flat && out[j].with === undefined && out[j].slots.join() === slots.join()) : undefined
+    out[i] = lead !== undefined ? { slots, tick: true, with: lead } : { slots, tick }
+  }
   // a ticked plan with no floor named goes on the lowest floor still free, from the ground up
   for (const o of out)
     if (o.tick && !o.slots.length && picks[out.indexOf(o)].kind === 'plan') {
