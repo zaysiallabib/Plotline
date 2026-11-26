@@ -4,7 +4,7 @@
  */
 import { beforeEach, expect, test, vi } from 'vitest'
 import type { Gray, TextItem } from './types'
-import { capacityCores, prepare } from './solve'
+import { capacityCores, prepare, solveTraces } from './solve'
 import { deriveRooms } from '../core'
 
 const control = vi.hoisted(() => ({ replies: [] as string[], late: null as TextItem[] | null }))
@@ -61,4 +61,17 @@ test.each([0, Math.PI / 5])('two small sized rooms side by side, each printed "8
   expect(capacityCores(unit, rooms, { items: items.slice(0, 2) }, 30)).toEqual([])
   expect(capacityCores(unit, rooms, { items: items.filter((it) => it !== items[1]) }, 30)).toEqual([])
   expect(capacityCores(unit, rooms, { items: [...items, { ...item(1, 'BEDROOM'), kind: 'room', roomKind: 'bed' }] }, 30)).toEqual([])
+})
+
+test('an OPEN KITCHEN printed with its work-zone size inside a living room: the living names the room; a plain KITCHEN still names it', () => {
+  const K = 30, P = (x: number, y: number) => ({ x: 20 + x * K, y: 20 + y * K })
+  const points = [P(0, 0), P(8, 0), P(8, 4), P(0, 4)]
+  const walls = points.map((a, i) => ({ a, b: points[(i + 1) % 4], thicknessPx: 6, conf: 1 }))
+  const gray = blank()
+  for (const w of walls) for (let y = Math.round(Math.min(w.a.y, w.b.y) - 3); y <= Math.max(w.a.y, w.b.y) + 3; y++) for (let x = Math.round(Math.min(w.a.x, w.b.x) - 3); x <= Math.max(w.a.x, w.b.x) + 3; x++) gray.data[y * gray.width + x] = 0
+  const living: TextItem = { text: 'LIVING', kind: 'room', roomKind: 'living', box: { ...P(5, 2), w: 12, h: 8 }, conf: 0.9, source: 'ocr' }
+  const kitchen: TextItem = { ...living, text: 'OPEN KITCHEN', roomKind: 'kitchen', box: { ...P(2, 2), w: 12, h: 8 }, dims: { aM: 3, bM: 1.2 } }
+  const run = (text: string) => solveTraces(gray, { walls: { walls, openings: [] }, text: { items: [living, { ...kitchen, text }] } }, { pxPerM: K }).unit.roomLabels.filter((l) => l.kind !== 'other').map((l) => l.name)
+  expect(run('OPEN KITCHEN')).toContain('Living')
+  expect(run('KITCHEN')).toContain('Kitchen')
 })

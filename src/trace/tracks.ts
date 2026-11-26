@@ -822,19 +822,18 @@ export function classifyGap(
   if (door) return door
   // glass colour along the gap, inside the wall's band
   if (glass) {
-    let n = 0, hit = 0
-    const r = Math.ceil(th / 2) + 1
-    for (let t = 0.1 * gap; t <= 0.9 * gap; t += 1) {
-      n++
-      for (let o = -r; o <= r; o++) {
+    // a pane may sit just inside the wall's face (up to 0.1 m off its centre), but ONE straight offset must carry the
+    // colour: blue scattered across the band is no pane (from Maheer's Plotline 2.0)
+    const r = Math.ceil(th / 2) + Math.max(1, Math.round(0.1 * pxPerM))
+    for (let o = -r; o <= r; o++) {
+      let n = 0, hit = 0
+      for (let t = 0.1 * gap; t <= 0.9 * gap; t += 1) {
+        n++
         const x = Math.round(a.x + ux * t + nx * o), y = Math.round(a.y + uy * t + ny * o)
-        if (x >= 0 && y >= 0 && x < W && y < H && glass[y * W + x]) {
-          hit++
-          break
-        }
+        if (x >= 0 && y >= 0 && x < W && y < H && glass[y * W + x]) hit++
       }
+      if (n && hit / n >= 0.6) return { kind: 'window', conf: 0.7 }
     }
-    if (n && hit / n >= 0.6) return { kind: 'window', conf: 0.7 }
   }
   // (s27: a glass band — a light frame band and its pane line drawn as one, the photo-render brochures' windows — counts
   // as the walls.ts and close.ts glazing rules count it — only where the picture is traced at its own size (the bands flag): on a

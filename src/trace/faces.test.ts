@@ -1,6 +1,7 @@
 import { describe, expect, test } from 'vitest'
-import { axisLines, thinFaces } from './faces'
+import { axisLines, glazingFrames, thinFaces } from './faces'
 import type { Gray, OpeningGuess, Px, WallSeg } from './types'
+import { glassMask } from './solve'
 
 const K = 50 // px per m
 const TH = 6 // wall thickness, px
@@ -24,6 +25,114 @@ function pen(g: Gray, a: Px, b: Px, grey = 150, on = 1, off = 0): void {
 /** a 4 × 4 m room (100 … 300 px), a 1.2 × 2 m shaft on its right between two wall stubs, open to the right */
 const box = [W(100, 100, 300, 100), W(300, 100, 300, 300), W(300, 300, 100, 300), W(100, 300, 100, 100)]
 const stubs = [W(300, 150, 360, 150), W(300, 250, 360, 250)]
+
+describe('coloured glazing on dark floors', () => {
+  test('partial readings of one pane share a junction axis; disconnected strokes keep their own axes', () => {
+    const common={horiz:true,th:1,fill:1,glass:true,colourGlass:true}
+    const lines=[{...common,c:115.5,u0:0,u1:200},{...common,c:116,u0:140,u1:200},{...common,c:116,u0:250,u1:310}]
+    const result=glazingFrames(lines,K)
+    expect(result.filter(l=>l.u0<201).map(l=>l.c)).toEqual([115.5,115.5])
+    expect(result.find(l=>l.u0===250)?.c).toBe(116)
+    // No colour evidence: partial grey lines alone do not get this interpretation.
+    expect(glazingFrames(lines.map(l=>({...l,colourGlass:false})),K).filter(l=>l.u0<201).map(l=>l.c)).toEqual([115.5,116])
+  })
+  const glazed = () => {
+    const walls = [W(100, 100, 100, 300), W(100, 300, 300, 300)]
+    const g = sheet(walls)
+    // The blue pen is lighter in grey than the floor and lighter than the absolute grey cut in its antialiased rim.
+    for (let y = 101; y < 297; y++) for (let x = 104; x < 300; x++) g.data[y * g.width + x] = 185
+    const glass = new Uint8Array(g.width * g.height)
+    for (let u = 100; u <= 300; u++) {
+      g.data[100 * g.width + u] = 220
+      g.data[u * g.width + 300] = 220
+      glass[100 * g.width + u] = glass[u * g.width + 300] = 1
+    }
+    return { walls, g, glass }
+  }
+  test('two blue window fronts meet at a corner and close the room at the drawn lines', () => {
+    const { walls, g, glass } = glazed()
+    const r = thinFaces(g, { k: K, walls, openings: [], glass, labels: [{ at: {x:200,y:200}, name:'BED 1' }] })
+    expect(r.walls).toHaveLength(2)
+    expect(r.walls.every((w) => w.glass)).toBe(true)
+    expect(r.faces).toHaveLength(1)
+    expect(r.faces[0].areaSqm).toBeCloseTo(16, 0)
+    expect(r.walls.some((w) => Math.abs(w.a.y-100)<1 && Math.abs(w.b.y-100)<1)).toBe(true)
+    expect(r.walls.some((w) => Math.abs(w.a.x-300)<1 && Math.abs(w.b.x-300)<1)).toBe(true)
+  })
+  test('drawn outer glazing may contain a fitted open kitchen in living space, without cutting the fit or merging a bedroom',()=>{
+    const {walls,g,glass}=glazed()
+    const labels=[{at:{x:160,y:160},name:'LIVING',kind:'living'},{at:{x:220,y:220},name:'OPEN KITCHEN',kind:'kitchen'}]
+    const fit={x0:180,y0:180,x1:250,y1:250,kind:'kitchen'}
+    const run=(fits:typeof fit[],names=labels)=>thinFaces(g,{k:K,walls,openings:[],glass,labels:names,fits})
+    expect(run([fit]).walls).toHaveLength(2)
+    expect(run([{...fit,kind:'bed'}]).walls).toHaveLength(0)
+    expect(run([{...fit,x0:250,x1:350}]).walls).toHaveLength(0)
+    expect(thinFaces(g,{k:K,walls,openings:[],glass,labels,fits:[{...fit,x0:250,x1:350,openPlan:true,at:{x:220,y:220}}]}).walls).toHaveLength(2)
+    expect(thinFaces(g,{k:K,walls,openings:[],glass,labels,fits:[{...fit,x0:250,x1:350,openPlan:true,at:{x:320,y:220}}]}).walls).toHaveLength(0)
+    expect(run([fit],[{...labels[0],name:'BEDROOM',kind:'bed'},labels[1]]).walls).toHaveLength(0)
+  })
+  test('clear coloured glazing backed by real walls also survives when the reader missed the room name', () => {
+    const { walls, g, glass } = glazed()
+    const r = thinFaces(g, { k: K, walls, openings: [], glass })
+    expect(r.walls).toHaveLength(2)
+    expect(r.faces).toHaveLength(1)
+    expect(r.review).toHaveLength(2)
+  })
+  test('a break in the glazing is left open', () => {
+    const { walls, g, glass } = glazed()
+    for (let y=175;y<=225;y++) glass[y*g.width+300]=0
+    const r=thinFaces(g,{k:K,walls,openings:[],glass})
+    expect(r.walls).toEqual([])
+    expect(r.faces).toEqual([])
+  })
+  test('a dangling fragment beside a glazed T does not destroy its surviving connection', () => {
+    const { walls, g } = glazed()
+    const glass = new Uint8Array(g.width * g.height)
+    // A room's top pane continues across its veranda. The shared pane meets that long line at a T.
+    for (let x=100;x<=350;x++) { g.data[100*g.width+x]=220; glass[100*g.width+x]=1 }
+    for (let y=100;y<=300;y++) { g.data[y*g.width+301]=220; glass[y*g.width+301]=1 }
+    pen(g,{x:300,y:100},{x:350,y:100})
+    pen(g,{x:350,y:100},{x:350,y:250})
+    pen(g,{x:300,y:250},{x:350,y:250})
+    for (let x=300;x<=350;x++) glass[250*g.width+x]=1
+    // The closer grey fragment has no second connection. It must not take the complete blue pane down with it.
+    pen(g,{x:300,y:101},{x:300,y:150})
+    const r=thinFaces(g,{k:K,walls,openings:[],glass,labels:[{at:{x:200,y:200},name:'BED 1'},{at:{x:325,y:175},name:'VERANDA'}]})
+    expect(r.faces.some(f=>f.areaSqm>14 && f.areaSqm<18)).toBe(true)
+    expect(r.walls.some(w=>Math.abs(w.a.x-300)<3 && Math.abs(w.b.x-300)<3 && Math.abs(w.a.y-w.b.y)>190)).toBe(true)
+  })
+  test('a partial grey reading half a pixel from a blue pane does not break its corner', () => {
+    const { walls, g } = glazed(), glass = new Uint8Array(g.width * g.height)
+    for (let x=100;x<=350;x++) for (const y of [100,101]) { g.data[y*g.width+x]=220; glass[y*g.width+x]=1 }
+    for (let y=101;y<=300;y++) { g.data[y*g.width+301]=220; glass[y*g.width+301]=1 }
+    for (let y=101;y<=250;y++) { g.data[y*g.width+350]=220; glass[y*g.width+350]=1 }
+    for (let x=300;x<=350;x++) { g.data[250*g.width+x]=220; glass[250*g.width+x]=1 }
+    pen(g,{x:300,y:101},{x:350,y:101})
+    const r=thinFaces(g,{k:K,walls,openings:[],glass,labels:[{at:{x:200,y:200},name:'BED 1'},{at:{x:325,y:175},name:'VERANDA'}]})
+    expect(r.walls.some(w=>w.a.x<105 && w.b.x>345 && Math.abs(w.a.y-100.5)<1)).toBe(true)
+    expect(r.faces.some(f=>f.areaSqm>14 && f.areaSqm<18)).toBe(true)
+  })
+  test('a free blue rectangle with no supporting real walls is not a room', () => {
+    const { g } = glazed()
+    const glass=new Uint8Array(g.width*g.height)
+    for(let u=150;u<=250;u++) {
+      glass[150*g.width+u]=glass[250*g.width+u]=1
+      glass[u*g.width+150]=glass[u*g.width+250]=1
+    }
+    const r=thinFaces(g,{k:K,walls:box,openings:[],glass})
+    expect(r.walls).toEqual([])
+  })
+  test('a broad blue bathroom floor does not become four glazing walls', () => {
+    const g=sheet(box),rgb={width:g.width,height:g.height,data:new Uint8Array(g.width*g.height*4).fill(255)}
+    for(let y=104;y<297;y++) for(let x=104;x<297;x++) {
+      g.data[y*g.width+x]=185
+      rgb.data.set([140,190,240,255],(y*g.width+x)*4)
+    }
+    const r=thinFaces(g,{k:K,walls:box,openings:[],glass:glassMask(rgb,K),labels:[{at:{x:200,y:200},name:'TOILET'}]})
+    expect(r.walls).toEqual([])
+    expect(r.faces).toEqual([])
+  })
+})
 
 describe('axisLines', () => {
   test('a dashed grille is one line, inked about half; a light 8 px band is one line 8 px thick', () => {

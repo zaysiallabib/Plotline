@@ -6,6 +6,20 @@ import { traceWalls } from './walls'
 import type { Gray } from './types'
 
 const K = 50 // px per m
+
+test('a coloured pane drawn just inside the wall face is a window; colour far off the wall, or scattered across it, is not (from Maheer\'s Plotline 2.0)', () => {
+  const width = 200, height = 150, mask = new Uint8Array(width * height), a = { x: 40, y: 50 }, b = { x: 140, y: 50 }
+  const kind = () => classifyGap(a, b, 6, 50, () => false, () => 255, mask, width, height).kind
+  for (let x = 40; x <= 140; x++) mask[57 * width + x] = 1
+  expect(kind()).toBe('window')
+  mask.fill(0)
+  for (let x = 40; x <= 140; x++) mask[70 * width + x] = 1
+  expect(kind()).toBe('unknown')
+  mask.fill(0)
+  for (let x = 40; x <= 140; x++) mask[(44 + (x % 13)) * width + x] = 1
+  expect(kind()).toBe('unknown')
+})
+
 /** A blank sheet w × h m with a 1 m margin; P(x, y) m → px. */
 function sheet(wM: number, hM: number): { g: Gray; P: (x: number, y: number) => { x: number; y: number }; box: (x0: number, y0: number, x1: number, y1: number, grey?: number) => void } {
   const width = Math.round((wM + 2) * K), height = Math.round((hM + 2) * K)

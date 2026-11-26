@@ -2234,7 +2234,7 @@ export function prepareTraces(gray: Gray, inputs: SolveInputs, opts: AutoTraceOp
     }
   }
   // (on the sheet as drawn: the text pass erases thin ink inside label boxes, and an AOD's label box often covers its grille)
-  const thin = tracker === 'tracks' && trace.tracks ? closeThinFaces(gray, trace, pxPerM, text, fits, avoid, inputs.green, furniture) : null
+  const thin = tracker === 'tracks' && trace.tracks ? closeThinFaces(gray, trace, pxPerM, text, fits, avoid, inputs.green, furniture, ink.glass) : null
   // (a glass front faces.ts drew: a window floor to top, the child of a wall of its own — Level 1)
   if (thin) trace = { ...trace, walls: [...trace.walls, ...thin.walls.filter((w) => !w.glass)], openings: [...trace.openings, ...thin.walls.filter((w) => w.glass).map((w) => ({ a: w.a, b: w.b, kind: 'window' as const, conf: 0.5, thicknessPx: w.thicknessPx, glass: true }))] }
 
@@ -2250,7 +2250,7 @@ export function prepareTraces(gray: Gray, inputs: SolveInputs, opts: AutoTraceOp
       .map((it) => ({ at: { x: (it.box.x + it.box.w / 2) / pxPerM, y: (it.box.y + it.box.h / 2) / pxPerM }, name: labelName(it), kind: it.roomKind, dims: sizeOf(it), guess: it.sizeUnread && it.sizeGuess ? sizeOf({ ...it, dims: parseDims(it.sizeGuess) ?? undefined }) : undefined, green: !!it.green, only: !it.roomKind || coreText(it) || CORE_NAME.test(normaliseName(it.text.split('\n')[0])) }))
     const makeG = (base: Wall, from?: GWall): GWall =>
       from ? { ...from, ...base } : { ...base, conf: 0.5, guess: new Map(base.openings.map((o) => [o.id, { kind: o.kind, conf: 0.5, ...(o.kind === 'window' ? { glass: true } : {}) }])) }
-    const co = { gray: plan, k: pxPerM, th0: draft.th0, maxSqm: KNOBS.maxRoomSqm, tolM: KNOBS.closeTolM, rejectM: KNOBS.closeRejectM, wallHeightM: WALL_HEIGHT_M }
+    const co = { gray: plan, glass: ink.glass, k: pxPerM, th0: draft.th0, maxSqm: KNOBS.maxRoomSqm, tolM: KNOBS.closeTolM, rejectM: KNOBS.closeRejectM, wallHeightM: WALL_HEIGHT_M }
     // (…and a small space with no name cut off a named room that only matches its print with it: joined to it — close.ts)
     const j = joinLeftovers(draft.unit.vertices, draft.walls, labels, co)
     const r = closeRooms(j.vertices, j.walls, labels, co, makeG)
@@ -2406,14 +2406,20 @@ function selectFlat(p: Prepared, pick: Pt | null, taken: Taken | null = null, ri
     // a face of the core, nor one beside it, nor one another flat holds
     const kept = new Set([...picked.touched, ...[...flat].flatMap((r) => r.wallIds)])
     const G0 = new Map(draft.walls.map((w) => [w.id, w]))
+    const glassEdges = new Set(draft.walls.filter((w) => [...(w.guess?.values() ?? [])].some((o) => o.glass)).map((w) => w.id))
     const core0 = [...text.items.filter(coreText).map((it) => ({ x: (it.box.x + it.box.w / 2) / pxPerM, y: (it.box.y + it.box.h / 2) / pxPerM })), ...p.inferredCore.map((q) => ({ x: q.x / pxPerM, y: q.y / pxPerM }))]
     const coreWalls = new Set(draft.rooms.filter((r) => core0.some((p) => pointInPolygon(p, roomPolygon(r, draft.unit)))).flatMap((r) => r.wallIds))
     for (const r of draft.rooms) {
       if (r.areaSqm > 30 || r.wallIds.some((w) => coreWalls.has(w))) continue
       const miss = r.wallIds.filter((w) => !kept.has(w))
-      if (!miss.length || miss.length === r.wallIds.length || miss.some((w) => G0.get(w)!.heightM >= WALL_HEIGHT_M) || !r.wallIds.some((w) => G0.get(w)!.heightM >= WALL_HEIGHT_M)) continue
+      if (!miss.length || miss.length === r.wallIds.length || miss.some((w) => G0.get(w)!.heightM >= WALL_HEIGHT_M && !glassEdges.has(w)) || !r.wallIds.some((w) => G0.get(w)!.heightM >= WALL_HEIGHT_M)) continue
       const poly = roomPolygon(r, draft.unit)
       if (core0.some((p) => pointInPolygon(p, poly)) || (byRooms?.others ?? []).some((i) => pointInPolygon({ x: fits[i].at.x / pxPerM, y: fits[i].at.y / pxPerM }, poly)) || taken?.rooms.has(r)) continue
+      // a veranda behind drawn glass, off the flooded floor, is the flat's leaf now — left as kept walls only, another flat
+      // took it as a room it "surrounds" (from Maheer's Plotline 2.0)
+      const glassLeaf = miss.some((w) => glassEdges.has(w))
+      if (glassLeaf && !text.items.some((it) => it.kind === 'room' && it.roomKind === 'balcony' && pointInPolygon({ x: (it.box.x + it.box.w / 2) / pxPerM, y: (it.box.y + it.box.h / 2) / pxPerM }, poly))) continue
+      if (glassLeaf) flat.add(r)
       miss.forEach((w) => picked.touched.add(w))
     }
   }
@@ -2709,7 +2715,7 @@ export function pickTraces(p: Prepared, pickPx?: Px, whole = false, chosen?: Ret
     const m2 = (p: Px): Pt => ({ x: (p.x - originPx.x) / pxPerM, y: (p.y - originPx.y) / pxPerM })
     const sized = text.items.flatMap((it) => {
       const dm = it.kind === 'room' ? sizeOf(it) : undefined
-      return dm ? [{ at: m2({ x: it.box.x + it.box.w / 2, y: it.box.y + it.box.h / 2 }), dm }] : []
+      return dm ? [{ at: m2({ x: it.box.x + it.box.w / 2, y: it.box.y + it.box.h / 2 }), dm, openPlan: /\bOPEN\b/.test(normaliseName(it.text.split('\n')[0])) }] : []
     })
     const R = gated.length ? deriveRooms(u) : []
     const P = new Map(R.map((r) => [r, roomPolygon(r, u)]))
@@ -2722,7 +2728,13 @@ export function pickTraces(p: Prepared, pickPx?: Px, whole = false, chosen?: Ret
       if (L < 0.05) continue
       const mid = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 }, n = { x: -(b.y - a.y) / L, y: (b.x - a.x) / L }
       const faces = [...new Set([1, -1].map((o) => faceAt({ x: mid.x + n.x * o * 0.3, y: mid.y + n.y * o * 0.3 })).filter((r): r is Room => !!r))]
-      const check = (tol: number) => faces.flatMap((r) => sized.filter((s) => pointInPolygon(s.at, P.get(r)!)).map((s) => !printedSizeCheck(roomInnerPolygon(r, u), draft.th0, s.dm.aM, s.dm.bM, tol).off))
+      const check = (tol: number) =>
+        faces.flatMap((r) => {
+          const labels = text.items.filter((it) => it.kind === 'room' && pointInPolygon(m2({ x: it.box.x + it.box.w / 2, y: it.box.y + it.box.h / 2 }), P.get(r)!))
+          const shared = labels.length > 1 && labels.every((it) => CLOSE.openPlan.includes(it.roomKind ?? '')) && labels.some((it) => it.roomKind === 'living' || it.roomKind === 'dining')
+          // (an OPEN KITCHEN's printed size is its work zone inside the shared living room, not the room — from Maheer's Plotline 2.0)
+          return sized.filter((s) => pointInPolygon(s.at, P.get(r)!) && !(shared && s.openPlan)).map((s) => !printedSizeCheck(roomInnerPolygon(r, u), draft.th0, s.dm.aM, s.dm.bM, tol).off)
+        })
       const ok = check(KNOBS.closeTolM)
       if (!ok.length) continue
       if (ok.every(Boolean)) {
@@ -2838,7 +2850,11 @@ export function pickTraces(p: Prepared, pickPx?: Px, whole = false, chosen?: Ret
     // (two printed names in one space: the larger printed room names it — one room right instead of none; the room rows
     // say which name has no room of its own)
     const sqm = (it: TextItem) => { const d = sizeOf(it); return d ? d.aM * d.bM : 0 }
-    const items = (labelsIn.get(r.id) ?? []).sort((p, q) => sqm(q) - sqm(p) || q.conf - p.conf)
+    // (…but an OPEN KITCHEN in a living / dining room is its work zone: the living names the room — from Maheer's Plotline 2.0)
+    const shared = labelsIn.get(r.id) ?? []
+    const hasLiving = shared.some((it) => it.roomKind === 'living' || it.roomKind === 'dining')
+    const workArea = (it: TextItem) => hasLiving && it.roomKind === 'kitchen' && /\bOPEN\b/.test(normaliseName(it.text.split('\n')[0]))
+    const items = shared.sort((p, q) => Number(workArea(p)) - Number(workArea(q)) || sqm(q) - sqm(p) || q.conf - p.conf)
     const it0 = items[0]
     if (it0) {
       const it = namePieces(it0, items)
@@ -3235,9 +3251,10 @@ const AOD_HINT = 'AOD (thin-line face)'
  * edges, railings, light-grey shaft walls) — low walls, never full height. Lines inside a fitted room or across a drawn
  * fixture are furniture; printed labels say which side is which room.
  */
-function closeThinFaces(sheet: Gray, trace: WallTrace, k: number, text: TextTrace, fits: RoomFit[], fixtures: { at: Px; r: number }[], green?: Uint8Array, furniture?: Uint8Array): ThinFaces {
-  const labels = text.items.filter((it) => it.kind === 'room').map((it) => ({ at: { x: it.box.x + it.box.w / 2, y: it.box.y + it.box.h / 2 }, name: normaliseName(it.text.split('\n')[0]) }))
-  return thinFaces(sheet, { k, walls: trace.walls, openings: trace.openings, labels, fits: fits.map((f) => f.rect), fixtures, green, furniture })
+function closeThinFaces(sheet: Gray, trace: WallTrace, k: number, text: TextTrace, fits: RoomFit[], fixtures: { at: Px; r: number }[], green?: Uint8Array, furniture?: Uint8Array, glass?: Uint8Array): ThinFaces {
+  const labels = text.items.filter((it) => it.kind === 'room').map((it) => ({ at: { x: it.box.x + it.box.w / 2, y: it.box.y + it.box.h / 2 }, name: normaliseName(it.text.split('\n')[0]), kind: it.roomKind }))
+  const fitsPx = fits.map((f) => ({ ...f.rect, kind: f.label.roomKind, at: f.at, openPlan: /\bOPEN\b/.test(normaliseName(f.label.text.split('\n')[0])) }))
+  return thinFaces(sheet, { k, walls: trace.walls, openings: trace.openings, labels, fits: fitsPx, fixtures, green, furniture, glass })
 }
 
 /**

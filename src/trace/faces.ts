@@ -10,8 +10,8 @@
  *   lines well inside a fitted room, or across a drawn fixture, are furniture → each end lands on a wall's centre line
  *   (or a wall's end on its own line, or another line) → the faces they close (raster, 1 px graph lines, 4-connected)
  *   are tested: a face split off a region (the region's largest part keeps its old self) must be 0.5–40 m², ≥ 0.35 m
- *   wide, hold at most one room label, not be a corner of a closed room with one name, no fixture unless labelled, no
- *   label ⇒ ≤ 4 m² or plant green, split no fitted room nor be much bigger than the one it holds, and lean on real walls
+ *   wide, hold one room label (or open-plan labels behind positive glazing), not be a corner of a closed room with one name, no fixture unless labelled, no
+ *   label ⇒ ≤ 4 m², plant green or positive thin glazing colour, split no fitted room nor be much bigger than the one it holds, and lean on real walls
  *   for ≥ 40 % of its rim (planters exempt) — slivers lose the line along them first, then a failing part loses the
  *   lines no passing face needs; a light-grey band between two new faces is a pier; until nothing fails.
  * Every line kept closes a face: a LOW wall (1.1 m railing / parapet / shaft wall; 0.45 m beside plant green — a planter
@@ -30,15 +30,17 @@ export interface FaceOpts {
   /** decided openings are graph edges too; 'unknown' = an undecided gap (its body is never a thin-line candidate) */
   openings: OpeningGuess[]
   /** printed room labels: name + centre, px */
-  labels?: { at: Px; name: string }[]
+  labels?: { at: Px; name: string; kind?: string }[]
   /** rooms fitted from their printed sizes (inner rects, px): a line well inside one is furniture */
-  fits?: RectPx[]
+  fits?: (RectPx & { kind?: string; openPlan?: boolean; at?: Px })[]
   /** drawn fixture symbols: centre + keep-out radius, px; kind = the room kind it implies ('bath': a wc / basin) */
   fixtures?: { at: Px; r: number; kind?: string }[]
   /** plant-green pixels: never line ink; a boundary beside them is a planter edge */
   green?: Uint8Array
   /** furniture standing free (raster.ts furnitureMask): never line ink */
   furniture?: Uint8Array
+  /** Thin blue/cyan glazing evidence, with broad floor fills removed by the colour reader. */
+  glass?: Uint8Array
 }
 
 /** a thin-line candidate: axis line at c from u0 to u1 (px), `th` px thick as drawn */
@@ -54,6 +56,8 @@ export interface FaceLine {
   green?: boolean
   /** two or three parallel pen lines a frame apart, read as one: a glass front (Level 1, founder 2026-10-09) */
   glass?: boolean
+  /** Positive thin glazing colour, distinct from a grey double-line inference. */
+  colourGlass?: boolean
 }
 
 export interface ThinFaces {
@@ -199,6 +203,15 @@ export function axisLines(C: Uint8Array, W: number, H: number, horiz: boolean, m
  * hatch or a stair's treads: left as they are.
  */
 export function glazingFrames(lines: FaceLine[], k: number): FaceLine[] {
+  lines = lines.map((L) => ({ ...L }))
+  // Partial grey/colour readings of the same pane need one axis before corners attach. Otherwise a vertical
+  // ending on the short reading at y=116 excludes the long reading at y=115.5 from its final span.
+  const axes: FaceLine[] = []
+  for (const L of lines.filter((Q) => Q.colourGlass).sort((a,b) => (b.u1-b.u0)-(a.u1-a.u0))) {
+    const same = axes.find((Q) => Q.horiz === L.horiz && Math.abs(Q.c-L.c) <= 1.5 && Math.min(Q.u1,L.u1)-Math.max(Q.u0,L.u0) >= .7*(L.u1-L.u0))
+    if (same) L.c = same.c
+    else axes.push(L)
+  }
   const out: FaceLine[] = []
   const used = new Set<FaceLine>(), merged = new Set<FaceLine>()
   const along = (A: FaceLine, B: FaceLine) => {
@@ -223,8 +236,8 @@ export function glazingFrames(lines: FaceLine[], k: number): FaceLine[] {
       const c0 = grp[0].c - grp[0].th / 2, c1 = grp[grp.length - 1].c + grp[grp.length - 1].th / 2
       // a frame at least 0.15 m deep is glass; two strokes closer than that are one line drawn double (a railing's two edges)
       // (the double stroke stays a pen line, as thin as its strokes: a band that thick would read as a pier)
-      const glass = c1 - c0 >= 0.15 * k
-      out.push({ horiz, c: (c0 + c1) / 2, u0: med(grp.map((L) => L.u0)), u1: med(grp.map((L) => L.u1)), th: glass ? c1 - c0 : Math.max(...grp.map((L) => L.th)), fill: Math.min(...grp.map((L) => L.fill)), ...(glass ? { glass } : {}) })
+      const glass = grp.some((L) => L.glass) || c1 - c0 >= 0.15 * k
+      out.push({ horiz, c: (c0 + c1) / 2, u0: med(grp.map((L) => L.u0)), u1: med(grp.map((L) => L.u1)), th: glass ? c1 - c0 : Math.max(...grp.map((L) => L.th)), fill: Math.min(...grp.map((L) => L.fill)), ...(glass ? { glass } : {}), ...(grp.some((L) => L.colourGlass) ? { colourGlass: true } : {}) })
     }
   }
   return [...lines.filter((L) => !merged.has(L)), ...out]
@@ -248,6 +261,29 @@ export function thinFaces(gray: Gray, o: FaceOpts): ThinFaces {
   const C = new Uint8Array(W * H)
   for (let i = 0; i < C.length; i++) C[i] = gray.data[i] <= FACES.thinCut && !E[i] && !o.green?.[i] && !o.furniture?.[i] ? 1 : 0
   const raw = [true, false].flatMap((h) => axisLines(C, W, H, h, FACES.minLen * k, gap, FACES.maxTh * k))
+  // A blue pane may be LIGHTER than a dark floor: thresholding grey joins it to that entire floor, losing its line.
+  // Read the thin colour mask separately; retain the same wall attachment, closed-face and fixture checks below.
+  if (o.glass) {
+    const blue = new Uint8Array(W * H)
+    // JPEG/antialiasing can move the coloured core by one pixel along a continuous pane. A one-pixel halo joins
+    // those parallel readings before axisLines takes their median endpoints; real breaks still exceed `gap`.
+    for (let i = 0; i < o.glass.length; i++) if (o.glass[i]) {
+      const x = i % W, y = Math.floor(i / W)
+      for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
+        if (x + dx < 0 || y + dy < 0 || x + dx >= W || y + dy >= H) continue
+        const q = i + dy * W + dx
+        if (!E[q] && !o.green?.[q] && !o.furniture?.[q]) blue[q] = 1
+      }
+    }
+    for (const L of [true, false].flatMap((h) => axisLines(blue, W, H, h, FACES.minLen * k, gap, FACES.maxTh * k))) {
+      const covered = raw.filter((Q) => Q.horiz === L.horiz && Math.abs(Q.c - L.c) <= 2 && Math.min(Q.u1, L.u1) - Math.max(Q.u0, L.u0) >= 0.7 * (Q.u1 - Q.u0))
+      // A shorter grey reading can survive pruning after the longer colour reading is split at a T. It must keep
+      // the glazing classification too, rather than turning that same blue pane into a low opaque wall.
+      for (const Q of covered) { Q.glass = true; Q.colourGlass = true }
+      if (!covered.some((Q) => Q.u1 - Q.u0 >= 0.7 * (L.u1 - L.u0))) raw.push({ ...L, glass: true, colourGlass: true })
+    }
+
+  }
   // (b) a planter box: a plant-green blob of planter size and box shape (its foliage hides the edge lines) gives its four
   // sides as candidate edges — where the green stops; the faces they close are judged like any other
   if (o.green)
@@ -262,6 +298,7 @@ export function thinFaces(gray: Gray, o: FaceOpts): ThinFaces {
   const m = FACES.fitMargin * k
   const inFit = (L: FaceLine) =>
     (o.fits ?? []).some((r) => {
+      if (L.colourGlass && r.openPlan) return false
       const [c0, c1, a0, a1] = L.horiz ? [r.y0, r.y1, r.x0, r.x1] : [r.x0, r.x1, r.y0, r.y1]
       return L.c > c0 + m && L.c < c1 - m && Math.min(L.u1, a1) - Math.max(L.u0, a0) > 0.5 * (L.u1 - L.u0)
     })
@@ -343,13 +380,25 @@ export function thinFaces(gray: Gray, o: FaceOpts): ThinFaces {
     const lo = Math.min(M.e[0]!.u, M.e[1]!.u), hi = Math.max(M.e[0]!.u, M.e[1]!.u)
     return L.c2 >= lo - 1e-6 && L.c2 <= hi + 1e-6
   }
+  const reconnect = (L: Cand, end: 0 | 1, live: boolean[]) => {
+    if (onSeg(L, end, live)) return true
+    // The nearest raw line may have been a dangling fragment or a duplicate. Its removal must not destroy a
+    // valid corner/T when another surviving line actually reaches it. Use final spans and the original tolerance.
+    const pool = cands.map((Q, i): Edge => !live[i] || Q === L || Q.horiz === L.horiz || L.c2 < Q.e[0]!.u || L.c2 > Q.e[1]!.u
+      ? { horiz: L.horiz, c: -1e9, u0: 0, u1: 0, th: 0 }
+      : { horiz: Q.horiz, c: Q.c2, u0: Q.e[0]!.u, u1: Q.e[1]!.u, th: Q.th })
+    const next = attach({ ...L, c: L.c2 }, end, pool, (i) => i)
+    if (!next) return false
+    L.e[end] = next
+    return onSeg(L, end, live)
+  }
   const prune = () => {
     for (let ch = true; ch; ) {
       ch = false
       cands.forEach((L, i) => {
         if (!alive[i]) return
         const len = Math.abs(L.e[1]!.u - L.e[0]!.u)
-        if (len < 0.3 * k || L.e[1]!.u <= L.e[0]!.u || !onSeg(L, 0, alive) || !onSeg(L, 1, alive)) (alive[i] = false), (ch = true), (fate[i] ||= 'end off its line / too short')
+        if (len < 0.3 * k || L.e[1]!.u <= L.e[0]!.u || !reconnect(L, 0, alive) || !reconnect(L, 1, alive)) (alive[i] = false), (ch = true), (fate[i] ||= 'end off its line / too short')
       })
     }
   }
@@ -374,7 +423,7 @@ export function thinFaces(gray: Gray, o: FaceOpts): ThinFaces {
   const edge0 = new Set(cc0.comps.flatMap((c, j) => (c.edge ? [j + 1] : [])))
   const b0px: number[] = []
   for (let i = 0; i < B0.length; i++) if (B0[i]) b0px.push(i)
-  const labelPx = (o.labels ?? []).map((l) => ({ i: Math.round(l.at.y) * W + Math.round(l.at.x), name: l.name })).filter((l) => l.i >= 0 && l.i < W * H)
+  const labelPx = (o.labels ?? []).map((l) => ({ i: Math.round(l.at.y) * W + Math.round(l.at.x), name: l.name, kind: l.kind })).filter((l) => l.i >= 0 && l.i < W * H)
   const fixPx = (o.fixtures ?? []).map((f) => Math.round(f.at.y) * W + Math.round(f.at.x)).filter((i) => i >= 0 && i < W * H)
   const namesIn = new Map<number, Set<string>>()
   for (const l of labelPx) if (lab0[l.i]) namesIn.set(lab0[l.i], new Set([...(namesIn.get(lab0[l.i]) ?? []), l.name]))
@@ -413,7 +462,7 @@ export function thinFaces(gray: Gray, o: FaceOpts): ThinFaces {
       const r = { x0: Math.max(0, r0.x0 - g), y0: Math.max(0, r0.y0 - g), x1: Math.min(W, r0.x1 + g), y1: Math.min(H, r0.y1 + g) }
       const h = new Map<number, number>()
       for (let y = r.y0; y < r.y1; y++) for (let x = r.x0; x < r.x1; x++) if (lab1[y * W + x]) h.set(lab1[y * W + x], (h.get(lab1[y * W + x]) ?? 0) + 1)
-      return { ra: (r.x1 - r.x0) * (r.y1 - r.y0), h }
+      return { ra: (r.x1 - r.x0) * (r.y1 - r.y0), h, kind: r0.kind, openPlan: r0.openPlan, at: r0.at }
     })
     // per region: its parts; the largest keeps its old self, every other part must be a face
     const byG = new Map<number, Part[]>()
@@ -424,11 +473,15 @@ export function thinFaces(gray: Gray, o: FaceOpts): ThinFaces {
       if (a < FACES.minArea) return 'sliver'
       if (p.n / Math.max(p.x1 - p.x0 + 1, p.y1 - p.y0 + 1) < FACES.minWidth * k) return 'sliver'
       if (a > FACES.maxArea) return 'too big'
-      const names = new Set(labelPx.filter((l) => lab1[l.i] === p.id).map((l) => l.name))
+      const labels = labelPx.filter((l) => lab1[l.i] === p.id)
+      const names = new Set(labels.map((l) => l.name))
+      const openKinds = ['living','dining','foyer','kitchen','pantry']
+      const openPlan = labels.length > 0 && labels.every(l=>l.kind ? openKinds.includes(l.kind) : /\b(LIVING|DINING|FOYER|OPEN KITCHEN|PANTRY)\b/.test(l.name)) && (names.size > 1 || labels.some(l=>/\bOPEN\b/.test(l.name)))
+      const colour = [...p.lines].some(li=>cands[li].colourGlass)
       // (a planter box is all parapet and green edge: no furniture is green; a room printed VER / veranda / planter is
       // all railing or kerb on its open sides — Level 1, founder 2026-10-09)
       if (p.walls < FACES.wallShare * (p.walls + p.thin) && p.green < 0.5 * p.n && ![...names].some((nm) => OPEN_SIDED.test(nm))) return 'thin rim'
-      if (names.size > 1) return 'two labels'
+      if (names.size > 1 && !(openPlan && colour)) return 'two labels'
       // a corner of a closed room with one name (a shower tray, a closet in the toilet): not a room of its own
       if (!names.size && !edge0.has(p.G) && (namesIn.get(p.G)?.size ?? 0) === 1) return 'inside a named room'
       // …or of a closed bathroom (a wc / basin drawn in it): a shower bay, a tub — never a boundary
@@ -439,9 +492,15 @@ export function thinFaces(gray: Gray, o: FaceOpts): ThinFaces {
       const across = Math.min(p.x1 - p.x0 + 1, p.y1 - p.y0 + 1), along = Math.max(p.x1 - p.x0 + 1, p.y1 - p.y0 + 1)
       if (!names.size && p.green < 0.5 * p.n && across <= FACES.cupboardM * k && along >= 2 * across) return 'a cupboard / counter strip'
       // no label: an AOD-sized space, or a planter (plant green over half of it); anything bigger is no evidence of a room
-      if (!names.size && a > FACES.aodMax && p.green < 0.5 * p.n) return 'unlabelled, too big for an AOD'
-      for (const { ra, h } of fitHist) {
+      // Positive glazing colour can close an unnamed room as a window on a wall track can. It still needs real
+      // walls on ≥40% of its rim (checked above): a floating furniture/annotation outline cannot become a room.
+      if (!names.size && a > FACES.aodMax && p.green < 0.5 * p.n && ![...p.lines].some((li) => cands[li].colourGlass)) return 'unlabelled, too big for an AOD'
+      for (const { ra, h, kind, openPlan: zone, at } of fitHist) {
         const ov = h.get(p.id) ?? 0, iou = ov / (p.n + ra - ov)
+        // A kitchen's printed work area may be wholly inside an open living/dining space. Containing that fit
+        // is not cutting it: allow the drawn outer glazing, never a cut fit or a merged bedroom/bathroom.
+        const containsZoneLabel = zone && at && lab1[Math.round(at.y)*W+Math.round(at.x)] === p.id
+        if(openPlan && colour && kind && openKinds.includes(kind) && (ov >= .9*ra || containsZoneLabel))continue
         if (ov >= 0.15 * ra && iou < 0.5) return 'splits a fitted room'
         // (a thin line closing a fitted room's open side far beyond it: the room is not that big)
         if (ov >= 0.8 * ra && iou < 0.7) return 'much bigger than its fitted room'
