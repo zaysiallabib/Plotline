@@ -913,8 +913,9 @@ function readModel(W: WebIfc, api: Api, model: number, fileName: string, t0: num
   let outlined = 0
   let touches = 0
   for (const [k, s] of storeys.entries()) {
-    progress(`floor ${k + 1} of ${storeys.length}`, 0.7 + (0.3 * k) / storeys.length) // (each floor is joined and checked: on a big building the longest part)
     const d = draftsByStorey.get(s.id) ?? { walls: [], pillars: [], labels: [], noSpace: true }
+    // (each floor is joined and checked — on a big building the longest part): which floor, by its own name, and its size
+    progress(`floor ${k + 1} of ${storeys.length}: ${s.name.trim() || 'unnamed'}, ${d.walls.length.toLocaleString('en')} walls`, 0.7 + (0.3 * k) / storeys.length)
     if (!draftsByStorey.has(s.id)) counts.push(`${s.name} (floor at ${fmt(s.z - baseY)} m): nothing on it.`)
     let last = { snapped: 0, dropped: 0 }
     const joinedBy = new Map<Unit, number>()
