@@ -41,6 +41,8 @@ const MAX_THICK_M = 1.5
 const RUN_PART_M = 0.3
 /** parts on one line with a gap up to this between them are one run (a mullion, a door in the front) */
 const RUN_GAP_M = 0.6
+/** a run shorter than this is no glass wall: a mullion's depth, a frame's return (the Nordic office's garage: 167 pieces under 0.5 m, each a loose wall) */
+const RUN_MIN_M = 1
 
 // ---------- web-ifc ----------
 
@@ -1101,7 +1103,8 @@ function readModel(W: WebIfc, api: Api, model: number, fileName: string, t0: num
 /**
  * A glass front's straight runs from its parts' footprints (each a minRect): parts along one line (within 2°, 15 cm of it)
  * whose spans meet or leave a gap of RUN_GAP_M at most are one run, from the first part's end to the last's; its width
- * the widest part's. A part shorter than RUN_PART_M (a mullion's section) or wider than MAX_THICK_M is no run.
+ * the widest part's. A part shorter than RUN_PART_M (a mullion's section) or wider than MAX_THICK_M is no run; a run shorter
+ * than RUN_MIN_M is no wall.
  */
 export function curtainRuns(rects: Rect[]): { a: Pt; b: Pt; widthM: number }[] {
   const lines: { d: Pt; o: Pt; spans: [number, number, number][] }[] = []
@@ -1120,7 +1123,7 @@ export function curtainRuns(rects: Rect[]): { a: Pt; b: Pt; widthM: number }[] {
       if (run && s[0] <= run[1] + RUN_GAP_M) (run[1] = Math.max(run[1], s[1])), (run[2] = Math.max(run[2], s[2]))
       else runs.push([...s])
     }
-    for (const [u0, u1, w] of runs) if (u1 - u0 >= RUN_PART_M) out.push({ a: at(u0), b: at(u1), widthM: w })
+    for (const [u0, u1, w] of runs) if (u1 - u0 >= RUN_MIN_M - 1e-9) out.push({ a: at(u0), b: at(u1), widthM: w })
   }
   return out
 }

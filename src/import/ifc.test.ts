@@ -71,8 +71,9 @@ describe('a glass front turning a corner (s31 bigifc: LTU A-House read it as one
     expect(curtainRuns([part(0.5, 0, 0, 1), part(1.5, 0.2, 0, 1)])).toHaveLength(2)
     expect(curtainRuns([part(0.5, 0, 0, 1), part(1.5, 0.1, 0, 1)])).toHaveLength(1)
   })
-  it('nothing wall-like among the parts: no run (the wall is left to the outside shape)', () => {
+  it('nothing wall-like among the parts: no run (the wall is left to the outside shape); a run under 1 m (a frame\'s return) is no wall', () => {
     expect(curtainRuns([part(0, 0, 0, 0.2), part(1, 1, 0, 3, 2)])).toEqual([])
+    expect(curtainRuns([part(0, 0, 90, 0.45, 0.1), part(5, 0, 0, 0.8)])).toEqual([])
   })
 })
 
