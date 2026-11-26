@@ -53,6 +53,15 @@ describe('dxf fixtures', () => {
     expect(r.origin).toEqual({ x: 0, y: 5000 })
   })
 
+  test('"Read in": the unit a person picks wins over the file\'s own (a wrong $INSUNITS, a wrong guess)', async () => {
+    const r = await importDxf(fixture('two-rooms-mm'), 'two-rooms-mm.dxf', { unitScale: 0.01 })
+    expect(r.unitScale).toBe(0.01)
+    expect(r.notes).toContain('Units: centimetres, as you set them; the plan is 82.5 m across.')
+    expect(deriveRooms(r.storeys[0].unit).every((x) => Math.abs(x.areaSqm - 2000) < 1)).toBe(true) // each 20 m² room, ten times longer each way
+    const odd = await importDxf(fixture('two-rooms-mm'), 'two-rooms-mm.dxf', { unitScale: 0.00125 })
+    expect(odd.notes).toContain('Units: 1 unit = 0.00125 m, as you set them; the plan is 10.3 m across.')
+  })
+
   test('two rooms in feet: a turned, mirrored door block and a window block', async () => {
     const r = await importDxf(fixture('two-rooms-ft'), 'two-rooms-ft.dxf')
     expect(r.unitScale).toBe(0.3048)
@@ -186,7 +195,7 @@ describe('layer names', () => {
     const plain = await importDxf(text, 'a.dxf')
     expect(plain.layers!.map((l) => [l.name, l.role])).toEqual([['Layer 7', 'unknown'], ['Layer 8', 'unknown']])
     expect(plain.notes.some((n) => /could not place: "Layer 7", "Layer 8"/.test(n))).toBe(true)
-    const mine = await importDxf(text, 'a.dxf', { 'LAYER 7': 'wall', 'LAYER 8': 'ignore' })
+    const mine = await importDxf(text, 'a.dxf', { layerRoles: { 'LAYER 7': 'wall', 'LAYER 8': 'ignore' } })
     expect(mine.layers!.map((l) => [l.name, l.role, l.yours])).toEqual([['Layer 7', 'wall', true], ['Layer 8', 'ignore', true]])
     expect(mine.notes.some((n) => /could not place/.test(n))).toBe(false)
     expect(deriveRooms(mine.storeys[0].unit)).toHaveLength(1)

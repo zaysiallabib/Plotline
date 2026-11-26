@@ -6,12 +6,12 @@
  */
 import type { LayerRoles } from './plan2d'
 
-onmessage = async (e: MessageEvent<{ bytes: ArrayBuffer; name: string; layerRoles?: LayerRoles }>) => {
-  const { bytes, name, layerRoles } = e.data
+onmessage = async (e: MessageEvent<{ bytes: ArrayBuffer; name: string; layerRoles?: LayerRoles; unitScale?: number }>) => {
+  const { bytes, name, layerRoles, unitScale } = e.data
   const progress = (stage: string, fraction: number | null) => postMessage({ stage, fraction })
   try {
     const result = /\.dxf$/i.test(name)
-      ? await (await import('./dxf')).importDxf(new TextDecoder().decode(bytes), name, layerRoles, progress)
+      ? await (await import('./dxf')).importDxf(new TextDecoder().decode(bytes), name, { layerRoles, progress, unitScale })
       : await (await import('./ifc')).importIfc(bytes, name, progress)
     postMessage({ result }, { transfer: result.shell ? [result.shell.glb] : [] })
   } catch (err) {

@@ -70,21 +70,31 @@ import TopBar from './TopBar'
 import KeysSheet from './KeysSheet'
 import { fitSheet, frameOf, mToPx, mToScreen, screenToM, screenToPx } from './transform'
 import './studio.css'
-import { ask } from '../lib/ask'
+import { ask, askText } from '../lib/ask'
 
 const DRAFT_KEY = 'plotline.studio.draft'
 /** the Set panel and what it reads (sheets.ts, the 2D engine's scale words) load when a set is first dropped */
 const SetPanel = lazy(() => import('./SetPanel'))
 /** a person's corrections of what a DXF / SVG layer holds, by layer name: kept for every next file (src/import plan2d roleOf) */
 const LAYER_ROLES_KEY = 'plotline.layerRoles'
-const readLayerRoles = (): LayerRoles => {
+/** a DXF's "Read in" a person picked (metres per file unit), by file name: that file is read so every next time */
+const READ_IN_KEY = 'plotline.dxfReadIn'
+const stored = <T extends object>(key: string): T => {
   try {
-    const v = JSON.parse(localStorage.getItem(LAYER_ROLES_KEY) ?? '{}') as unknown
-    return v && typeof v === 'object' ? (v as LayerRoles) : {}
+    const v = JSON.parse(localStorage.getItem(key) ?? '{}') as unknown
+    return (v && typeof v === 'object' ? v : {}) as T
   } catch {
-    return {}
+    return {} as T
   }
 }
+const keep = (key: string, v: object) => {
+  try {
+    localStorage.setItem(key, JSON.stringify(v))
+  } catch {
+    /* no storage: this read only */
+  }
+}
+const readLayerRoles = () => stored<LayerRoles>(LAYER_ROLES_KEY)
 const PREVIEW_KEY = 'plotline.preview'
 /**
  * The project open in the Studio (its id: `plotline.studio.project`) and which of its drawings the Studio holds, whatever
@@ -331,6 +341,8 @@ export default function StudioApp() {
   const [importNotes, setImportNotes] = useState<string[] | null>(null)
   // a DXF's / SVG's layers (the notes' layer list) and the file they came from, read again when a person corrects one
   const [importLayers, setImportLayers] = useState<ImportResult['layers'] | null>(null)
+  /** the DXF just read: its unit (metres per file unit) and whether the person picked it ("Read in", Panel) */
+  const [readIn, setReadIn] = useState<{ scale: number; yours: boolean } | null>(null)
   const lastRead = useRef<{ file: File; siblings?: Map<string, Blob> } | null>(null)
   /** an architect's file being read: its name, what the reader is doing, how far (null: not known), and Cancel */
   const [reading, setReading] = useState<{ name: string; stage: string; fraction: number | null; stop: AbortController } | null>(null)
@@ -983,7 +995,7 @@ export default function StudioApp() {
     setReading({ name: file.name, stage: 'starting', fraction: null, stop })
     let r: ImportResult
     try {
-      r = await importFile(file, { siblings, signal: stop.signal, layerRoles: readLayerRoles(), progress: (stage, fraction) => setReading((x) => x && x.stop === stop ? { ...x, stage, fraction } : x) })
+      r = await importFile(file, { siblings, signal: stop.signal, layerRoles: readLayerRoles(), unitScale: stored<Record<string, number>>(READ_IN_KEY)[file.name], progress: (stage, fraction) => setReading((x) => x && x.stop === stop ? { ...x, stage, fraction } : x) })
     } catch (e) {
       setReading(null)
       if (stop.signal.aborted) return toast(`Stopped reading ${file.name}`)
@@ -998,12 +1010,34 @@ export default function StudioApp() {
     const mine = readLayerRoles()
     if (role === 'auto') delete mine[layer.toUpperCase()]
     else mine[layer.toUpperCase()] = role
-    try {
-      localStorage.setItem(LAYER_ROLES_KEY, JSON.stringify(mine))
-    } catch {
-      /* no storage: this read only */
-    }
+    keep(LAYER_ROLES_KEY, mine)
     if (lastRead.current) void importArchitect(lastRead.current.file, lastRead.current.siblings, true)
+  }
+  /**
+   * "Read in" (Panel): the DXF read again at once in the unit a person picks — or, from one wall whose real length they
+   * know (picked on the plan, typed in the card), at the scale that makes it so ('length') — kept for that file's name
+   */
+  const onReadIn = async (pick: number | 'auto' | 'length') => {
+    const last = lastRead.current
+    if (!last || !readIn) return
+    let scale = pick === 'auto' || pick === 'length' ? undefined : pick
+    if (pick === 'length') {
+      const st = stateRef.current
+      const picked = st.unit.walls.filter((x) => st.selection.includes(x.id))
+      if (picked.length !== 1) return toast('Click one wall whose real length you know, then pick "A length I know…" again')
+      const w = picked[0]
+      const drawn = wallFrame(w, st.unit.vertices).lengthM
+      const typed = await askText(`The wall you picked is ${formatFeetInches(drawn)} long here. How long is it really?`, { placeholder: `14'-0" or 4.27 m` }, 'Read again')
+      if (typed === null) return
+      const real = parseLength(typed)
+      if (!real) return showError(`"${typed}" is not a length: type it like 14'-0" or 4.27 m`)
+      scale = readIn.scale * (real / drawn)
+    }
+    const all = stored<Record<string, number>>(READ_IN_KEY)
+    if (scale) all[last.file.name] = scale
+    else delete all[last.file.name]
+    keep(READ_IN_KEY, all)
+    void importArchitect(last.file, last.siblings, true)
   }
   /**
    * A PDF, or several dropped together. One page holding one floor plan is read at once, as before. Anything more — a set of
@@ -1159,6 +1193,8 @@ export default function StudioApp() {
     const loose = r.storeys.length > 1 && !projRef.current && hasDrawing(stateRef.current.unit)
     if (loose && !(await ask(`Make a project of ${fileName}'s ${r.storeys.length} floors? The drawing on screen is in no project and is replaced (Export it first to keep a copy).`, 'Make the project', true))) return
     setImportLayers(r.layers ?? null)
+    // (a DXF read from its lines; Plotline's own export opens exactly and has no unit to pick)
+    setReadIn(r.format === 'dxf' && r.layers ? { scale: r.unitScale, yours: stored<Record<string, number>>(READ_IN_KEY)[fileName] === r.unitScale } : null)
     let shell: Shell | undefined
     if (r.shell) {
       const id = newId()
@@ -2892,8 +2928,10 @@ export default function StudioApp() {
           placing={placing?.assetId ?? null}
           onPlace={(assetId) => hold(assetId ? { id: newId(), assetId, rot: 0 } : null)}
           notes={importNotes}
-          onDismissNotes={() => (setImportNotes(null), setImportLayers(null))}
+          onDismissNotes={() => (setImportNotes(null), setImportLayers(null), setReadIn(null))}
           layers={importLayers}
+          readIn={readIn}
+          onReadIn={(pick) => void onReadIn(pick)}
           onLayerRole={onLayerRole}
         />
       </div>

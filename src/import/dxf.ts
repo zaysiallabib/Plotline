@@ -441,8 +441,16 @@ function flatten(dxf: IDxf, entities: IEntity[], xf: Xf, out: Flat, block: strin
   }
 }
 
-/** `mine`: the person's corrections of what a layer holds (the Studio keeps them for the next file); `progress`: what it is doing */
-export async function importDxf(text: string, name: string, mine?: LayerRoles, progress?: (stage: string, fraction: number | null) => void): Promise<ImportResult> {
+export interface DxfOptions {
+  /** the person's corrections of what a layer holds (the Studio keeps them for the next file) */
+  layerRoles?: LayerRoles
+  /** what it is doing, for the Studio's progress box */
+  progress?: (stage: string, fraction: number | null) => void
+  /** the person's "Read in" for this file (metres per file unit): millimetres, feet, or worked out from one length they know */
+  unitScale?: number
+}
+
+export async function importDxf(text: string, name: string, { layerRoles: mine, progress, unitScale }: DxfOptions = {}): Promise<ImportResult> {
   // (AutoCAD's binary DXF starts with its own signature: dxf-parser would only say "EOF group not read")
   if (text.startsWith('AutoCAD Binary DXF')) throw new Error('it is a binary DXF — save it as ASCII DXF in your CAD program and drop that')
   // a DXF Plotline wrote, untouched since: the drawing itself (dxfWrite.ts); a changed one is read from its lines below
@@ -490,7 +498,11 @@ export async function importDxf(text: string, name: string, mine?: LayerRoles, p
     return acc + (d ? d.aM * d.bM : 0)
   }, 0)
   let scale: number
-  if (INSUNITS[ins]) {
+  if (unitScale) {
+    scale = unitScale
+    const known = Object.values(INSUNITS).find(([k]) => Math.abs(k - unitScale) < 1e-12)
+    notes.push(`Units: ${known ? known[1] : `1 unit = ${+unitScale.toPrecision(4)} m`}, as you set them; the plan is ${(extent * scale).toFixed(1)} m across.`)
+  } else if (INSUNITS[ins]) {
     scale = INSUNITS[ins][0]
     const m = extent * scale
     if (extent && (m < 3 || m > 500)) {

@@ -1144,6 +1144,14 @@ names every time). **Plotline decides** gives the layer back to Plotline. Layer 
 ones (A-WALL, A-DOOR, A-GLAZ, S-COLS, A-ANNO-TEXT…), plain English, and the German, French, Spanish, Italian and Dutch
 words (Wände, MURS, PUERTAS, FINESTRE, KOLOM…).
 
+**Read in** (after a DXF, above its layers) says the unit the file was read in — "Plotline decides: millimetres" (the
+file's own, or Plotline's guess when the file says none or says one that makes the plan too small or too big). A drawing
+that came out the wrong size (a house 3 m across, a flat 700 m across): pick **Millimetres**, **Centimetres**, **Metres**,
+**Inches** or **Feet** and the file is read again at once at that size. Not sure of the unit? Click one wall whose real
+length you know, pick **A length I know…**, type it (14'-0" or 4.27 m) and **Read again**: the file is read at the size
+that makes that wall so. The choice is kept in this browser for that file's name (drop it again tomorrow: same size);
+**Plotline decides** gives it back.
+
 **Outside shape** (in the panel while the drawing has one): its name and triangle count, **Offset x / y (m)** (slide it
 until its walls sit on yours), **Turn (deg)**, **Floor height (m)** (how high this drawing's floor is inside it), each one
 Ctrl+Z; **Remove outside shape**. In a project every drawing shares the building's shape. The model is kept in this

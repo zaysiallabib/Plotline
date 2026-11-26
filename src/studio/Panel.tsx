@@ -197,9 +197,12 @@ interface Props {
   /** a DXF's / SVG's layers and what each was taken as; a change ('auto': Plotline decides) reads the file again */
   layers?: ImportResult['layers'] | null
   onLayerRole?: (layer: string, role: LayerRole | 'auto') => void
+  /** a DXF's unit (metres per file unit; `yours`: picked by the person) and its "Read in" pick: a unit, Plotline's, or one known length */
+  readIn?: { scale: number; yours: boolean } | null
+  onReadIn?: (pick: number | 'auto' | 'length') => void
 }
 
-export function Panel({ state, dispatch, rooms, flats, issues, marks, fixes, active, picked = null, lit = null, onPick, onHot, onOpen, onFix, onAnswer, ai, pieces, placing, onPlace, notes, onDismissNotes, layers, onLayerRole }: Props) {
+export function Panel({ state, dispatch, rooms, flats, issues, marks, fixes, active, picked = null, lit = null, onPick, onHot, onOpen, onFix, onAnswer, ai, pieces, placing, onPlace, notes, onDismissNotes, layers, onLayerRole, readIn, onReadIn }: Props) {
   const piece = pieces?.find((p) => state.selection.length === 1 && p.id === state.selection[0])
   const { unit } = state
   const review = marks.filter((m) => m.review)
@@ -381,6 +384,26 @@ export function Panel({ state, dispatch, rooms, flats, issues, marks, fixes, act
               <li key={i}>{n}</li>
             ))}
           </ul>
+          {readIn && onReadIn && (
+            <div className="props layers">
+              <Row label="Read in">
+                <select
+                  value={readIn.yours ? String(readIn.scale) : 'auto'}
+                  aria-label="The unit the file is read in"
+                  onChange={(e) => onReadIn(e.target.value === 'auto' || e.target.value === 'length' ? e.target.value : Number(e.target.value))}
+                >
+                  <option value="auto">{readIn.yours ? 'Plotline decides' : `Plotline decides: ${unitWord(readIn.scale)}`}</option>
+                  {READ_UNITS.map(([k, w]) => (
+                    <option key={k} value={String(k)}>
+                      {w}
+                    </option>
+                  ))}
+                  {readIn.yours && !READ_UNITS.some(([k]) => k === readIn.scale) && <option value={String(readIn.scale)}>{`${unitWord(readIn.scale)} (your length)`}</option>}
+                  <option value="length">A length I know…</option>
+                </select>
+              </Row>
+            </div>
+          )}
           {!!layers?.length && onLayerRole && (
             <>
               <p className="muted">Layers — what each holds. A change reads the file again, and is kept for the next file.</p>
@@ -1037,6 +1060,16 @@ function OutsideShape({ shell, dispatch }: { shell: Shell; dispatch: (a: Action)
     </section>
   )
 }
+
+/** the units a DXF may be read in ("Read in"), metres per file unit */
+const READ_UNITS: [number, string][] = [
+  [0.001, 'Millimetres'],
+  [0.01, 'Centimetres'],
+  [1, 'Metres'],
+  [0.0254, 'Inches'],
+  [0.3048, 'Feet'],
+]
+const unitWord = (k: number) => READ_UNITS.find(([x]) => x === k)?.[1].toLowerCase() ?? `1 unit = ${+k.toPrecision(4)} m`
 
 /** what a person can say a layer holds, in plain words */
 const LAYER_PICKS: [LayerRole, string][] = [
