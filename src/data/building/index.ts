@@ -13,9 +13,10 @@ import type { TowerHeights } from './storeys'
  * A built-in tower module's shape; LEVELS: the stems of its traced ground floor / basements / rooftop (stand-ins on
  * their own floors in FLOORS) and the floor each stands on; ELEVATIONS: an imported building's floor heights by floor
  * number (m above the lowest floor; a floor not listed stands at floor × FLOOR_M); STOREYS: a Studio project's storeys as its
- * set's sections print them (data/building/storeys.ts: each floor's walls, the slab, the roof) — absent, every storey as before.
+ * set's sections print them (data/building/storeys.ts: each floor's walls, the slab, the roof) — absent, every storey as before;
+ * ID: a Studio project's id (the building's outside is kept under it: apartments.ts outsideRecord).
  */
-export type Tower = typeof bti & { LEVELS?: Record<string, number>; ELEVATIONS?: Record<number, number>; STOREYS?: TowerHeights }
+export type Tower = typeof bti & { LEVELS?: Record<string, number>; ELEVATIONS?: Record<number, number>; STOREYS?: TowerHeights; ID?: string }
 
 const TOWERS: Tower[] = [bti, sheltech, banani, dmd]
 

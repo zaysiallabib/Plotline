@@ -7,7 +7,7 @@
  */
 import * as THREE from 'three'
 import type { Configuration, FinishSlot, Id, MaterialRef, RoomKind } from '../core'
-import { roomKey, slotFor, wallKey } from '../furnish/finishes'
+import { OUTSIDE_PLASTER, roomKey, slotFor, wallKey } from '../furnish/finishes'
 import { textureSet, type TextureSet } from '../furnish/textures'
 import { daylit as daylitPatch, mottleMap, nightPatch } from './daylight'
 
@@ -259,7 +259,7 @@ export function litePlain(m: THREE.MeshStandardMaterial, outside: boolean): void
 
 /** Rendered outer walls, slab edges, the tower: the interior plaster scan, warmer and darker than the warm-white paint (#f4f1ea) so the
  * outside face reads as a different, weathered surface through a window. Flat #d9d4cb read as a cream sheet in every pane (wave 10). */
-export const EXTERIOR_PLASTER: MaterialRef = { kind: 'pbr', textureId: 'plaster_white', tint: '#dbd3c6' }
+export const EXTERIOR_PLASTER: MaterialRef = OUTSIDE_PLASTER // (furnish/finishes.ts: the outside's first option)
 const OUTER = JSON.stringify(EXTERIOR_PLASTER)
 /** Wall ends and tops (edge variant): the warm-white paint. A thick outer wall's end cap shows inside the room it stops at
  * (Bath-1 beside its thinner wall); in the weathered exterior tint it read as a dirty tan strip. */
