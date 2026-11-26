@@ -10,7 +10,7 @@ import { describe, expect, test } from 'vitest'
 import { FT } from '../core'
 import type { Seg } from './plan2d'
 import type { SheetText } from './sheets'
-import { heightsOf, levelValue, markOf, parseStoreys, readHeights, setHeights, splitMark, storeysOf, storeysWords, type Heights } from './heights'
+import { heightFields, heightsOf, levelValue, markOf, parseHeight, parseStoreys, readHeights, setHeights, splitMark, storeysOf, storeysWords, typedHeights, type Heights } from './heights'
 
 type Fx = { title: string; scale: number; texts: [string, number, number, number, number, number, number][]; segs: [number, number, number, number][] }
 const fixture = (f: string): { texts: SheetText[]; segs: Seg[]; mPerUnit: number } => {
@@ -208,6 +208,36 @@ describe('the set: views vote', () => {
       { title: 'SOUTH', kind: 'elevation', heights: { floors: { 0: 0, 1: 3 }, roofM: 6.2 } },
     ])
     expect([s.ceilingM, s.eaveM, s.ridgeM, s.roofM]).toEqual([5.8, 6.1, 8.9, undefined])
+  })
+})
+
+describe('what the Set panel shows, and what a person types over it', () => {
+  const farm: Heights = { floors: { 0: 0, 1: ft(10) }, ceilingM: ft(19), eaveM: ft(20), ridgeM: ft(29, 2) }
+  test("the fields: floor to floor, the tops as printed levels, the roof's kind", () => {
+    expect(heightFields(farm)).toEqual({ storeys: '3.05', ceiling: '+5.79', slab: '', roof: '', parapet: '', eave: '+6.10', ridge: '+8.89', kind: 'pitched' })
+  })
+  test('typed: a field as shown changes nothing; another floor to floor moves the floors; a slab; feet and inches; a word is bad', () => {
+    expect(typedHeights(farm, heightFields(farm)).heights).toEqual(farm)
+    const t = typedHeights(farm, { storeys: '3.20', slab: `1'-0"`, ridge: 'high' })
+    expect(t.heights?.floors).toEqual({ 0: 0, 1: 3.2 })
+    expect(t.heights?.slabM).toBeCloseTo(ft(1), 6)
+    expect(t.bad).toEqual(['ridge'])
+  })
+  test('the roof turned flat: its eave and ridge go, a roof and a parapet typed take their place', () => {
+    const t = typedHeights(farm, { kind: 'flat', roof: '+6.20', parapet: '1.0' })
+    expect([t.heights?.ridgeM, t.heights?.eaveM, t.heights?.roofM, t.heights?.parapetM]).toEqual([undefined, undefined, 6.2, 1])
+  })
+  test('nothing read, heights typed: a drawing with none of its own gets them', () => {
+    expect(typedHeights(null, { storeys: 'G 4.5, 1-2 3.05', roof: '+13.5' }).heights).toEqual({ floors: { 0: 0, 1: 4.5, 2: 7.55, 3: 10.6 }, roofM: 13.5 })
+  })
+  test('a length as typed', () => {
+    expect([parseHeight('+6.10'), parseHeight('−3,05'), parseHeight(`+20'-0"`), parseHeight('six')]).toEqual([6.1, -3.05, ft(20), null])
+  })
+  test('a typed drawing is never questioned, and an answer picks the other option', () => {
+    const a: Heights = { floors: { 0: 0, 1: 3.05 } }
+    const b: Heights = { floors: { 0: 0, 1: 3.2 } }
+    expect(setHeights([{ title: 'A', kind: 'section', heights: a }, { title: 'B', kind: 'elevation', heights: b, typed: true }]).differ).toEqual([])
+    expect(setHeights([{ title: 'A', kind: 'section', heights: a }, { title: 'B', kind: 'elevation', heights: b }], { 1: 1 }).floors[1]).toBe(3.2)
   })
 })
 

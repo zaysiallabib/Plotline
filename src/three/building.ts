@@ -362,13 +362,14 @@ export function frameOf(t: Tower, stem: string, floor: number): { shift: (s?: st
 
 /**
  * A flat as its project's set prints its storey (Tower.STOREYS, session 31 heights): its full walls as tall as its floor's
- * walls — its ceiling where the tower draws that floor's slab; a level (ground, basement, rooftop) and every flat of a tower
- * with no storeys read as it is. Only what the 3D draws: the drawing itself keeps its walls.
+ * walls — its ceiling where the tower draws that floor's slab (a traced ground floor or basement too: its parapets and low
+ * walls keep theirs; the rooftop has no storey); every flat of a tower with no storeys read as it is. Only what the 3D draws:
+ * the drawing itself keeps its walls.
  */
 export function onStorey(unit: Unit): Unit {
   const t = towerOf(unit)
   const stem = t?.STOREYS && stemIn(t, unit)
-  return t?.STOREYS && stem && t.LEVELS?.[stem] === undefined ? storeyUnit(unit, t.STOREYS.walls[floorIn(t, stem, unit.floor)]) : unit
+  return t?.STOREYS && stem ? storeyUnit(unit, t.STOREYS.walls[floorIn(t, stem, unit.floor)]) : unit
 }
 
 /** A unit's lowest floor (m from its datum): 0, or its lowest face's lowest corner (render.ts's `lowest`). */
@@ -627,7 +628,17 @@ export class Building extends THREE.Group {
       }
     }
 
-    // a pitched roof over the top floor, as its set's sections and elevations print it
+    // a pitched roof over the top floor, as its set's sections and elevations print it; a top floor still a picture to trace
+    // (nothing drawn on it yet): over the highest floor that has walls, so the building stands as tall as its set says
+    for (let k = top; pitched && !pitched.pts.length && k >= 0; k--)
+      for (const s of [...(FLOORS.find((f) => f.floor === k)?.flats ?? []), ...(FLOORS.find((f) => f.floor === k)?.standIns ?? [])]) {
+        const { unit: u } = FLATS[s]
+        for (const w of u.walls) {
+          const f = core.wallFrame(w, u.vertices)
+          if (f.lengthM > pitched.len) Object.assign(pitched, { len: f.lengthM, dir: f.dir })
+        }
+        pitched.pts.push(...u.vertices.map((q) => ({ x: q.x + this.shift(s).x, y: q.y + this.shift(s).y })))
+      }
     if (pitched?.pts.length) {
       const r = pitchedRoof(pitched.pts, pitched.dir, R, this.levelOf(0) + t.STOREYS!.eaveM!, this.levelOf(0) + t.STOREYS!.ridgeM!)
       put(top + 1, ROOF_COVER, r.cover)
@@ -962,7 +973,7 @@ export class Building extends THREE.Group {
 
   /** addLevel's meshes' geometry, in the level's own frame, one per material ('panes': the tower's glass) */
   private levelParts(s: string, k: number, cap: number, lid: Lid | undefined): [MaterialRef | THREE.Material | 'panes', THREE.BufferGeometry][] {
-    const { unit: u } = this.t.FLATS[s]
+    const u = this.t.STOREYS ? storeyUnit(this.t.FLATS[s].unit, this.t.STOREYS.walls[k]) : this.t.FLATS[s].unit // (its full walls as tall as its storey)
     const rooms = this.roomsOf(s)
     const top = topFloor(this.t)
     const PLATE_M = this.plateM

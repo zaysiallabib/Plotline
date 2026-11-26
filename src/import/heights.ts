@@ -17,7 +17,8 @@
  */
 import { FT, parseLength } from '../core'
 import type { Seg } from './plan2d'
-import { levelOf, norm, type SheetText } from './sheets'
+import type { Pt } from '../core'
+import { levelOf, norm, type SheetPage, type SheetText, type View } from './sheets'
 import type { Heights } from '../data/building/storeys'
 export type { Heights } from '../data/building/storeys'
 
@@ -251,6 +252,13 @@ export function readHeights(view: { segs: Seg[]; texts: SheetText[]; mPerUnit?: 
   return { marks: out, confidence: Math.round(confidence * 100) / 100 }
 }
 
+/** One view of a page (sheets.ts): its own lines and words, at its printed scale (`unitM`: metres a page unit on paper — a PDF point). */
+export function viewHeights(page: SheetPage, view: View, unitM = 0.0254 / 72): HeightsRead {
+  const b = view.box
+  const inB = (q: Pt) => q.x >= b.x0 && q.x <= b.x1 && q.y >= b.y0 && q.y <= b.y1
+  return readHeights({ segs: page.segs.filter((g) => inB(g.a) && inB(g.b)), texts: page.texts.filter((t) => inB(t.at)), mPerUnit: view.scale ? view.scale * unitM : undefined })
+}
+
 // ---------- the building's heights ----------
 
 /** a pitched roof rises at least this much from its eave to its ridge; less, two marks at the top are a flat roof's slab and its parapet */
@@ -323,11 +331,12 @@ export interface SetHeights extends Heights {
 const TOPS = ['ceilingM', 'roofM', 'eaveM', 'ridgeM', 'parapetM', 'slabM'] as const
 
 /**
- * The set's heights from its views' (sections first, then elevations, each in the set's order): each height from the
- * first view that gives it; another view more than 5 cm off it makes a question (`differ`, by key: a floor's number,
- * 'ceilingM', 'roofM' …). A roof read pitched by one view and flat by another: the first's.
+ * The set's heights from its views' (what a person typed on a drawing first, then sections, then elevations, each in the
+ * set's order): each height from the first view that gives it; another view more than 5 cm off it makes a question
+ * (`differ`, by key: a floor's number, 'ceilingM', 'roofM' …) — never against a typed one. A roof read pitched by one view
+ * and flat by another: the first's. `answers`: the person's answer to a question (which option, by key).
  */
-export function setHeights(views: { title: string; kind: string; heights: Heights | null }[]): SetHeights {
+export function setHeights(views: { title: string; kind: string; heights: Heights | null; typed?: boolean }[], answers: Record<string, number> = {}): SetHeights {
   const out: SetHeights = { floors: {}, differ: [], from: [] }
   const seen = new Map<string, { title: string; m: number }[]>()
   const put = (key: string, m: number, title: string) => {
@@ -336,7 +345,8 @@ export function setHeights(views: { title: string; kind: string; heights: Height
     else if (!had.some((h) => Math.abs(h.m - m) <= AGREE_M)) had.push({ title, m })
   }
   let pitched: boolean | null = null
-  for (const v of [...views].sort((a, b) => rank(a.kind) - rank(b.kind))) {
+  const typed = new Set(views.filter((v) => v.typed).map((v) => v.title))
+  for (const v of [...views].sort((a, b) => +!!b.typed - +!!a.typed || rank(a.kind) - rank(b.kind))) {
     const h = v.heights
     if (!h) continue
     out.from.push(v.title)
@@ -346,9 +356,10 @@ export function setHeights(views: { title: string; kind: string; heights: Height
     for (const key of TOPS) if (h[key] !== undefined && (key === 'ceilingM' || key === 'slabM' || p === pitched)) put(key, h[key]!, v.title)
   }
   for (const [key, options] of seen) {
-    if (/^-?\d+$/.test(key)) out.floors[Number(key)] = options[0].m
-    else out[key as (typeof TOPS)[number]] = options[0].m
-    if (options.length > 1) out.differ.push({ key, options })
+    const m = options[answers[key] ?? 0]?.m ?? options[0].m
+    if (/^-?\d+$/.test(key)) out.floors[Number(key)] = m
+    else out[key as (typeof TOPS)[number]] = m
+    if (options.length > 1 && !typed.has(options[0].title)) out.differ.push({ key, options })
   }
   out.from = [...new Set(out.from)]
   return out
@@ -374,6 +385,66 @@ export function floorsOf(storeys: Record<number, number>, ground = 0): Record<nu
 }
 
 // ---------- words for the Set panel ----------
+
+/** a drawing's heights as the Set panel's fields: floor to floor in short (storeysWords), the tops as levels as printed ("+5.79"), the slab and a parapet as heights */
+export type HeightField = 'storeys' | 'ceiling' | 'slab' | 'roof' | 'parapet' | 'eave' | 'ridge' | 'kind'
+export function heightFields(h: Heights | null): Record<HeightField, string> {
+  const lv = (m: number | undefined) => (m === undefined ? '' : `${m < 0 ? '−' : '+'}${Math.abs(m).toFixed(2)}`)
+  const ht = (m: number | undefined) => (m === undefined ? '' : m.toFixed(2))
+  return {
+    storeys: h ? storeysWords(storeysOf(h)) : '',
+    ceiling: lv(h?.ceilingM),
+    slab: ht(h?.slabM),
+    roof: lv(h?.roofM),
+    parapet: ht(h?.parapetM),
+    eave: lv(h?.eaveM),
+    ridge: lv(h?.ridgeM),
+    kind: h?.ridgeM !== undefined ? 'pitched' : 'flat',
+  }
+}
+
+/** a length as typed: metres ("3.05", "+6.10", "−3,05"), or feet and inches with their marks ("10'-0"", "+20'-0""); null else */
+export function parseHeight(raw: string): number | null {
+  const t = raw.trim().replace(/[−–]/g, '-').replace(/^\+\s*/, '')
+  const neg = t.startsWith('-')
+  const body = t.replace(/^-\s*/, '')
+  const v = /^\d+(?:[.,]\d+)?$/.test(body) ? Number(body.replace(',', '.')) : parseLength(body.replace(/[‘’′]/g, "'").replace(/[“”″]/g, '"'))
+  return v === null || !Number.isFinite(v) ? null : neg ? -v : v
+}
+
+/**
+ * A drawing's heights with what the person typed over them (a field as shown changes nothing; an empty one takes the
+ * height away): floor to floor rebuilds the floors from the ground floor's, a pitched roof keeps no flat roof's slab and
+ * parapet and the other way round. `bad`: the fields that do not read as a length.
+ */
+export function typedHeights(read: Heights | null, typed: Partial<Record<HeightField, string>> = {}): { heights: Heights | null; bad: HeightField[] } {
+  const shown = heightFields(read)
+  const bad: HeightField[] = []
+  const h: Heights = read ? { ...read, floors: { ...read.floors } } : { floors: {} }
+  for (const f of Object.keys(typed) as HeightField[]) {
+    const text = typed[f] ?? ''
+    if (text === shown[f] || f === 'kind') continue
+    if (f === 'storeys') {
+      const ks = Object.keys(storeysOf(h)).map(Number)
+      const s = parseStoreys(text, ks.length ? ks : [0])
+      if (s === null) bad.push(f)
+      else h.floors = floorsOf(s, h.floors[0] ?? 0)
+      continue
+    }
+    const key = (f + 'M') as 'ceilingM' | 'slabM' | 'roofM' | 'parapetM' | 'eaveM' | 'ridgeM'
+    if (!text.trim()) {
+      delete h[key]
+      continue
+    }
+    const v = parseHeight(text)
+    if (v === null || ((f === 'slab' || f === 'parapet') && (v < 0 || v > 3))) bad.push(f)
+    else h[key] = v
+  }
+  if ((typed.kind ?? shown.kind) === 'pitched') delete h.roofM, delete h.parapetM
+  else delete h.eaveM, delete h.ridgeM
+  const some = Object.keys(h.floors).length > 1 || TOPS.some((k) => h[k] !== undefined)
+  return { heights: some ? h : null, bad }
+}
 
 const floorWord = (k: number) => (k === 0 ? 'G' : k < 0 ? `B${-k}` : String(k))
 

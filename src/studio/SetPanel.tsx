@@ -7,13 +7,17 @@
  * kind, the floors, a tick — remembered by the drawing's title for the next set from the same architect. Build makes the
  * project in one go; a row's picture opens that one drawing alone, as the page picker did. A folder of DXF / SVG files is a
  * set too (session 31 levels): each file read as the Studio reads one dropped alone, one drawing a file, its kind and floor
- * from the title inside it or its name (sheets.ts fileView), its picture drawn from its lines.
+ * from the title inside it or its name (sheets.ts fileView), its picture drawn from its lines. Each section and elevation shows
+ * the heights its level marks print (session 31 Stage 3, import/heights.ts) as fields the person can type over (remembered by
+ * its title like the kinds); the set's heights — sections first, elevations confirming, a question where two differ — go to
+ * the project when it is built.
  */
 import { useEffect, useMemo, useState } from 'react'
 import { deriveRooms } from '../core'
 import type { PdfDoc } from '../import/pdf'
 import type { ImportResult } from '../import'
 import { KEPT, SHEET_KINDS, fileView, norm, parseSlots, readSheet, setChoices, slotsWords, type Box, type SetSlot, type SheetKind, type SheetRead, type Storeys, type View } from '../import/sheets'
+import { heightFields, heightsOf, setHeights, storeysOf, storeysWords, typedHeights, viewHeights, type HeightField, type Heights, type SetHeights } from '../import/heights'
 
 /** a file of the set: a PDF (its pages), or a DXF / SVG (one drawing); `folder`: the folder or .zip it was dropped in */
 export interface SetFile {
@@ -67,6 +71,11 @@ export interface SetRow {
   /** a DXF / SVG of the set: the file as read */
   read?: ImportResult
   thumb?: string
+  /** the heights its level marks print (a section's, an elevation's: import/heights.ts), how many marks said them; null none */
+  heights?: Heights | null
+  marks?: number
+  /** what the person typed over them, by field (remembered by its title) */
+  typed?: Partial<Record<HeightField, string>>
 }
 
 /** a row as the set will be built: its floors and whether it is used */
@@ -102,7 +111,7 @@ const GROUP_WORDS: Record<SheetKind, string> = {
 
 /** what the person chose for a drawing's title, kept in this browser for the next set (the layer list's pattern) */
 const CHOICES_KEY = 'plotline.sheetChoices'
-type Choice = { kind: SheetKind; which: string | null; tick: boolean | null }
+type Choice = { kind: SheetKind; which: string | null; tick: boolean | null; heights?: Partial<Record<HeightField, string>> }
 const readChoices = (): Record<string, Choice> => {
   try {
     return JSON.parse(localStorage.getItem(CHOICES_KEY) ?? '{}') as Record<string, Choice>
@@ -119,9 +128,98 @@ interface Props {
   /** a DXF / SVG of the set read as the Studio reads one dropped alone (its layer and unit choices) */
   onRead: (file: File) => Promise<ImportResult>
   onOpenOne: (row: SetRow, files: SetFile[]) => void
-  /** `storeys`: how tall the set says the building is (a brochure's "2B+G+12"), when a page says it */
-  onBuild: (rows: SetChoice[], files: SetFile[], storeys: Storeys | null) => void
+  /** `storeys`: how tall the set says the building is (a brochure's "2B+G+12"), when a page says it; `heights`: how tall each storey is, as its sections and elevations print it (and the person typed), null when none does */
+  onBuild: (rows: SetChoice[], files: SetFile[], storeys: Storeys | null, heights: SetHeights | null) => void
   onClose: () => void
+}
+
+const FIELD_WORDS: Record<HeightField, string> = { storeys: 'Floor to floor', ceiling: 'Ceiling', slab: 'Slab', roof: 'Roof level', parapet: 'Parapet', eave: 'Eave', ridge: 'Ridge', kind: 'Roof' }
+const FIELD_TIPS: Partial<Record<HeightField, string>> = {
+  storeys: 'Metres from one floor to the next: one number for every storey, or by floor — G 4.50, 1-9 3.05 (feet and inches with their marks)',
+  ceiling: "The top floor's ceiling, as the drawing prints its level (+5.79)",
+  slab: "How thick the floor slab is (m): each storey's walls stop this far under the next floor",
+  roof: "The roof slab's top, as printed (+13.42)",
+  parapet: 'How high the parapet stands over the roof (m)',
+  eave: 'The eave, as printed (+6.10)',
+  ridge: 'The ridge, as printed (+8.89)',
+}
+
+/** a section's or elevation's heights under its row: each a field over what was read; a field as read is muted, one typed is ink */
+function HeightsRow({ row, typed, onType }: { row: SetRow; typed?: { heights: Heights | null; bad: HeightField[] }; onType: (f: HeightField, v: string) => void }) {
+  const shown = heightFields(row.heights ?? null)
+  const val = (f: HeightField) => row.typed?.[f] ?? shown[f]
+  const kind = val('kind')
+  const field = (f: HeightField) => (
+    <label key={f} className={row.typed?.[f] !== undefined && row.typed[f] !== shown[f] ? 'yours' : ''}>
+      <span className="label">{FIELD_WORDS[f]}</span>
+      <input className={typed?.bad.includes(f) ? 'bad' : ''} value={val(f)} placeholder="—" title={FIELD_TIPS[f]} onChange={(e) => onType(f, e.target.value)} />
+    </label>
+  )
+  // nothing read and nothing typed: one quiet line; the fields come when he asks for them
+  if (!row.heights && !row.typed)
+    return (
+      <div className="set-heights">
+        <span className="muted">{row.marks ? 'Its level marks name no floor.' : 'No level marks on it.'}</span>
+        <button className="link" onClick={() => onType('storeys', '')}>
+          Type its heights
+        </button>
+      </div>
+    )
+  return (
+    <div className="set-heights">
+      {(['storeys', 'ceiling', 'slab'] as const).map(field)}
+      <label>
+        <span className="label">Roof</span>
+        <select value={kind} title="Flat (a slab with a parapet) or pitched (slopes from the eave to the ridge)" onChange={(e) => onType('kind', e.target.value)}>
+          <option value="flat">Flat</option>
+          <option value="pitched">Pitched</option>
+        </select>
+      </label>
+      {(kind === 'pitched' ? (['eave', 'ridge'] as const) : (['roof', 'parapet'] as const)).map(field)}
+    </div>
+  )
+}
+
+/** the set's heights together, as the project will be built: one line, and a question where two drawings differ */
+function HeightsSum({ heights, differ, answers, onAnswer }: { heights: SetHeights | null; differ: SetHeights['differ']; answers: Record<string, number>; onAnswer: (key: string, i: number) => void }) {
+  const lv = (m: number) => `${m < 0 ? '−' : '+'}${Math.abs(m).toFixed(2)}`
+  const what = (key: string) => (/^-?\d+$/.test(key) ? `Floor ${key === '0' ? 'G' : Number(key) < 0 ? `B${-key}` : key}` : FIELD_WORDS[key.replace(/M$/, '') as HeightField])
+  return (
+    <section className="set-group set-heights-sum">
+      <h3 className="label">Heights — how tall each storey is built</h3>
+      {heights ? (
+        <p>
+          {[
+            Object.keys(storeysOf(heights)).length ? `Floor to floor ${storeysWords(storeysOf(heights))} m` : 'Floor to floor as before',
+            heights.ceilingM !== undefined ? `top floor's ceiling ${lv(heights.ceilingM)}` : '',
+            heights.slabM !== undefined ? `slab ${heights.slabM.toFixed(2)} m` : 'slab 0.15 m (not printed: as usual)',
+            heights.ridgeM !== undefined ? `a pitched roof, eave ${heights.eaveM !== undefined ? lv(heights.eaveM) : 'at the ceiling'}, ridge ${lv(heights.ridgeM)}` : heights.roofM !== undefined ? `a flat roof at ${lv(heights.roofM)}${heights.parapetM !== undefined ? `, parapet ${heights.parapetM.toFixed(2)} m` : ', parapet 1.10 m (not printed)'}` : '',
+          ]
+            .filter(Boolean)
+            .join(' · ')}
+          . From {heights.from.length === 1 ? heights.from[0] : `${heights.from[0]} and ${heights.from.length - 1} more`}; a floor no drawing shows repeats the storey under it.
+        </p>
+      ) : (
+        <p className="muted">No level marks read on these drawings: every storey stays 3.20 m floor to floor, as before. Type the heights under a section to build to them.</p>
+      )}
+      {differ.map((d) => (
+        <div key={d.key} className="set-ask set-differ">
+          <span>
+            {what(d.key)}: the drawings differ —{' '}
+            {d.options.map((o, i) => (
+              <label key={o.title} className="check">
+                <input type="radio" name={`differ-${d.key}`} checked={(answers[d.key] ?? 0) === i} onChange={() => onAnswer(d.key, i)} />
+                <span>
+                  {o.title} says {/^-?\d+$/.test(d.key) || /^(ceiling|roof|eave|ridge)M$/.test(d.key) ? lv(o.m) : `${o.m.toFixed(2)} m`}
+                </span>
+              </label>
+            ))}{' '}
+            — which?
+          </span>
+        </div>
+      ))}
+    </section>
+  )
 }
 
 export default function SetPanel({ files, onRead, onOpenOne, onBuild, onClose }: Props) {
@@ -145,7 +243,7 @@ export default function SetPanel({ files, onRead, onOpenOne, onBuild, onClose }:
           const view: View = { ...fileView(f.name, read?.texts ?? [], roomsOf(read)), box: WHOLE }
           const r: SetRow = { key: `${fi}:1:0`, file: fi, page: 1, frame: WHOLE, view, kind: view.kind, which: null, tick: null, yours: false, ...(read ? { read } : {}) }
           const c = mine[keyOf(r)]
-          all.push(c ? { ...r, kind: c.kind, which: c.which, tick: c.tick, yours: true } : r)
+          all.push(c ? { ...r, kind: c.kind, which: c.which, tick: c.tick, yours: true, ...(c.heights ? { typed: c.heights } : {}) } : r)
           setRows([...all])
           continue
         }
@@ -153,17 +251,21 @@ export default function SetPanel({ files, onRead, onOpenOne, onBuild, onClose }:
           setReading((x) => x && { ...x, at: ++at })
           await new Promise((ok) => requestAnimationFrame(ok))
           let read: SheetRead
+          let page: Awaited<ReturnType<typeof pdf.readSheetPage>> | null = null
           try {
-            read = readSheet(await pdf.readSheetPage(f.doc!, p))
+            page = await pdf.readSheetPage(f.doc!, p)
+            read = readSheet(page)
           } catch {
             read = { views: [{ kind: 'other', title: '', box: { x0: -1e9, y0: -1e9, x1: 1e9, y1: 1e9 }, by: 'shape' }] }
           }
           const said = read.storeys
           if (said && live.current) setStoreys((x) => x ?? { ...said, page: p })
           const got = read.views.map((view, i): SetRow => {
-            const r: SetRow = { key: `${fi}:${p}:${i}`, file: fi, page: p, frame: view.box, view, ...(read.number ? { number: read.number } : {}), kind: view.kind, which: null, tick: null, yours: false }
+            // its level marks (any view but a plan: a page read as a detail or other may be a section the person sets)
+            const h = page && view.kind !== 'plan' ? viewHeights(page, view) : null
+            const r: SetRow = { key: `${fi}:${p}:${i}`, file: fi, page: p, frame: view.box, view, ...(read.number ? { number: read.number } : {}), kind: view.kind, which: null, tick: null, yours: false, ...(h ? { heights: heightsOf(h), marks: h.marks.length } : {}) }
             const c = mine[keyOf(r)]
-            return c ? { ...r, kind: c.kind, which: c.which, tick: c.tick, yours: true } : r
+            return c ? { ...r, kind: c.kind, which: c.which, tick: c.tick, yours: true, ...(c.heights ? { typed: c.heights } : {}) } : r
           })
           all.push(...got)
           if (live.current) setRows([...all])
@@ -208,9 +310,19 @@ export default function SetPanel({ files, onRead, onOpenOne, onBuild, onClose }:
     return rows.map((r, i) => ({ ...r, slots: made[i].slots, used: made[i].tick, ...(made[i].with !== undefined ? { with: rows[made[i].with!].key } : {}) }))
   }, [picks, rows, storeys, joinFlats])
 
-  if (import.meta.env.DEV) Object.assign(window, { __plotlineSet: { rows: choices, reading: !!reading } }) // the sets scoreboard reads what the list holds
+  // the heights: each section's and elevation's as read and typed over, the set's together (sections first), a question where two differ
+  const [answers, setAnswers] = useState<Record<string, number>>({})
+  const drawn = (c: SetRow) => c.kind === 'section' || c.kind === 'elevation'
+  const typedOf = useMemo(() => new Map(rows.filter(drawn).map((r) => [r.key, typedHeights(r.heights ?? null, r.typed)])), [rows])
+  const heights = useMemo<SetHeights | null>(() => {
+    const views = rows.filter((r) => drawn(r) && (r.tick ?? true)).map((r) => ({ title: r.view.title || `Page ${r.page}`, kind: r.kind, heights: typedOf.get(r.key)!.heights, typed: !!r.typed && Object.keys(r.typed).length > 0 }))
+    const h = setHeights(views, answers)
+    return Object.keys(h.floors).length > 1 || h.ceilingM !== undefined || h.roofM !== undefined || h.ridgeM !== undefined ? h : null
+  }, [rows, typedOf, answers])
+
+  if (import.meta.env.DEV) Object.assign(window, { __plotlineSet: { rows: choices, reading: !!reading, heights } }) // the sets scoreboard reads what the list holds
   /** a change to a row, remembered by its title for the next set */
-  const change = (key: string, patch: Partial<Pick<SetRow, 'kind' | 'which' | 'tick'>>) =>
+  const change = (key: string, patch: Partial<Pick<SetRow, 'kind' | 'which' | 'tick' | 'typed'>>) =>
     setRows((rs) =>
       rs.map((r) => {
         if (r.key !== key) return r
@@ -218,7 +330,7 @@ export default function SetPanel({ files, onRead, onOpenOne, onBuild, onClose }:
         const k = keyOf(n)
         if (k) {
           const all = readChoices()
-          all[k] = { kind: n.kind, which: n.which, tick: n.tick }
+          all[k] = { kind: n.kind, which: n.which, tick: n.tick, ...(n.typed && Object.keys(n.typed).length ? { heights: n.typed } : {}) }
           try {
             localStorage.setItem(CHOICES_KEY, JSON.stringify(all))
           } catch {
@@ -318,18 +430,23 @@ export default function SetPanel({ files, onRead, onOpenOne, onBuild, onClose }:
                   ) : (
                     <span className="which" />
                   )}
+                  {drawn(c) && <HeightsRow row={c} typed={typedOf.get(c.key)} onType={(f, v) => change(c.key, { typed: { ...c.typed, [f]: v } })} />}
                 </li>
               ))}
             </ol>
           </section>
         )
       })}
+      {!reading && rows.some(drawn) && <HeightsSum heights={heights} differ={heights?.differ ?? []} answers={answers} onAnswer={(k, i) => setAnswers((a) => ({ ...a, [k]: i }))} />}
+      {!reading && !rows.some(drawn) && rows.length > 0 && (
+        <p className="muted set-heights-none">No section or elevation in this set prints its levels: every storey stays {(3.048 + 0.15).toFixed(2)} m floor to floor, as before.</p>
+      )}
       <div className="set-foot">
         <span className="muted">
           {plans.length ? `${plans.length} drawing${plans.length === 1 ? '' : 's'} on ${floors}${joined ? ` (${joined} more flat${joined === 1 ? '' : 's'} joined in)` : ''}` : 'No plan ticked'} · {kept.length} kept · {choices.length - plans.length - joined - kept.length} left out
         </span>
         <button onClick={onClose}>Cancel</button>
-        <button className="primary" disabled={!!reading || (!plans.length && !kept.length) || choices.some((c) => c.used && bad(c))} onClick={() => onBuild(choices, files, storeys)}>
+        <button className="primary" disabled={!!reading || (!plans.length && !kept.length) || choices.some((c) => c.used && bad(c))} onClick={() => onBuild(choices, files, storeys, heights)}>
           Build the project
         </button>
       </div>
