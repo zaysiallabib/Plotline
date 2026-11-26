@@ -5,10 +5,11 @@
  * with node tesseract when its data is on this machine (E:/dev/tmp/wave19/reader/tess).
  */
 import { existsSync } from 'node:fs'
+import { fileURLToPath } from 'node:url'
 import { describe, expect, test } from 'vitest'
 import type { Gray } from './types'
 import { loadPgm } from './evalio'
-import { boxBack, boxTo, cleanForOcr, cropGray, darkGround, findTables, findTextLines, groupWords, nameOk, normaliseName, parseArea, nameStrip, readText, roomName, wholeArea, rotateCCW, rotateCW, splitNames, STRICT_DELTA, textHeights, uprightStrip, type OcrWord } from './text'
+import { boxBack, boxTo, cleanForOcr, cropGray, darkGround, findTables, findTextLines, groupWords, nameOk, normaliseName, parseArea, nameStrip, readText, roomName, wholeArea, rotateCCW, rotateCW, splitNames, STRICT_DELTA, stretch, textHeights, uprightStrip, type OcrWord } from './text'
 
 // ---------------------------------------------------------------- a 5 × 7 block font, enough for plan labels
 const F: Record<string, string> = {
@@ -101,6 +102,15 @@ describe('the gate: a garbled read never names a room (AUTOTRACE_100 §3 #5)', (
 })
 
 describe('the passes (pure)', () => {
+  test('a sparse label keeps its ink through the contrast stretch, and blank paper stays white (from Maheer\'s Plotline 2.0)', () => {
+    const g = paper(100, 100, 255)
+    expect(stretch(g).data).toEqual(g.data)
+    g.data.fill(246)
+    g.data.fill(190, 0, 80)
+    const adjusted = stretch(g)
+    expect(adjusted.data[0]).toBe(0)
+    expect(adjusted.data[80]).toBe(255)
+  })
   test('s27: a view reading a cut area stamp whole replaces the cut read; a word never becomes an area', () => {
     expect(wholeArea('1364 SOF', '1364 SOFT')).toBe(true)
     expect(wholeArea('1364 SQFT', '1364 SQFT')).toBe(false) // read whole already
@@ -178,6 +188,11 @@ describe('the passes (pure)', () => {
 const TESS = 'E:/dev/tmp/wave19/reader/tess/'
 describe.skipIf(!existsSync(`${TESS}eng.traineddata`))('the passes read (node tesseract)', () => {
   const names = (t: Awaited<ReturnType<typeof readText>>) => t.items.filter((it) => it.kind === 'room').map((it) => normaliseName(it.text.split('\n')[0]))
+  test('a metric room size with its unit printed once is read in metres (from Maheer\'s Plotline 2.0)', async () => {
+    const g = loadPgm(fileURLToPath(new URL('../data/fixtures/metric-room.pgm', import.meta.url)))!
+    const trace = await readText(g, { cachePath: TESS, workers: 1 })
+    expect(trace.items.find((item) => item.roomKind === 'kitchen')?.dims, JSON.stringify(trace.items)).toEqual({ aM: 4.4, bM: 3.2 })
+  })
   test('a 45 px title figure beside 9 px room names: both read', async () => {
     const g = paper(1000, 360)
     print(g, 'BED 1', 40, 40, 10)

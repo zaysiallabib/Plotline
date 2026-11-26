@@ -19,6 +19,23 @@ import { guessKind } from '../studio/model'
 const ft = (f: number, i = 0) => (f + i / 12) * FT
 const INCH = 0.0254
 
+test('a joined LI read as U is undone only into an exact room word (from Maheer\'s Plotline 2.0)', () => {
+  expect(normaliseName('UVING')).toBe('LIVING')
+  expect(normaliseName('UFT')).toBe('LIFT')
+  expect(normaliseName('UNIT A')).toBe('UNIT A')
+  expect(normaliseName('UTILITY')).toBe('UTILITY')
+})
+
+test('a misread room word snapped keeps its number and separators; a word with a digit in it snaps too (from Maheer\'s Plotline 2.0)', () => {
+  expect(snapRoomWords('KRTEHEN-02')).toBe('KITCHEN-02')
+  expect(snapRoomWords('KRTEHEN2/STORE')).toBe('KITCHEN2/STORE')
+  expect(snapRoomWords('TOLLET-03')).toBe('TOILET-03')
+  expect(snapRoomWords('KlTCHEN-02')).toBe('KITCHEN-02')
+  expect(snapRoomWords('M.BED-01')).toBe('M.BED-01')
+  expect(snapRoomWords('T0ILET 2')).toBe('TOILET 2')
+  expect(snapRoomWords('Hoistway')).toBe('HOISTWAY')
+})
+
 describe('parseDims', () => {
   test.each([
     [`14'-5" x 14'-4"`, ft(14, 5), ft(14, 4)],
@@ -32,6 +49,14 @@ describe('parseDims', () => {
     [`6'-10"X6'-10"`, ft(6, 10), ft(6, 10)],
     [`4.4m x 3.2m`, 4.4, 3.2],
     [`4.4 x 3.2m`, 4.4, 3.2],
+    // the unit printed once, on either side, in m / cm / mm (from Maheer's Plotline 2.0); "4.4m x 3.2" read 4.40 × 0.98 m
+    // (the bare 3.2 taken as feet)
+    [`4.4m x 3.2`, 4.4, 3.2],
+    [`440 × 320 cm`, 4.4, 3.2],
+    [`440 X 320CM`, 4.4, 3.2],
+    [`4400 x 3200 MM`, 4.4, 3.2],
+    [`440 cm x 320`, 4.4, 3.2],
+    [`440 cm x 3200 mm`, 4.4, 3.2],
     [`14.4 x 12`, ft(14.4), ft(12)],
     // OCR-mangled
     [`14'-5"x 14'-4`, ft(14, 5), ft(14, 4)],

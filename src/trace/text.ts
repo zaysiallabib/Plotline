@@ -69,8 +69,14 @@ export function parseDims(raw: string): Dims | null {
   }
   if (parts.length !== 2) return null
   let [a, b] = parts
-  const metric = /m\s*$/i.test(s) && !/['"]/.test(s) // "4.4 x 3.2m": the unit printed once
-  if (metric && /\d$/.test(a.trim())) a += 'm'
+  // a metric unit printed once is both sides' ("4.4 x 3.2m", "4.4m x 3.2", "440 x 320 cm", "4400 x 3200 MM"): the bare
+  // side takes the other's unit — a bare 3.2 was read as feet (from Maheer's Plotline 2.0)
+  if (!/['"]/.test(s)) {
+    const unit = /\d\s*(mm|cm|m)$/i
+    const aUnit = a.trim().match(unit)?.[1], bUnit = b.trim().match(unit)?.[1]
+    if (bUnit && /\d$/.test(a.trim())) a += bUnit
+    if (aUnit && /\d$/.test(b.trim())) b += aUnit
+  }
   const marksLost = /['"-]/.test(s)
   const aM = parseSide(a, marksLost)
   const bM = parseSide(b, marksLost)
@@ -117,7 +123,7 @@ export function strictSize(raw: string): Dims | null {
 // ---------------------------------------------------------------- room names
 
 /** Words a room name is made of; a token one edit away from one of these (length ≥ 5) is read as it ("KlTCHEN", "T0ILET"). */
-const WORDS = 'KITCHEN TOILET VERANDA VERANDAH BALCONY LIVING DINING DRAWING FAMILY STUDY LOBBY STAIR FOYER PASSAGE STORE SERVANT CLOSET PLANTER SUNSHADE POWDER PRAYER UTILITY LAUNDRY MASTER GUEST CHILD SHAFT LANDSCAPE GREEN WALK LIFT BATH SUITE PANTRY LOUNGE ENTRY TERRACE DRESSING CORRIDOR OFFICE GARDEN SERVICE'.split(' ')
+const WORDS = 'KITCHEN TOILET VERANDA VERANDAH BALCONY LIVING DINING DRAWING FAMILY STUDY LOBBY STAIR FOYER PASSAGE STORE SERVANT CLOSET PLANTER SUNSHADE POWDER PRAYER UTILITY LAUNDRY MASTER GUEST CHILD SHAFT LANDSCAPE GREEN WALK LIFT HOISTWAY BATH SUITE PANTRY LOUNGE ENTRY TERRACE DRESSING CORRIDOR OFFICE GARDEN SERVICE'.split(' ')
 const DIGIT_AS_LETTER: Record<string, string> = { '0': 'O', '1': 'I', '5': 'S', '8': 'B', '6': 'G', '2': 'Z' }
 
 function editDistanceAtMost1(a: string, b: string): boolean {
@@ -139,7 +145,7 @@ function snapShort(tok: string): string {
 }
 
 /** Words of room names, for the loose snap below (incl. plan spellings like DINNING). */
-const LEXICON = [...WORDS, ...SHORT, 'BEDROOM', 'ROOM', 'HELP', 'OPEN', 'DRY', 'FORMAL', 'DINNING', 'TOILET', 'VERANDA', 'MAID', 'STAFF', 'TOI', 'TLT', 'TOIL', 'TO', 'AC', 'PUJA', 'DUCT', 'VOID', 'DRESS']
+const LEXICON = [...WORDS, ...SHORT, 'BEDROOM', 'ROOM', 'HELP', 'OPEN', 'DRY', 'FORMAL', 'DINNING', 'MAID', 'STAFF', 'TOI', 'TLT', 'TOIL', 'TO', 'AC', 'PUJA', 'DUCT', 'VOID', 'DRESS']
 function levenshtein(a: string, b: string): number {
   let prev = Array.from({ length: b.length + 1 }, (_, j) => j)
   for (let i = 1; i <= a.length; i++) {
@@ -158,17 +164,19 @@ export function snapRoomWords(raw: string): string {
   return raw
     .toUpperCase()
     .replace(/[^A-Z0-9.&/ -]+/g, ' ')
-    .split(/\s+/)
-    .map((tok) => {
-      const w = tok.replace(/[^A-Z]/g, '')
+    // word by word (a word may carry digits read for letters, "T0ILET"); its number and separators stay: "KlTCHEN-02" →
+    // KITCHEN-02, "M.BED-01" as it is (from Maheer's Plotline 2.0)
+    .replace(/[A-Z][A-Z0-9]*/g, (tok) => {
+      const suffix = tok.match(/\d+$/)?.[0] ?? ''
+      const w = tok.replace(/\d/g, '')
       if (w.length < 4 || LEXICON.includes(w)) return tok
       const max = Math.floor(w.length / 3)
       const hits = LEXICON.map((l) => ({ l, d: levenshtein(w, l) })).filter((h) => h.d <= max)
       const best = Math.min(...hits.map((h) => h.d))
       const at = hits.filter((h) => h.d === best)
-      return at.length === 1 ? at[0].l : tok
+      return at.length === 1 ? at[0].l + suffix : tok
     })
-    .join(' ')
+    .replace(/\s+/g, ' ')
     .trim()
 }
 
@@ -191,6 +199,9 @@ export function normaliseName(raw: string): string {
           if (/[A-Z]/.test(tok) && /\d/.test(tok) && tok.replace(/[^A-Z]/g, '').length >= 2) tok = tok.replace(/\d/g, (d) => DIGIT_AS_LETTER[d] ?? d)
           // a room's number with its 0 / 1 read as a letter: "BED D4" → BED 04, "TOILET O3" → TOILET 03
           if (/^[ODQIL0-9]{2,3}$/.test(tok) && /\d/.test(tok)) tok = tok.replace(/[ODQ]/g, '0').replace(/[IL]/g, '1')
+          // small print joins L and I into one glyph read as U (UVING, UFT): undone only into an exact room word (from
+          // Maheer's Plotline 2.0)
+          if (!WORDS.includes(tok) && tok.includes('U') && WORDS.includes(tok.replace(/U/g, 'LI'))) tok = tok.replace(/U/g, 'LI')
           if (tok.length >= 5 && !WORDS.includes(tok)) tok = WORDS.find((w) => w.length >= 5 && editDistanceAtMost1(tok, w)) ?? tok
           return snapShort(tok)
         })
@@ -1078,9 +1089,19 @@ export function resample(g: Gray, s: number, kernel: keyof typeof KERNELS): Gray
 
 /** Contrast stretch: the darkest 2 % → black, the paper (60th percentile) → white. */
 export function stretch(g: Gray): Gray {
-  const v = Uint8Array.from(g.data).sort()
-  const a = v[Math.floor(0.02 * (v.length - 1))]
-  const b = Math.max(a + 1, v[Math.floor(0.6 * (v.length - 1))])
+  // the histogram's quantiles (no sort of the crop); a sparse label — under 2 % ink — has both points on the paper,
+  // and its paper grain went black: then the 0.1 % point is the ink (from Maheer's Plotline 2.0)
+  const hist = new Uint32Array(256)
+  for (const v of g.data) hist[v]++
+  const quantile = (f: number) => {
+    const target = Math.floor(f * (g.data.length - 1))
+    for (let i = 0, n = 0; i < 256; i++) if ((n += hist[i]) > target) return i
+    return 255
+  }
+  let a = quantile(0.02)
+  const b = quantile(0.6)
+  if (b - a < 24) a = quantile(0.001)
+  if (b <= a) return g
   return { ...g, data: Uint8Array.from(g.data, (x) => Math.max(0, Math.min(255, Math.round(((x - a) * 255) / (b - a))))) }
 }
 
