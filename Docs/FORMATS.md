@@ -189,3 +189,9 @@ exactly; lines only 103 / 30 / 21 for 90 / 33 / 27), as GLB (now 54 MB, re-opene
 lines-only DXF read of all 20 built-in drawings is `src/import/dxfWrite.test.ts`: since session 31's formats3 lane every
 one comes back exactly the same (walls per thickness and height, zone lines, openings per kind, closed rooms, names,
 raised floors).
+
+Session 31, the cofounder's DXF ideas ported (lane p2port; [review/p2-dxf/SCOREBOARD.md](review/p2-dxf/SCOREBOARD.md),
+"After the port"): on the 32 real DXF files 70 → 72 rooms named, 135 → 139 closed, 260 → 318 openings, 0 crossings
+before and after; the 5 built-in flats saved as plain CAD 78 → 114 of their 116 rooms named; his two-room fixture
+exactly its truth (7 walls, 2 rooms, 2 openings); the 22.5 MB office file refused in 0.6 s with its size instead of not
+read in 5 minutes; the 20 built-ins' round trips unchanged.
