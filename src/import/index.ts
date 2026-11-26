@@ -67,21 +67,29 @@ export type ReadProgress = (stage: string, fraction: number | null) => void
 
 export interface ReadOptions {
   progress?: ReadProgress
-  /** Cancel: an IFC read in its worker stops at once */
+  /** Cancel: an IFC or DXF read in its worker stops at once */
   signal?: AbortSignal
   /** the other files dropped with it (bundle.ts siblingsOf): a model's buffers, pictures, .mtl */
   siblings?: Map<string, Blob>
   /** the person's corrections of what a DXF / SVG layer holds */
   layerRoles?: LayerRoles
+  /** a DXF read in the unit the person picked (metres per file unit), not the file's own or the guessed one */
+  unitScale?: number
 }
 
+/** the biggest DXF read (the size Windows shows): a bigger one is refused at once, saying both sizes (from Maheer's Plotline 2.0) */
+export const MAX_DXF_BYTES = 15 * 2 ** 20
+
+const mb = (bytes: number) => (bytes / 2 ** 20).toFixed(1)
+
 /**
- * An IFC is read in a Web Worker (ifc.worker.ts) so a big file does not freeze the page, with its progress; Node (the
- * tests) and a browser without module workers read it here.
+ * An IFC or a DXF is read in a Web Worker (read.worker.ts) so a big file does not freeze the page, with its progress;
+ * Node (the tests) and a browser without module workers read it here.
  */
-function ifcInWorker(bytes: ArrayBuffer, name: string, { progress, signal }: ReadOptions): Promise<ImportResult> {
+const workers = typeof Worker !== 'undefined' && typeof window !== 'undefined'
+function inWorker(bytes: ArrayBuffer, name: string, { progress, signal, layerRoles, unitScale }: ReadOptions): Promise<ImportResult> {
   return new Promise((ok, no) => {
-    const w = new Worker(new URL('./ifc.worker.ts', import.meta.url), { type: 'module' })
+    const w = new Worker(new URL('./read.worker.ts', import.meta.url), { type: 'module' })
     const end = (fn: () => void) => (w.terminate(), signal?.removeEventListener('abort', abort), fn())
     const abort = () => end(() => no(new DOMException('Cancelled', 'AbortError')))
     signal?.addEventListener('abort', abort)
@@ -92,7 +100,7 @@ function ifcInWorker(bytes: ArrayBuffer, name: string, { progress, signal }: Rea
       else end(() => no(new Error(d.error ?? 'the reader stopped')))
     }
     w.onerror = (e) => (e.preventDefault(), end(() => no(new Error(e.message || 'the reader stopped (out of memory?)'))))
-    w.postMessage({ bytes, name }, [bytes])
+    w.postMessage({ bytes, name, layerRoles, unitScale }, [bytes])
   })
 }
 
@@ -100,16 +108,18 @@ function ifcInWorker(bytes: ArrayBuffer, name: string, { progress, signal }: Rea
 export async function importFile(file: File, opts: ReadOptions = {}): Promise<ImportResult> {
   const format = importFormatOf(file.name)
   if (!format) throw new Error(`Plotline cannot read .${file.name.split('.').pop()} files`)
+  if (format === 'dxf' && file.size > MAX_DXF_BYTES) throw new Error(`it is ${mb(file.size)} MB, and Plotline reads a DXF of up to ${mb(MAX_DXF_BYTES)} MB — save only the floor plan from your CAD program (one floor per file) and drop that`)
   const bytes = await file.arrayBuffer()
   switch (format) {
     case 'ifc':
-      if (typeof Worker !== 'undefined' && typeof window !== 'undefined') return ifcInWorker(bytes, file.name, opts)
+      if (workers) return inWorker(bytes, file.name, opts)
       return (await import('./ifc')).importIfc(bytes, file.name, opts.progress)
     case 'dxf': {
-      if (extOf(file.name) !== 'dwg') return (await import('./dxf')).importDxf(new TextDecoder().decode(bytes), file.name, opts.layerRoles)
+      const read = (b: ArrayBuffer, name: string) => (workers ? inWorker(b, name, opts) : import('./dxf').then((m) => m.importDxf(new TextDecoder().decode(b), name, opts)))
+      if (extOf(file.name) !== 'dwg') return read(bytes, file.name)
       opts.progress?.('converting the DWG to DXF', null)
       const dxf = await convertDwg(bytes, file.name, DWG_CONVERTER!, opts.signal)
-      const r = await (await import('./dxf')).importDxf(dxf, file.name.replace(/\.dwg$/i, '.dxf'), opts.layerRoles)
+      const r = await read(new TextEncoder().encode(dxf).buffer as ArrayBuffer, file.name.replace(/\.dwg$/i, '.dxf'))
       return { ...r, notes: ['Converted from DWG to DXF by the converter set up for this site (Docs/SETUP_FORMATS.md).', ...r.notes] }
     }
     case 'pdf':

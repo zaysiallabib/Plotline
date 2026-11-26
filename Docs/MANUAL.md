@@ -1122,12 +1122,17 @@ it without asking the map again. Map and buildings © OpenStreetMap contributors
 Instead of a picture to trace, drop the architect's own file on the Studio (or ⋯ → **Import…** / **Choose plan
 image…**). Its walls ARE the drawing, so there is no picture behind it (the status bar says "no picture lined up"); a
 picture can still be dropped later to see the sheet behind. Every format and how it was tested: [FORMATS.md](FORMATS.md).
+Dropped (or imported) onto a drawing, a file asks first: "Replace the drawing on screen with *file*? Undo brings it
+back." — **Replace**, and one **Ctrl+Z** (or ↶ Undo) gives the drawing that was there back, on its picture as before and
+with its Check these rows; **Cancel** keeps it. The same for a Plotline file (.json). A whole building (an IFC of several
+storeys) makes a project of its own: a drawing open in a project stays in its project; one open in no project is
+replaced, and it says so before ("Make a project of *file*'s 5 floors? The drawing on screen is in no project…").
 To see each kind without a file of your own: **Try a sample ▾** in the empty Studio ("Loading the plan picture" above).
 
 | File | What happens |
 |---|---|
 | **IFC** `.ifc`, `.ifczip` (Revit, ArchiCAD, …: a building model with its walls, doors and rooms) | One storey opens as the drawing. Several make a whole **project** in one go — basements, ground, floors, rooftop — each storey its own drawing, the outside shape saved once for the building; the first floor above ground opens (a house's: its attic — click **Open** beside **Ground floor** in the list for the main rooms). Walls the file leaves touching are joined, two of its rooms in one open space are split by flush zone lines where the file draws their boundary (two names the file gives one outline — a bath and its hall — stay a row in Issues that asks which room is which, below), a room the walls leave open (a balcony edged only by a railing, a roof terrace, a stair open to the floor above) is closed by flush zone lines along the file's own outline of it — the railing itself shows in the outside shape — and a space that only holds other rooms (a gross area) gives no room name — "What was read from the file" says how many of each. A European file's room words are understood (Zimmer / Slaapkamer / Sovrum a bedroom, Bad / Badkamer a bath, Küche / Keuken a kitchen, Wohnzimmer / Wohnküche a living room, Terrasse / Balkon a balcony; Treppenhaus, Aufzug, Trappenhuis, Hiss, Escalier, Ascensore and the corridor Gang are the shared core), so the flats of a whole floor are found — a word Plotline does not know stays "other": give the room its kind with V. A room the file gives no name of its own takes its zone's name, else its floor's name and a number ("Level 2 · 3"); a floor where the file names no rooms at all keeps "Space N", said once in the notes, and on a big floor Issues offers **Name them …** in one click |
-| **DXF** `.dxf`, **SVG** `.svg` (a drawing made of lines) | One floor's walls, openings and room names read from the file, to check and finish as usual. A DXF's walls may be line pairs, polylines, hatches or multilines; an SVG's groups are its layers ("Walls", "A-WALL"); an SVG with no named groups (a CAD print saved as SVG) has its lines sorted by pen like a PDF — the heaviest pen and grey wall fills are the walls. An SVG has no scale: the printed dimensions give it — check with S |
+| **DXF** `.dxf`, **SVG** `.svg` (a drawing made of lines) | One floor's walls, openings and room names read from the file, to check and finish as usual. Names in any script come through as written (a Bangla "শয়ন কক্ষ" too, even from a file older than AutoCAD 2007). A DXF's walls may be line pairs, polylines, hatches or multilines, a floor drawn as one outline with its partitions as single lines, or each room as its outline (a partition drawn as one line still splits its room); its doors and windows swings, blocks, glass lines, or a plain line or narrow rectangle on a door / window layer (on a layer of doors and windows, a plain line is a window); a door, window or sliding-door block standing in no wall (a front all of glass) is a wall of that opening; an SVG's groups are its layers ("Walls", "A-WALL"); an SVG with no named groups (a CAD print saved as SVG) has its lines sorted by pen like a PDF — the heaviest pen and grey wall fills are the walls. An SVG has no scale: the printed dimensions give it — check with S |
 | **DWG** `.dwg` (AutoCAD's own) | Once DWG is turned on ([SETUP_FORMATS.md](SETUP_FORMATS.md)): sent to an online converter, back as a DXF ("converting the DWG to DXF"); 10 a day. Not turned on: refused with how to save it as DXF — AutoCAD: type SAVEAS, pick "AutoCAD DXF" under Files of type; DraftSight: File → Save As → DXF; no CAD program: LibreCAD (free) opens the .dwg, then File → Save As → DXF. Drop the .dxf: nothing a plan needs is lost |
 | **PDF** `.pdf` (a brochure, or a print from the drawing program) | One page that is one floor plan opens at once. Several pages (an architect's set, a brochure), a page of several drawings, or an elevation on its own: **What is in this set** lists every drawing by kind (below, "Drop a whole set"); click a drawing's picture there to open it alone. A page whose lines make a clean plan opens as the drawing — a PDF has no layers, so its lines are sorted by pen: the heaviest pen and grey wall fills are the walls ("What was read from the file" names them); the scale printed on the sheet (`1/4" = 1'-0"`, `1:100`) is the scale, else the printed dimensions measured against their lines — check with S; a stair's "UP" / "DN" and a door or window tag ("D-16", "Win-18") never name a room; a page with no scale printed as words (a brochure page whose words are drawn as outlines) opens straight as the plan picture, its lines not read; any other page becomes the **plan picture** for S and Auto-trace. The message offers the other way: **Use it as a picture instead** / **Read its lines instead** |
 | **3D model** `.glb` `.gltf` `.obj` `.fbx` `.dae` `.stl` `.3dm` `.3ds` `.kmz` `.wrl` `.ply` | The building's **outside shape** only (no rooms), attached to the drawing open now: the Building view shows it round your flat and the walk sees its facade through the windows. A model with its pictures (or a `.gltf` with its `.bin`) in other files: drop the whole folder or a `.zip`, or pick the files together |
@@ -1135,8 +1140,10 @@ To see each kind without a file of your own: **Try a sample ▾** in the empty S
 | A **folder**, a **.zip** or several files | The best file opens (an IFC first, then a 3D model, then a DXF / PDF; an architectural IFC before a structural one); the rest are its pictures and data. Several PDFs and nothing better (an architect's set sent as one PDF a sheet): all their pages in **What is in this set**, in the order of their names. A zip of pictures opens its first picture |
 
 While it reads, a box at the top says what it is doing with a bar for how far ("building the 3D (53 %)", "floor 3 of
-7"); the Studio keeps working (a 64 MB building takes about half a minute; the 35 MB LTU university building 13 s, the
-39 MB Nordic office about 10 s), and **Cancel** stops it. A glass front (curtain wall) that turns a corner is read as
+7", a DXF's "reading the lines", "finding the walls"); the Studio keeps working (a 64 MB building takes about half a minute; the 35 MB LTU university building 13 s, the
+39 MB Nordic office about 10 s), and **Cancel** stops it. A DXF over 15 MB is refused at once with its size ("it is 22.5 MB, and Plotline reads a
+DXF of up to 15.0 MB — save only the floor plan from your CAD program (one floor per file) and drop that"), so is one
+holding more than 50 000 drawn things, and a binary DXF ("save it as ASCII DXF in your CAD program"). A glass front (curtain wall) that turns a corner is read as
 the straight runs of its panels, one glass wall per run; a "column" wider than a wall both ways (over 1.5 m) is no
 column and is left to the outside shape — the notes say how many of each. A whole big floor opens in Preview 3D too (the
 LTU building's 2nd floor, 285 rooms and 1 644 walls: about half a minute to Enter); on a floor that big the daylight inside
@@ -1148,7 +1155,16 @@ could not place is named in the notes. Pick another meaning in a layer's box —
 the choice is kept in this browser for every next file with that layer name (an architect's template uses the same
 names every time). **Plotline decides** gives the layer back to Plotline. Layer names it knows by itself: the US / AIA
 ones (A-WALL, A-DOOR, A-GLAZ, S-COLS, A-ANNO-TEXT…), plain English, and the German, French, Spanish, Italian and Dutch
-words (Wände, MURS, PUERTAS, FINESTRE, KOLOM…).
+words (Wände, MURS, PUERTAS, FINESTRE, KOLOM…). What a block (a door, a window, a symbol) draws on layer 0 belongs to
+the layer the block is placed on, as in CAD: a door block placed on A-DOOR counts as doors.
+
+**Read in** (after a DXF, above its layers) says the unit the file was read in — "Plotline decides: millimetres" (the
+file's own, or Plotline's guess when the file says none or says one that makes the plan too small or too big). A drawing
+that came out the wrong size (a house 3 m across, a flat 700 m across): pick **Millimetres**, **Centimetres**, **Metres**,
+**Inches** or **Feet** and the file is read again at once at that size. Not sure of the unit? Click one wall whose real
+length you know, pick **A length I know…**, type it (14'-0" or 4.27 m) and **Read again**: the file is read at the size
+that makes that wall so. The choice is kept in this browser for that file's name (drop it again tomorrow: same size);
+**Plotline decides** gives it back.
 
 **Outside shape** (in the panel while the drawing has one): its name and triangle count, **Offset x / y (m)** (slide it
 until its walls sit on yours), **Turn (deg)**, **Floor height (m)** (how high this drawing's floor is inside it), each one
@@ -1495,7 +1511,8 @@ Things that are confusing or not finished. Each one is a job on the list.
   the 3D view.
 - Zoomed out, a small room's name can be hidden until the mouse is over it; coloured areas (lawn, driveway) cover much of the
   picture under them; checks written for flats show on levels ("No entry door on an outer wall", the Area number).
-- Undo does not reach past closing the browser or switching drawings; the tracing timer starts again for each drawing.
+- Undo does not reach past closing the browser or switching drawings (an imported file over a drawing is one step back);
+  the tracing timer starts again for each drawing.
   Ctrl+Z right after opening the Studio again does nothing.
 - Renaming a project does not change the Project box of drawings made before.
 

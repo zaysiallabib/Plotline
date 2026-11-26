@@ -13,6 +13,13 @@ import { ROLE_WORDS, buildPlan, guessScale, roleOf, type ArcPrim, type Drawing, 
 import { parseDims } from '../trace/text'
 import type { ImportResult } from './types'
 
+/**
+ * The most a DXF may hold before it is refused in plain words (from Maheer's Plotline 2.0, raised to what ours reads: the
+ * corpus's biggest plan, a 3.7 MB apartment block, holds 7 701 entities that open into 259 595 lines and reads in 0.6 s)
+ */
+export const MAX_DXF_ENTITIES = 50_000
+export const MAX_DXF_LINES = 1_000_000
+
 /** $INSUNITS → metres per unit (0 = unitless: guessed from the extent) */
 const INSUNITS: Record<number, [number, string]> = { 1: [0.0254, 'inches'], 2: [0.3048, 'feet'], 3: [1609.344, 'miles'], 4: [0.001, 'millimetres'], 5: [0.01, 'centimetres'], 6: [1, 'metres'], 7: [1000, 'kilometres'], 8: [0.0254 / 1000, 'microinches'], 9: [0.0254 / 1000, 'mils'], 10: [0.9144, 'yards'], 14: [0.1, 'decimetres'] }
 
@@ -28,19 +35,28 @@ const compose = (outer: Xf, inner: Xf): Xf => ({
 })
 const IDENT: Xf = { m: [1, 0, 0, 1], o: { x: 0, y: 0 } }
 
-/** MTEXT formatting codes stripped: \P = new line, {\fArial|b0;…}, \A1;, \H2.5x;, \C1;, \W, \Q, \T, \L \O \K, %%d %%p %%c, ^J */
-export function stripMtext(s: string): string {
+/** AutoCAD's %% codes: degree, plus-minus, diameter; underline / overline on-off draw nothing; %%% is a % */
+const PERCENT: Record<string, string> = { d: '°', p: '±', c: 'Ø', u: '', o: '', '%': '%' }
+const MTEXT_CODES = /\\([\\{}])|\\[Uu]\+([\da-fA-F]{4})|\\S([^;]*);|\\P|\^J|\\~|\\[pACFHQTWacfhqtw][^;]*;|\\[LlOoKkNn]|%%([dDpPcCuUoO%])|[{}]/g
+const TEXT_CODES = /()\\[Uu]\+([\da-fA-F]{4})()|%%([dDpPcCuUoO%])/g
+
+/**
+ * A text's words without its codes, in ONE pass so an escaped character never turns into a code (ours merged with
+ * Maheer's Plotline 2.0): \P (and ^J) = a new line, \~ = a space, {\fArial|b0;…} \A1; \H2.5x; \C1; \W \Q \T \p…; \L \O
+ * \K \N go, \S1#2; = 1/2, \U+09B6 = that letter (a Bangla name in a file older than AutoCAD 2007: শয়ন কক্ষ), \{ \} \\ =
+ * the character itself, %%d %%p %%c = ° ± Ø. `single`: a TEXT (one line), where only \U+ and %% are codes — its braces
+ * and backslashes are its own.
+ */
+export function plainMtext(s: string, single = false): string {
   return s
-    .replace(/\\P|\^J/g, '\n')
-    .replace(/\\[ACFHQTWfpc][^;]*;/g, '')
-    .replace(/\\[LlOoKkNn~]/g, '')
-    .replace(/\\S([^;^]*)[\^/#]([^;]*);/g, '$1/$2')
-    .replace(/%%[dD]/g, '°')
-    .replace(/%%[pP]/g, '±')
-    .replace(/%%[cC]/g, 'Ø')
-    .replace(/%%[uUoO]/g, '')
-    .replace(/%%%/g, '%')
-    .replace(/[{}]/g, '')
+    .replace(single ? TEXT_CODES : MTEXT_CODES, (code: string, literal?: string, hex?: string, fraction?: string, percent?: string) => {
+      if (literal) return literal
+      if (hex) return String.fromCharCode(parseInt(hex, 16))
+      if (fraction !== undefined) return fraction.replace(/[\^#]/g, '/')
+      if (percent) return PERCENT[percent.toLowerCase()]
+      return code === '\\P' || code === '^J' ? '\n' : code === '\\~' ? ' ' : ''
+    })
+    .trim()
 }
 
 interface Flat {
@@ -234,7 +250,9 @@ function arcChords(c: Pt, r: number, a0: number, a1: number): Pt[] {
   return Array.from({ length: n + 1 }, (_, i) => ({ x: c.x + r * Math.cos(a0 + (sweep * i) / n), y: c.y + r * Math.sin(a0 + (sweep * i) / n) }))
 }
 
-function flatten(dxf: IDxf, entities: IEntity[], xf: Xf, out: Flat, block: string | undefined, inst: number | undefined, depth: number, frozen: Set<string>, mine?: LayerRoles): void {
+function flatten(dxf: IDxf, entities: IEntity[], xf: Xf, out: Flat, block: string | undefined, inst: number | undefined, depth: number, frozen: Set<string>, mine?: LayerRoles, owner?: string): void {
+  // (CAD's rule: what a block draws on layer 0 takes the layer it is inserted on — a door block on A-DOOR is doors)
+  const lay = (e: IEntity) => ((e.layer ?? '0') === '0' && owner ? owner : (e.layer ?? '0'))
   const det = xf.m[0] * xf.m[3] - xf.m[1] * xf.m[2]
   const rscale = Math.sqrt(Math.abs(det))
   const skip = (what: string) => out.skipped.set(what, (out.skipped.get(what) ?? 0) + 1)
@@ -243,14 +261,14 @@ function flatten(dxf: IDxf, entities: IEntity[], xf: Xf, out: Flat, block: strin
     const t = (e as { thickness?: number; depth?: number }).thickness ?? (e as { depth?: number }).depth
     return t ? Math.abs(t) : undefined
   }
-  const base = (e: IEntity) => ({ layer: e.layer ?? '0', block, inst, ...(thick(e) ? { h: thick(e) } : {}) })
+  const base = (e: IEntity) => ({ layer: lay(e), block, inst, ...(thick(e) ? { h: thick(e) } : {}) })
   const line = (e: IEntity, a: Pt, b: Pt, loop?: number) => out.segs.push({ ...base(e), a: apply(xf, a), b: apply(xf, b), ...(loop === undefined ? {} : { loop }) })
   const poly = (e: IEntity, pts: Pt[], closed: boolean) => {
     const loop = closed && pts.length > 2 ? out.loops.length : undefined
     for (let i = 0; i + 1 < pts.length; i++) line(e, pts[i], pts[i + 1], loop)
     if (loop !== undefined) {
       line(e, pts[pts.length - 1], pts[0], loop)
-      out.loops.push({ layer: e.layer ?? '0', pts: pts.map((p) => apply(xf, p)), ...(thick(e) ? { h: thick(e) } : {}) })
+      out.loops.push({ layer: lay(e), pts: pts.map((p) => apply(xf, p)), ...(thick(e) ? { h: thick(e) } : {}) })
     }
   }
   const arc = (e: IEntity, c: Pt, r: number, a0: number, a1: number) => {
@@ -292,6 +310,7 @@ function flatten(dxf: IDxf, entities: IEntity[], xf: Xf, out: Flat, block: strin
     poly(e, pts, closed)
   }
   for (const e of entities) {
+    if (out.segs.length > MAX_DXF_LINES) throw new Error(`its blocks open into more than ${MAX_DXF_LINES.toLocaleString('en')} lines — save only the floor plan from your CAD program and drop that`)
     if (e.inPaperSpace || frozen.has(e.layer)) {
       skip(e.inPaperSpace ? 'paper space entities' : 'entities on frozen / hidden layers')
       continue
@@ -354,7 +373,7 @@ function flatten(dxf: IDxf, entities: IEntity[], xf: Xf, out: Flat, block: strin
       }
       case 'HATCH': {
         const h = e as IHatchEntity
-        const r = roleOf(e.layer ?? '0', block, mine)
+        const r = roleOf(lay(e), block, mine)
         if (r !== 'wall' && r !== 'column') {
           skip('hatches off the wall / column layers')
           break
@@ -375,20 +394,20 @@ function flatten(dxf: IDxf, entities: IEntity[], xf: Xf, out: Flat, block: strin
       }
       case 'TEXT': {
         const t = e as ITextEntity
-        if (t.text) out.texts.push({ layer: e.layer ?? '0', at: apply(xf, t.startPoint ?? { x: 0, y: 0, z: 0 }), text: stripMtext(t.text), height: (t.textHeight ?? 1) * rscale, ...(t.startPoint?.z ? { z: t.startPoint.z } : {}) })
+        if (t.text) out.texts.push({ layer: lay(e), at: apply(xf, t.startPoint ?? { x: 0, y: 0, z: 0 }), text: plainMtext(t.text, true), height: (t.textHeight ?? 1) * rscale, ...(t.startPoint?.z ? { z: t.startPoint.z } : {}) })
         break
       }
       case 'MTEXT': {
         const t = e as IMtextEntity
-        if (t.text) out.texts.push({ layer: e.layer ?? '0', at: apply(xf, t.position ?? { x: 0, y: 0, z: 0 }), text: stripMtext(t.text), height: (t.height ?? 1) * rscale })
+        if (t.text) out.texts.push({ layer: lay(e), at: apply(xf, t.position ?? { x: 0, y: 0, z: 0 }), text: plainMtext(t.text), height: (t.height ?? 1) * rscale })
         break
       }
       case 'DIMENSION': {
         const d = e as IDimensionEntity
         const text = d.text && d.text !== '<>' ? d.text : d.actualMeasurement != null ? String(Math.round(d.actualMeasurement * 100) / 100) : ''
-        if (text) out.texts.push({ layer: `DIM:${e.layer ?? '0'}`, at: apply(xf, d.middleOfText ?? d.anchorPoint ?? { x: 0, y: 0, z: 0 }), text, height: 1 })
+        if (text) out.texts.push({ layer: `DIM:${lay(e)}`, at: apply(xf, d.middleOfText ?? d.anchorPoint ?? { x: 0, y: 0, z: 0 }), text, height: 1 })
         // its block holds the drawn lines (extension lines, arrows): read as 'dim' layer lines
-        if (d.block && dxf.blocks?.[d.block] && depth < 8) flatten(dxf, dxf.blocks[d.block].entities ?? [], xf, { ...out, texts: [] }, undefined, undefined, depth + 1, frozen, mine)
+        if (d.block && dxf.blocks?.[d.block] && depth < 8) flatten(dxf, dxf.blocks[d.block].entities ?? [], xf, { ...out, texts: [] }, undefined, undefined, depth + 1, frozen, mine, lay(e))
         break
       }
       case 'INSERT': {
@@ -410,7 +429,7 @@ function flatten(dxf: IDxf, entities: IEntity[], xf: Xf, out: Flat, block: strin
           for (let c = 0; c < cols; c++) {
             const cell: Xf = { ...local, o: { x: local.o.x + c * (ins.columnSpacing ?? 0), y: local.o.y + r * (ins.rowSpacing ?? 0) } }
             out.inserts++
-            flatten(dxf, b.entities ?? [], compose(xf, cell), out, block ?? ins.name, inst ?? out.inserts, depth + 1, frozen, mine)
+            flatten(dxf, b.entities ?? [], compose(xf, cell), out, block ?? ins.name, inst ?? out.inserts, depth + 1, frozen, mine, lay(e))
           }
         break
       }
@@ -424,19 +443,32 @@ function flatten(dxf: IDxf, entities: IEntity[], xf: Xf, out: Flat, block: strin
   }
 }
 
-/** `mine`: the person's corrections of what a layer holds (the Studio keeps them for the next file) */
-export async function importDxf(text: string, name: string, mine?: LayerRoles): Promise<ImportResult> {
+export interface DxfOptions {
+  /** the person's corrections of what a layer holds (the Studio keeps them for the next file) */
+  layerRoles?: LayerRoles
+  /** what it is doing, for the Studio's progress box */
+  progress?: (stage: string, fraction: number | null) => void
+  /** the person's "Read in" for this file (metres per file unit): millimetres, feet, or worked out from one length they know */
+  unitScale?: number
+}
+
+export async function importDxf(text: string, name: string, { layerRoles: mine, progress, unitScale }: DxfOptions = {}): Promise<ImportResult> {
+  // (AutoCAD's binary DXF starts with its own signature: dxf-parser would only say "EOF group not read")
+  if (text.startsWith('AutoCAD Binary DXF')) throw new Error('it is a binary DXF — save it as ASCII DXF in your CAD program and drop that')
   // a DXF Plotline wrote, untouched since: the drawing itself (dxfWrite.ts); a changed one is read from its lines below
   const own = ownDrawingOf(text)
   if (own) {
     const notes = [`Written by Plotline and not changed since: opened exactly as it was exported (${own.walls.length} walls, ${own.walls.reduce((a, w) => a + w.openings.length, 0)} openings, ${own.roomLabels.length} names). Changed in a CAD program, it would be read from its lines.`]
     return { format: 'dxf', storeys: [{ name: own.name || 'Floor', elevationM: 0, unit: own }], notes, unitScale: 1, origin: { x: 0, y: 0 } }
   }
+  progress?.('reading the lines', null)
   const parser = new DxfParser()
   parser.registerEntityHandler(Hatch as unknown as new () => IGeometry)
   parser.registerEntityHandler(Mline as unknown as new () => IGeometry)
   const dxf = parser.parseSync(text)
   if (!dxf) throw new Error('This file is not a DXF Plotline can read')
+  const n = dxf.entities?.length ?? 0
+  if (n > MAX_DXF_ENTITIES) throw new Error(`it holds ${n.toLocaleString('en')} drawn things, and Plotline reads up to ${MAX_DXF_ENTITIES.toLocaleString('en')} — save only the floor plan from your CAD program and drop that`)
   const notes: string[] = []
   const h = dxf.header ?? {}
   const ver = String(h['$ACADVER'] ?? 'unknown')
@@ -464,11 +496,15 @@ export async function importDxf(text: string, name: string, mine?: LayerRoles): 
   const box = ext(wallish.length ? wallish : flat.segs)
   const extent = Math.max(box.w, box.h)
   const sizeArea = flat.texts.reduce((acc, t) => {
-    const d = parseDims(stripMtext(t.text))
+    const d = parseDims(t.text)
     return acc + (d ? d.aM * d.bM : 0)
   }, 0)
   let scale: number
-  if (INSUNITS[ins]) {
+  if (unitScale) {
+    scale = unitScale
+    const known = Object.values(INSUNITS).find(([k]) => Math.abs(k - unitScale) < 1e-12)
+    notes.push(`Units: ${known ? known[1] : `1 unit = ${+unitScale.toPrecision(4)} m`}, as you set them; the plan is ${(extent * scale).toFixed(1)} m across.`)
+  } else if (INSUNITS[ins]) {
     scale = INSUNITS[ins][0]
     const m = extent * scale
     if (extent && (m < 3 || m > 500)) {
@@ -497,6 +533,7 @@ export async function importDxf(text: string, name: string, mine?: LayerRoles): 
   const ownLayers = Object.keys(dxf.tables?.layer?.layers ?? {}).some((l) => /^PLOTLINE_(ZONES|KERBS)$/.test(l))
   if (ownLayers) notes.push('Exported by Plotline (its own layers are in the file): read to the letter — each wall piece its outline, each opening its block.')
   const drawing: Drawing = { segs: flat.segs, arcs: flat.arcs, texts: flat.texts, loops: flat.loops, scale, columnLayer, own: ownLayers, layerRoles: mine }
+  progress?.('finding the walls', null)
   const plan = buildPlan(drawing, name.replace(/\.dxf$/i, ''))
   const north = Number(h['$NORTHDIRECTION'] ?? 0)
   plan.unit.northDeg = Number.isFinite(north) ? ((north % 360) + 360) % 360 : 0

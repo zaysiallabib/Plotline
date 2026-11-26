@@ -129,7 +129,8 @@ no staff row below shows there. Checked against the product on 2026-11-21; walke
 | **Plotline STUDIO** | Opens the front page (the mouse over STUDIO: this browser is in staff mode) | top bar, left | §5 Top bar |
 | **Unit name**, **Project**, **Floor**, **Area** (sft) | The drawing's fields; click and type (Floor: numbers only). Under about 1000 px wide Project and Area step aside | top bar | §5 Top bar |
 | Saving… · Saved · just now · Offline · will retry · Someone else saved · Not saved: … | Where your work stands online; click it for the account card | top bar, signed in | §5 Accounts |
-| **↶** / **↷** · **Ctrl+Z** / **Ctrl+Y** (or **Ctrl+Shift+Z**) | Undo / Redo | top bar; any tool, not in a text box | §5 Top bar |
+| **↶** / **↷** · **Ctrl+Z** / **Ctrl+Y** (or **Ctrl+Shift+Z**) | Undo / Redo (a file dropped over a drawing is one step: Undo brings the drawing back) | top bar; any tool, not in a text box | §5 Top bar |
+| **Replace** · **Cancel** | A file dropped onto a drawing asks first: "Replace the drawing on screen with *file*? Undo brings it back." (Enter / Esc) | over a drawing | §5 Bring in the architect's file |
 | **Auto-trace** | Traces the flats: point at a flat and click it, or **Whole floor** | top bar, once a plan picture is in | §5 Auto-trace and Check these |
 | **Preview 3D** | Your drawing in the 3D view, in a new tab (the blue button; plain while the Studio is empty; with no wall drawn it says so instead) | top bar | §5 Top bar |
 | **Building** | Shows / hides the project's floor list (or starts a project) | top bar | §6 |
@@ -187,6 +188,7 @@ no staff row below shows there. Checked against the product on 2026-11-21; walke
 | Room box: **Room name**, **Kind**, **Printed size**, **Floor level**, **Ramp**, **To level**, the direction arrows, **Save**, **Remove** | Names a room; clicked on a room's name it opens that name, elsewhere in a named room it opens empty and adds a second name (a flat's "Type A ±2703 sft") | R, click in a closed room | §5 R — Room |
 | **Steps** | The checklist; ticks itself, the next step marked with a blue dot | right-hand panel | §5 The right-hand panel |
 | **What was read from the file** · **Dismiss** | The file's unit, what was guessed, what it lacked | right-hand panel, after an architect's file | §5 Bring in the architect's file |
+| **Read in** (**Plotline decides**, Millimetres, Centimetres, Metres, Inches, Feet, **A length I know…**) | The unit a DXF is read in: the file is read again at once at that size (A length I know…: the wall you clicked, its real length typed, **Read again**); kept for that file's name | right-hand panel, under What was read from the file | §5 Bring in the architect's file |
 | **Layers** · a layer's box (**Plotline decides**, Walls, Kerbs, Zone lines, Doors, Windows, Columns, Room names, Dimensions, Leave out) | Says what a DXF / SVG layer holds: the file is read again, the choice kept for every next file | right-hand panel, under What was read from the file | §5 Bring in the architect's file |
 | **Outside shape**: **Offset x (m)**, **Offset y (m)**, **Turn (deg)**, **Floor height (m)**, **Remove outside shape** | Lines the architect's model up with the plan; takes it away | right-hand panel, a drawing with a model | §5 Bring in the architect's file |
 | Selection — a corner: **X (m)**, **Y (m)** | Its exact place | right-hand panel | §5 The right-hand panel |

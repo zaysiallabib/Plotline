@@ -245,7 +245,12 @@ export type Action =
   | { type: 'reset-furniture'; roomId?: Id }
   | { type: 'undo' }
   | { type: 'redo' }
-  | { type: 'load-unit'; unit: Unit }
+  /**
+   * another drawing onto the screen. An import (`fresh` absent) over a drawing is ONE undo step: Ctrl+Z gives the drawing
+   * that was on screen back (session 31 p2port, from Maheer's Plotline 2.0). `fresh`: opening another drawing of a project
+   * starts its own history (an undo must never carry one floor's drawing into another).
+   */
+  | { type: 'load-unit'; unit: Unit; fresh?: boolean }
   | { type: 'restore'; draft: Draft }
   | { type: 'reset' }
   | { type: 'timer-start'; now: number }
@@ -269,6 +274,9 @@ export function emptyUnit(): Unit {
     areaSqft: 0,
   }
 }
+
+/** the screen holds a drawing (walls, names or columns): an import over it asks first and is one undo step */
+export const hasDrawing = (u: Unit): boolean => !!(u.walls.length || u.roomLabels.length || u.pillars?.length)
 
 export function initialState(): StudioState {
   return {
@@ -1757,9 +1765,13 @@ export function reducer(s: StudioState, a: Action): StudioState {
       }
     }
 
-    case 'load-unit':
-      // overlapping / crossing walls are joined once (join-walls); Ctrl+Z gives the file as it was
-      return reducer({ ...initialState(), unit: normalizeUnit(a.unit), planImage: s.planImage, view: s.view, timer: s.timer, tool: 'select' }, { type: 'join-walls' })
+    case 'load-unit': {
+      // overlapping / crossing walls are joined once (join-walls); Ctrl+Z gives the file as it was — or, over a drawing,
+      // that drawing (the file and its join are one step), its Check these rows with it (they are bound to its id)
+      const loaded = reducer({ ...initialState(), unit: normalizeUnit(a.unit), planImage: s.planImage, view: s.view, timer: s.timer, tool: 'select' }, { type: 'join-walls' })
+      if (a.fresh || !hasDrawing(s.unit)) return loaded
+      return { ...loaded, review: s.review, history: { past: [...s.history.past.slice(-(HISTORY_CAP - 1)), s.unit], future: [] } }
+    }
     case 'restore': {
       // a draft may be just `{ unit }` (older drafts, hand-injected JSON): every other field is optional
       const init = initialState()

@@ -47,7 +47,7 @@ const RUN_MIN_M = 1
 // ---------- web-ifc ----------
 
 let apiPromise: Promise<{ W: WebIfc; api: Api }> | null = null
-/** Node (the tests) — not the browser's page or its worker (ifc.worker.ts), which have no `process` */
+/** Node (the tests) — not the browser's page or its worker (read.worker.ts), which have no `process` */
 const NODE = typeof process !== 'undefined' && !!process.versions?.node
 
 /** How far a read is, for the Studio's progress line: what it is doing in plain words, and 0..1. */

@@ -8,8 +8,9 @@ import { existsSync, readdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { describe, expect, test } from 'vitest'
 import { deriveRooms, validate } from '../core'
 import { EXTERIOR_M, PARTITION_M } from '../studio/model'
-import { importDxf } from './dxf'
-import { splinePoints, stripMtext } from './dxf'
+import { MAX_DXF_ENTITIES, importDxf } from './dxf'
+import { plainMtext, splinePoints } from './dxf'
+import { MAX_DXF_BYTES, importFile } from './index'
 import { roleOf } from './plan2d'
 
 /** a DXF from group code / value pairs */
@@ -52,6 +53,15 @@ describe('dxf fixtures', () => {
     expect(r.origin).toEqual({ x: 0, y: 5000 })
   })
 
+  test('"Read in": the unit a person picks wins over the file\'s own (a wrong $INSUNITS, a wrong guess)', async () => {
+    const r = await importDxf(fixture('two-rooms-mm'), 'two-rooms-mm.dxf', { unitScale: 0.01 })
+    expect(r.unitScale).toBe(0.01)
+    expect(r.notes).toContain('Units: centimetres, as you set them; the plan is 82.5 m across.')
+    expect(deriveRooms(r.storeys[0].unit).every((x) => Math.abs(x.areaSqm - 2000) < 1)).toBe(true) // each 20 m² room, ten times longer each way
+    const odd = await importDxf(fixture('two-rooms-mm'), 'two-rooms-mm.dxf', { unitScale: 0.00125 })
+    expect(odd.notes).toContain('Units: 1 unit = 0.00125 m, as you set them; the plan is 10.3 m across.')
+  })
+
   test('two rooms in feet: a turned, mirrored door block and a window block', async () => {
     const r = await importDxf(fixture('two-rooms-ft'), 'two-rooms-ft.dxf')
     expect(r.unitScale).toBe(0.3048)
@@ -69,8 +79,24 @@ describe('dxf fixtures', () => {
   })
 
   test('mtext formatting codes are stripped', () => {
-    expect(stripMtext(`{\\fArial|b1;BED ROOM}\\P13'-0" x 16'-0"`)).toBe(`BED ROOM\n13'-0" x 16'-0"`)
-    expect(stripMtext('\\A1;\\H2.5x;LIVING %%p 2 %%d')).toBe('LIVING ± 2 °')
+    expect(plainMtext(`{\\fArial|b1;BED ROOM}\\P13'-0" x 16'-0"`)).toBe(`BED ROOM\n13'-0" x 16'-0"`)
+    expect(plainMtext('\\A1;\\H2.5x;LIVING %%p 2 %%d')).toBe('LIVING ± 2 °')
+    expect(plainMtext('%%c600 %%%')).toBe('Ø600 %')
+  })
+
+  // Maheer's Plotline 2.0 (src/dxf/dxf.test.ts), on our decoder
+  test('unicode escapes, escaped braces and backslashes survive; a TEXT keeps its own braces', () => {
+    expect(plainMtext(String.raw`{\C1;BEDROOM}\P12´-0\U+00B4`)).toBe('BEDROOM\n12´-0´')
+    expect(plainMtext(String.raw`{\pxqc;\L\U+0042ED\l}\P\{A\} \\P \S1#2;`)).toBe('BED\n{A} \\P 1/2')
+    expect(plainMtext(String.raw`{A} \U+0042ED`, true)).toBe('{A} BED')
+    expect(plainMtext(String.raw`%%c100 \P`, true)).toBe(String.raw`Ø100 \P`)
+  })
+
+  test('a Bangla room name written as \\U+ codes (a file older than AutoCAD 2007) names its room in Bangla', async () => {
+    const r = await importDxf(fixture('bangla-room'), 'bangla-room.dxf')
+    const u = r.storeys[0].unit
+    expect(u.roomLabels.map((l) => [l.name, l.printedSize])).toEqual([['শয়ন কক্ষ', `13'-0" x 9'-10"`]])
+    expect(deriveRooms(u).map((x) => x.name)).toEqual(['শয়ন কক্ষ'])
   })
 
   test('MLINE walls (two lines drawn as one): a closed 4 x 3 m room of 20 cm walls', async () => {
@@ -103,8 +129,106 @@ describe('dxf fixtures', () => {
     expect(splinePoints(ctrl, undefined, 3, [{ x: 0, y: 0 }, { x: 4, y: 0 }])).toHaveLength(2) // or its fit points
   })
 
+  // Maheer's Plotline 2.0 (src/dxf/dxf.test.ts "imports straight and rectangular CAD opening symbols as one opening each")
+  test('a door drawn as a plain line (a straight polyline) and a window as a narrow rectangle: one opening each, between their ends', async () => {
+    const pl = (layer: string, closed: number, pts: number[][]) => ['0', 'LWPOLYLINE', '8', layer, '90', pts.length, '70', closed, ...pts.flatMap(([x, y]) => ['10', x, '20', y])]
+    const text = dxfOf(['9', '$INSUNITS', '70', 4], [
+      ...['0', 'LINE', '8', 'WALL', '10', 0, '20', 0, '11', 6000, '21', 6000],
+      ...pl('DOOR', 0, [[1000, 1000], [1300, 1300], [1600, 1600]]),
+      ...pl('WIN', 1, [[2960, 3040], [3040, 2960], [4040, 3960], [3960, 4040]]),
+    ])
+    const u = (await importDxf(text, 'symbols.dxf')).storeys[0].unit
+    const V = new Map(u.vertices.map((v) => [v.id, v]))
+    // each opening's middle on the plan (y down, origin at the walls' top-left: file (x, y) → (x, 6 − y) m)
+    const at = u.walls.flatMap((w) => {
+      const a = V.get(w.a)!, b = V.get(w.b)!, L = Math.hypot(b.x - a.x, b.y - a.y)
+      return w.openings.map((o) => ({ kind: o.kind, width: o.widthM, x: a.x + ((b.x - a.x) * (o.offsetM + o.widthM / 2)) / L, y: a.y + ((b.y - a.y) * (o.offsetM + o.widthM / 2)) / L }))
+    })
+    expect(at.map((o) => o.kind).sort()).toEqual(['door', 'window'])
+    const door = at.find((o) => o.kind === 'door')!, win = at.find((o) => o.kind === 'window')!
+    expect(door.width).toBeCloseTo(0.6 * Math.SQRT2, 3)
+    expect([door.x, door.y]).toEqual([expect.closeTo(1.3, 3), expect.closeTo(4.7, 3)])
+    expect(win.width).toBeCloseTo(Math.SQRT2, 3)
+    expect([win.x, win.y]).toEqual([expect.closeTo(3.5, 3), expect.closeTo(2.5, 3)])
+  })
+
+  test('a door line over a bare gap names it (the gap keeps its width); 1.5 m or wider it is a slider', async () => {
+    // a 6 m wall of two faces 125 mm apart with a 900 mm and a 1800 mm gap; a door line in each, a little shorter than its gap
+    const face = (y: number) => [[0, 1000], [1900, 3000], [4800, 6000]].flatMap(([a, b]) => ['0', 'LINE', '8', 'A-WALL', '10', a, '20', y, '11', b, '21', y])
+    const line = (a: number, b: number) => ['0', 'LINE', '8', 'A-DOOR', '10', a, '20', 62, '11', b, '21', 62]
+    const u = (await importDxf(dxfOf(['9', '$INSUNITS', '70', 4], [...face(0), ...face(125), ...line(1050, 1850), ...line(3050, 4750)]), 'gaps.dxf')).storeys[0].unit
+    const ops = u.walls.flatMap((w) => w.openings).sort((p, q) => p.widthM - q.widthM)
+    expect(ops.map((o) => [o.kind, +o.widthM.toFixed(3)])).toEqual([['door', 0.9], ['slider', 1.8]])
+    // on a layer of doors and windows the plain lines are glass (its doors come with swings)
+    const glass = (await importDxf(dxfOf(['9', '$INSUNITS', '70', 4], [...face(0), ...face(125), ...line(3050, 4750).map((v) => (v === 'A-DOOR' ? 'DOORSWINDOWS' : v))]), 'mixed.dxf')).storeys[0].unit
+    expect(glass.walls.flatMap((w) => w.openings).map((o) => o.kind).sort()).toEqual(['passage', 'window'])
+  })
+
+  // Maheer's Plotline 2.0 fixture (src/data/fixtures/two-room-floor.dxf): the floor as ONE closed outline, the partition as
+  // two single lines either side of a door line, a window line on the outline; truth 7 walls, 2 rooms, 2 openings
+  test('one closed outline and single partition lines: 7 walls, 2 rooms, a door and a window', async () => {
+    const u = (await importDxf(fixture('two-room-floor'), 'two-room-floor.dxf')).storeys[0].unit
+    expect(u.walls).toHaveLength(7)
+    expect(deriveRooms(u).map((x) => x.name).sort()).toEqual(['BEDROOM', 'LIVING ROOM'])
+    expect(u.walls.flatMap((w) => w.openings).map((o) => [o.kind, +o.widthM.toFixed(3)]).sort()).toEqual([['door', 0.9], ['window', 1.6]])
+    expect(validate(u).filter((i) => i.level === 'error')).toEqual([])
+  })
+
+  test('a plan of room outlines still reads a single partition line (it splits its room)', async () => {
+    const rect = (x0: number, y0: number, x1: number, y1: number) => ['0', 'LWPOLYLINE', '8', 'A-WALL', '90', 4, '70', 1, '10', x0, '20', y0, '10', x1, '20', y0, '10', x1, '20', y1, '10', x0, '20', y1]
+    const text = dxfOf(['9', '$INSUNITS', '70', 6], [...rect(0, 0, 4, 3), ...rect(4.2, 0, 8.2, 3), '0', 'LINE', '8', 'A-WALL', '10', 6.2, '20', 0, '11', 6.2, '21', 3])
+    const r = await importDxf(text, 'outlines.dxf')
+    expect(r.notes.some((n) => /Read as room outlines \(2 rooms\)/.test(n))).toBe(true)
+    expect(deriveRooms(r.storeys[0].unit).filter((x) => x.areaSqm >= 1)).toHaveLength(3)
+  })
+
+  // Maheer's Plotline 2.0 (src/dxf/dxf.test.ts "expands nested … inserts using the inherited layer")
+  test('what a block draws on layer 0 takes the layer it is inserted on, through nested blocks; its own layers stay', async () => {
+    const blocks = ['0', 'SECTION', '2', 'BLOCKS',
+      '0', 'BLOCK', '2', 'INNER', '10', 0, '20', 0, '0', 'LINE', '8', '0', '10', 0, '20', 0, '11', 2, '21', 0, '0', 'LINE', '8', 'A-FURN', '10', 0, '20', 1, '11', 2, '21', 1, '0', 'ENDBLK',
+      '0', 'BLOCK', '2', 'OUTER', '10', 0, '20', 0, '0', 'INSERT', '2', 'INNER', '8', '0', '10', 2, '20', 0, '0', 'ENDBLK', '0', 'ENDSEC']
+    const text = dxfOf(['9', '$INSUNITS', '70', 6], ['0', 'INSERT', '2', 'OUTER', '8', 'A-WALL', '10', 10, '20', 20]).replace('0\nSECTION\n2\nENTITIES', [...blocks, '0', 'SECTION', '2', 'ENTITIES'].join('\n'))
+    const r = await importDxf(text, 'blocks.dxf')
+    expect(r.layers!.map((l) => [l.name, l.role, l.count]).sort()).toEqual([['A-FURN', 'ignore', 1], ['A-WALL', 'wall', 1]])
+  })
+
+  test('a window block wider than its gap (its sill runs past the jambs) names the gap and keeps its width', async () => {
+    // a 6 m wall of two faces 125 mm apart with a 900 mm gap; a block "SILL" drawn on layer 0 — its two end lines 1.5 m apart, a
+    // sill line between — placed on A-GLAZ over the gap
+    const face = (y: number) => [[0, 1000], [1900, 6000]].flatMap(([a, b]) => ['0', 'LINE', '8', 'A-WALL', '10', a, '20', y, '11', b, '21', y])
+    const blocks = ['0', 'SECTION', '2', 'BLOCKS', '0', 'BLOCK', '2', 'SILL', '10', 0, '20', 0,
+      ...[[-300, 0, -300, 125], [1200, 0, 1200, 125], [-300, 62, 1200, 62]].flatMap(([a, b, c, e]) => ['0', 'LINE', '8', '0', '10', a, '20', b, '11', c, '21', e]), '0', 'ENDBLK', '0', 'ENDSEC']
+    const text = dxfOf(['9', '$INSUNITS', '70', 4], [...face(0), ...face(125), '0', 'INSERT', '2', 'SILL', '8', 'A-GLAZ', '10', 1000, '20', 0]).replace('0\nSECTION\n2\nENTITIES', [...blocks, '0', 'SECTION', '2', 'ENTITIES'].join('\n'))
+    const ops = (await importDxf(text, 'sill.dxf')).storeys[0].unit.walls.flatMap((w) => w.openings)
+    expect(ops.map((o) => [o.kind, +o.widthM.toFixed(3)])).toEqual([['window', 0.9]])
+  })
+
+  test('a side all of sliding glass (a door block standing in no wall, meeting the walls either side) closes its room', async () => {
+    // a 4 x 3 m room of 125 mm walls (line pairs) with no top wall: a block "SLIDE" (its two jambs and a panel line on layer
+    // 0) placed on A-DOOR from the left wall's inner face to the right one's
+    const L = (a: number, b: number, c: number, e: number, layer = 'A-WALL') => ['0', 'LINE', '8', layer, '10', a, '20', b, '11', c, '21', e]
+    const walls = [...L(0, 0, 4000, 0), ...L(125, 125, 3875, 125), ...L(0, 0, 0, 3000), ...L(125, 125, 125, 3000), ...L(4000, 0, 4000, 3000), ...L(3875, 125, 3875, 3000)]
+    const blocks = ['0', 'SECTION', '2', 'BLOCKS', '0', 'BLOCK', '2', 'SLIDE', '10', 0, '20', 0, ...L(0, 0, 0, 125, '0'), ...L(3750, 0, 3750, 125, '0'), ...L(0, 62, 3750, 62, '0'), '0', 'ENDBLK', '0', 'ENDSEC']
+    const text = dxfOf(['9', '$INSUNITS', '70', 4], [...walls, '0', 'INSERT', '2', 'SLIDE', '8', 'A-DOOR', '10', 125, '20', 2875]).replace('0\nSECTION\n2\nENTITIES', [...blocks, '0', 'SECTION', '2', 'ENTITIES'].join('\n'))
+    const u = (await importDxf(text, 'glass-side.dxf')).storeys[0].unit
+    expect(deriveRooms(u).filter((x) => x.areaSqm >= 1)).toHaveLength(1)
+    expect(u.walls.flatMap((w) => w.openings).map((o) => o.kind)).toEqual(['slider'])
+  })
+
   test('a file that is not a DXF is refused in plain words', async () => {
     await expect(importDxf('hello', 'x.dxf')).rejects.toThrow()
+  })
+
+  test('too big, too many things, binary: refused at once, saying why and what to do (from Maheer\'s Plotline 2.0)', async () => {
+    const big = new File([new Uint8Array(MAX_DXF_BYTES + 1)], 'plans.dxf')
+    await expect(importFile(big)).rejects.toThrow('it is 15.0 MB, and Plotline reads a DXF of up to 15.0 MB — save only the floor plan')
+    await expect(importDxf('AutoCAD Binary DXF\r\n\x1a\0\0\0', 'b.dxf')).rejects.toThrow('it is a binary DXF — save it as ASCII DXF in your CAD program')
+    const points = Array.from({ length: MAX_DXF_ENTITIES + 1 }, () => ['0', 'POINT', '8', '0', '10', 0, '20', 0]).flat()
+    await expect(importDxf(dxfOf([], points), 'p.dxf')).rejects.toThrow('it holds 50,001 drawn things, and Plotline reads up to 50,000')
+    // a block put in a 1000 × 1001 array opens into too many lines
+    const blocks = ['0', 'SECTION', '2', 'BLOCKS', '0', 'BLOCK', '2', 'TICK', '10', 0, '20', 0, '0', 'LINE', '8', '0', '10', 0, '20', 0, '11', 1, '21', 0, '0', 'ENDBLK', '0', 'ENDSEC']
+    const many = dxfOf([], ['0', 'INSERT', '2', 'TICK', '8', '0', '10', 0, '20', 0, '70', 1000, '71', 1001, '44', 2, '45', 2]).replace('0\nSECTION\n2\nENTITIES', [...blocks, '0', 'SECTION', '2', 'ENTITIES'].join('\n'))
+    await expect(importDxf(many, 'm.dxf')).rejects.toThrow('its blocks open into more than 1,000,000 lines')
   })
 })
 
@@ -157,7 +281,7 @@ describe('layer names', () => {
     const plain = await importDxf(text, 'a.dxf')
     expect(plain.layers!.map((l) => [l.name, l.role])).toEqual([['Layer 7', 'unknown'], ['Layer 8', 'unknown']])
     expect(plain.notes.some((n) => /could not place: "Layer 7", "Layer 8"/.test(n))).toBe(true)
-    const mine = await importDxf(text, 'a.dxf', { 'LAYER 7': 'wall', 'LAYER 8': 'ignore' })
+    const mine = await importDxf(text, 'a.dxf', { layerRoles: { 'LAYER 7': 'wall', 'LAYER 8': 'ignore' } })
     expect(mine.layers!.map((l) => [l.name, l.role, l.yours])).toEqual([['Layer 7', 'wall', true], ['Layer 8', 'ignore', true]])
     expect(mine.notes.some((n) => /could not place/.test(n))).toBe(false)
     expect(deriveRooms(mine.storeys[0].unit)).toHaveLength(1)

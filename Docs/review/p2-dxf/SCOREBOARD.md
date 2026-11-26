@@ -439,3 +439,74 @@ Columns as above. *openings* = all (doors incl. sliders / windows / passages). *
 | | his | 575 | 44 (35/9/0) | 26 | 16 | 18 | 181 | 41 | 324 + 231 | 0.2 | 1 | rooms open |
 | | his, our layers | 575 | 44 (35/9/0) | 26 | 16 | 18 | 181 | 41 | 324 + 231 | 0.7 | 6 | rooms open |
 | | **truth** | 92 | 31 (17/13/1) | 26 | 24 | 26 | 0 | 0 | 0 | | | |
+
+## After the port — his eight ideas in our reader (lane p2port, session 31, 2026-11-27)
+
+The manager's judgment above (keep our reader, take his ideas into it) carried out on branch `s31/p2port`, one commit
+per idea, each measured with this page's harness on all 78 files before the next (Firefox, the founder's path: a fresh
+Studio, the file dropped, nothing clicked; counted by `count.mjs`). Scripts and raw runs: `E:/dev/tmp/s31/p2port/`
+(`score.mjs` = `ours.mjs` on the lane's worktree, `compare.mjs`, `items.mjs`, `runs/<step>.json`); shots
+`E:/dev/plotline-shots/s31/p2port/<step>/` and `…/proof/`. "Before" = `s31/redesign` 46b2b0b (the same counts as "ours"
+above); "final" = the lane merged with `s31/redesign` 0c386bc (bigifc).
+
+| # | idea (from Maheer's Plotline 2.0) | what changed in ours | kept? |
+|---|---|---|---|
+| 1 | an import is one undo step, asked first | `load-unit` keeps the history over a drawing; "Replace the drawing on screen with *file*? Undo brings it back." for every format and a .json (a several-storey IFC over a drawing in no project says it is replaced) | yes |
+| 2 | read off the page; limits in plain words | one worker for IFC and DXF (`read.worker.ts`), progress + Cancel; over 15 MB, over 50 000 entities, blocks opening into over 1 000 000 lines, binary DXF: refused at once, saying what to do | yes |
+| 3 | `\U+XXXX`, escaped braces | `plainMtext` (was `stripMtext`): one pass, his rules + our `%%c %%d %%p`; a TEXT keeps its braces; a name of any script is a name (`\p{L}`), so a Bangla name from an older file names its room | yes |
+| 4 | "1 DXF unit equals … metres" | **Read in** row under What was read from the file: a unit, or **A length I know…** (a picked wall, its real length typed); kept per file name | yes |
+| 5 | plain-line / narrow-rectangle opening symbols | a door / window layer line along a wall cuts that opening where the wall has none, or names a bare gap (the gap keeps its width); 1.5 m+ door = slider; a layer of doors AND windows: its lines are windows | yes |
+| 6 | his fixture (one outline + single partition lines) | single lines read in room-outline mode too, merged across a doorway. (Refusing room mode for one outline was tried: the giraffe360 commercial scan lost its room — dropped) | yes |
+| 7 | layer 0 in a block takes the insert's layer | `flatten` carries the insert's layer down nested blocks and dimensions; a block over an opening read already only says what it is (the draftsperson house's windows grew into one 5.27 m window without that — fixed before keeping) | yes |
+| 8 | a wall made of one door / window block, any DXF | `if (!w && jambs)` without `d.own` — measured: rooms named up, crossings not | **yes** (the rule held) |
+
+**Real DXF files (32)**
+
+| step | walls | openings | closed rooms | named rooms | loose ends | crossings | refused / not read |
+|---|---|---|---|---|---|---|---|
+| before (s31/redesign 46b2b0b) | 1293 | 260 | 135 | 70 | 187 | 0 | 1 (UCL: not read in 5 min) |
+| 1+2 undo + question; worker, limits | 1293 | 260 | 135 | 70 | 187 | 0 | 1 (UCL: refused in 0.6 s, plain words) |
+| 3 text decoding | 1293 | 260 | 135 | 70 | 187 | 0 | 1 |
+| 4 Read in | 1293 | 260 | 135 | 70 | 187 | 0 | 1 |
+| 5 plain-line doors / windows | 1293 | 265 | 135 | 70 | 187 | 0 | 1 |
+| 6 single lines in room-outline mode | 1293 | 265 | 135 | 70 | 187 | 0 | 1 |
+| 7 layer 0 takes the block's layer | 1293 | 303 | 135 | 70 | 187 | 0 | 1 |
+| 8 a block in no wall is a wall | 1365 | 318 | 139 | 72 | 216 | 0 | 1 |
+| **final, merged with s31/redesign 0c386bc** | **1365** | **318** | **139** | **72** | **216** | **0** | **1** |
+
+**The 5 built-in flats as plain CAD** (truth: 429 walls, 161 openings, 112 closed rooms, 116 named)
+
+| step | walls | openings | closed rooms | named rooms | loose ends | crossings |
+|---|---|---|---|---|---|---|
+| before | 513 | 134 | 73 | 78 | 44 | 0 |
+| 1 – 7 | 513 | 134 | 73 | 78 | 44 | 0 |
+| 8 a block in no wall is a wall | 579 | 169 | 110 | 114 | 9 | 0 |
+| **final** | **579** | **169** | **110** | **114** | **9** | **0** |
+
+**His fixture** (`two-room-floor.dxf`; truth 7 walls, 2 rooms, 2 openings): before 4 walls / 1 room / 0 openings; after
+5 (his window line) 4 / 1 / 1; after 6 and final **7 / 2 / 2** — exactly the truth.
+
+**Our 20 built-ins, as exported and lines only**: every count the same at every step (1 340 walls, 317 openings, 439
+closed, 443 named; 0 and 8 loose ends) — the round trips are untouched.
+
+Files that changed, before → final (all others the same; no file has fewer rooms named or closed, none has a crossing):
+
+- `ucl-uk-tech-office-hq-plans/plans_clean.dxf` (22.5 MB): not read after 5 minutes → refused in 0.6 s: "it is 22.5 MB,
+  and Plotline reads a DXF of up to 15.0 MB — save only the floor plan from your CAD program (one floor per file) and drop that".
+- `ceco-net-house-tm53`: openings 7 → 15 (windows 2 → 8: its windows drawn as lines on "doorswindows" over its sill walls;
+  doors 0 → 3), closed rooms 2 → 3, loose ends 26 → 25.
+- `autodesk_blocks_and_tables`: windows 0 → 38 (window blocks on "DB - Windows", drawn on layer 0); 2 doors read 0.86 → 1.02 m
+  wide (the block's frame, not the swing — the one width that got worse); loose ends 5 → 9.
+- `draftsperson_house_floor_plan_tutorial`: closed rooms 3 → 5, named 3 → 4, doors 3 → 5, loose ends 1 → 2.
+- `drafted_ai_example`: closed 21 → 22, named 19 → 20, loose ends 1 → 0.
+- `twindo_Backcountry_1st / 2nd_Floor_Plan` (no closed rooms before or after): walls 86 → 105 / 98 → 130, loose ends 9 → 20 /
+  14 → 29 — block walls standing beside walls they do not reach. The cost of item 8: 29 more loose ends on the real files
+  (+15 Issues rows on twindo), against 35 fewer on the plain-CAD flats.
+- The 5 plain-CAD flats: Type A 19 → 27 named, Type B 16 → 21, Type C 20 → 26, Sheltech A 10 → 21, Sheltech B 13 → 19.
+
+Item 8 variants measured and dropped: a block-wall only when a wall is within 5 cm of a jamb (plain-CAD 110 named, 4 rooms
+lost: Type A's veranda slider stands 22 cm from both walls, a stub too short to draw between), within 30 cm (identical to
+no condition: dropped as code that does nothing).
+
+Read seconds: the whole set 26.4 s before, 24.7 s final (the slowest file 1.1 → 0.5 s); the reader in its worker answers
+the page in 1 ms while a slow file reads (`proof2.mjs`).

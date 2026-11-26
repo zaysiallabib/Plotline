@@ -42,6 +42,9 @@ const LAYER_TABLE: [RegExp, Role][] = [
   [/TEXT|TXT|TEKST|ROOM|RAUM|NAME|LABEL|ANNO|BESCHRIFT|AREA/, 'text'],
 ]
 
+/** a layer name that speaks of windows (it may speak of doors first: "DOORSWINDOWS") */
+const WINDOW_WORDS = LAYER_TABLE.find(([, r]) => r === 'window')![0]
+
 /** a person's correction: a layer's name (in capitals) → what it holds, kept for the next file (the Studio's layer list) */
 export type LayerRoles = Record<string, Role>
 
@@ -604,7 +607,7 @@ export function buildPlan(d: Drawing, name: string): Plan2dResult {
     const pick = on(long) ? long : on(short) ? short : null
     if (pick) rects.push({ ...pick, thick: snapThick(pick.thick) }), used.add(i)
   }
-  const segs = d.segs.filter((g) => g.loop === undefined || !used.has(g.loop)).map((g) => ({ a: P(g.a), b: P(g.b), h: heightOf(g), role: role(g), layer: g.layer, block: g.block, inst: g.inst }))
+  const segs = d.segs.filter((g) => g.loop === undefined || !used.has(g.loop)).map((g) => ({ a: P(g.a), b: P(g.b), h: heightOf(g), role: role(g), layer: g.layer, block: g.block, inst: g.inst, closed: g.loop !== undefined }))
   // Plotline's own export draws each wall's centre line too (PLOTLINE_AXES_<thickness, 0.1 mm>, its height as the line's
   // thickness): while they agree with the outlines (no wall moved in a CAD program) the walls are those lines to the letter
   // — a curved ramp's chords, a short wall at a T, a door at a corner come back exactly; else the outlines are read
@@ -639,10 +642,12 @@ export function buildPlan(d: Drawing, name: string): Plan2dResult {
   let walls: WallDraft[] = axes ? axes.map((p) => ({ ...p, openings: [] })) : mergeCollinear(pieces, roomMode ? MIN_GAP : MAX_GAP, d.own)
 
   // wall-layer lines no pair covered (the outer face of a plan drawn as room polygons): walls of PARTITION_M on the
-  // line itself, merged with the paired pieces so fragments of one edge become one wall
+  // line itself, merged with the paired pieces so fragments of one edge become one wall; in a plan of room outlines,
+  // the open lines (a partition drawn as one line splits its room)
   let singles = 0
   const singlePieces: Piece[] = []
-  for (const g of roomMode || axes ? [] : explicit) {
+  for (const g of axes ? [] : explicit) {
+    if (roomMode && g.closed) continue
     const L = len(sub(g.b, g.a))
     if (L < 0.4) continue // (a shorter one is a jamb / end cap)
     const { dir, n } = folded(g.a, g.b)
@@ -654,7 +659,8 @@ export function buildPlan(d: Drawing, name: string): Plan2dResult {
     singlePieces.push(piece(g.a, g.b, PARTITION_M))
     singles++
   }
-  if (singles) walls = mergeCollinear([...pieces, ...singlePieces], MAX_GAP, d.own)
+  // (room outlines keep their own walls; the lines among them merge across a doorway like any plan's)
+  if (singles) walls = roomMode ? [...walls, ...mergeCollinear(singlePieces, MAX_GAP, d.own)] : mergeCollinear([...pieces, ...singlePieces], MAX_GAP, d.own)
   if (singles) notes.push(`${singles} wall-layer line(s) had no parallel partner: taken as ${(PARTITION_M / FT) * 12}" walls on the line itself.`)
 
   // a thin wall lying inside a thicker wall's band is that wall's own detail (window lines, a plaster line)
@@ -751,9 +757,10 @@ export function buildPlan(d: Drawing, name: string): Plan2dResult {
     const at = jambs ? { x: (jambs[0].x + jambs[1].x) / 2, y: (jambs[0].y + jambs[1].y) / 2 } : { x: b.pts.reduce((acc, p) => acc + p.x, 0) / b.pts.length, y: b.pts.reduce((acc, p) => acc + p.y, 0) / b.pts.length }
     let w = jambs ? wallAt(kept, at, 0.05, !!d.own) : wallAt(kept, at, 0.3)
     if (w && jambs && Math.abs(crossZ(w.dir, sub(jambs[1], jambs[0]))) > 0.05 * len(sub(jambs[1], jambs[0]))) w = null // (a wall across it, not along)
-    if (!w && jambs && d.own) {
+    if (!w && jambs) {
       // a wall on the block's line that ends at one of its jambs runs on through it (a door right at a corner: the wall's
-      // last piece beyond it was too short to draw); else the jambs make a wall of their own (all glass, all passage)
+      // last piece beyond it was too short to draw); else the jambs make a wall of their own (all glass, all passage) —
+      // in any DXF, not only Plotline's own (session 31 p2port: the plain-CAD flats 78 → 114 of 116 rooms named)
       const J = [jambs[0], jambs[1]]
       const on = kept.find((v) => Math.abs(snapThick(jambs[2]) - v.thick) <= SNAP_THICK && Math.abs((v.h ?? -1) - (b.h ?? -1)) <= 0.01 && J.every((p) => Math.abs(dot(sub(p, v.a), v.n)) <= 0.01) && J.some((p) => [v.a, v.b].some((E) => len(sub(E, p)) <= 0.05)))
       if (on) {
@@ -777,6 +784,15 @@ export function buildPlan(d: Drawing, name: string): Plan2dResult {
     if ((kind === 'door' && t1 - t0 > 4) || t1 - t0 < (exact ? 0.01 : MIN_GAP)) continue
     const swing = kind === 'door' && b.arc ? swingOn(b.arc, w) : null
     if (swing) placed.add(b.arc!)
+    // a block reaches past its opening (sills, frames; its widest pair of equal short lines may be the sill's ends): over
+    // an opening read already it says only what that opening is — the opening keeps its width and never grows into its
+    // neighbours (Plotline's own blocks are exact)
+    const hit = !exact && w.openings.find((x) => x.t0 < t1 && t0 < x.t1)
+    if (hit) {
+      if (hit.kind === 'passage' || (hit.kind === 'window' && kind !== 'passage')) Object.assign(hit, { kind, gap: false, ...(swing ? { hinge: swing.hinge, swing: swing.swing } : {}) })
+      blockOpenings++
+      continue
+    }
     if (putOpening(w, { kind, t0, t1, ...(swing ? { hinge: swing.hinge, swing: swing.swing } : {}) }, exact)) blockOpenings++
   }
   // door swings drawn on their own (not in a block that placed them): a quarter arc hinged on a wall
@@ -787,6 +803,50 @@ export function buildPlan(d: Drawing, name: string): Plan2dResult {
     const o = w && swingOn(a, w)
     if (w && o && putOpening(w, o)) doorArcs++
   }
+  // a door / window drawn as a plain line along its wall (a narrow rectangle's long sides are two such lines), on a door
+  // or window layer and in no block: the opening runs between its ends (from Maheer's Plotline 2.0, buildUnit.ts
+  // openingMarks: 25 cm – 4 m, within max(25 cm, twice the wall's thickness) of its line, a door 1.5 m or wider a slider).
+  // It cuts an opening only where the wall has none, or names a bare gap it lies in (the gap keeps its width).
+  const marks: { w: WallDraft; window: boolean; t0: number; t1: number }[] = []
+  // (a layer of doors AND windows — "DOORSWINDOWS" — draws its doors with swings: its plain lines are glass)
+  const glassToo = (layer: string) => !d.layerRoles?.[layer.toUpperCase()] && WINDOW_WORDS.test(layer.toUpperCase())
+  for (const g of segs) {
+    if (g.inst !== undefined || (g.role !== 'door' && g.role !== 'window')) continue
+    const L = len(sub(g.b, g.a))
+    if (L < 0.25 || L > 4) continue
+    const { dir } = folded(g.a, g.b)
+    const mid = { x: (g.a.x + g.b.x) / 2, y: (g.a.y + g.b.y) / 2 }
+    let w: WallDraft | null = null
+    let near = Infinity
+    for (const v of kept) {
+      const off = Math.abs(dot(sub(mid, v.a), v.n))
+      const t = [dot(g.a, v.dir), dot(g.b, v.dir)]
+      if (Math.abs(crossZ(v.dir, dir)) > 0.25 || off > Math.max(0.25, 2 * v.thick) || Math.min(...t) < v.t0 - 0.01 || Math.max(...t) > v.t1 + 0.01 || off >= near) continue
+      w = v
+      near = off
+    }
+    if (w) marks.push({ w, window: g.role === 'window' || glassToo(g.layer), t0: Math.min(dot(g.a, w.dir), dot(g.b, w.dir)), t1: Math.max(dot(g.a, w.dir), dot(g.b, w.dir)) })
+  }
+  // (the pieces of one polyline, a rectangle's two long sides: one mark)
+  const order = new Map(kept.map((w, i) => [w, i]))
+  marks.sort((p, q) => order.get(p.w)! - order.get(q.w)! || +p.window - +q.window || p.t0 - q.t0)
+  const merged: typeof marks = []
+  for (const m of marks) {
+    const last = merged.at(-1)
+    if (last && last.w === m.w && last.window === m.window && m.t0 <= last.t1 + 0.01) last.t1 = Math.max(last.t1, m.t1)
+    else merged.push({ ...m })
+  }
+  let lineMarks = 0
+  for (const { w, window, t0, t1 } of merged) {
+    const kind = (width: number): OpeningKind => (window ? 'window' : width >= 1.5 ? 'slider' : 'door')
+    const hit = w.openings.find((x) => x.t0 < t1 && t0 < x.t1)
+    if (hit) {
+      if (hit.kind === 'passage') (hit.kind = kind(hit.t1 - hit.t0)), (hit.gap = false), lineMarks++
+      continue
+    }
+    if (putOpening(w, { kind: kind(t1 - t0), t0, t1 })) lineMarks++
+  }
+  if (lineMarks) notes.push(`${lineMarks} door / window line(s) on a door or window layer made or named an opening.`)
 
   if (glassWalls) notes.push(`${glassWalls} door / window / passage block(s) standing in no wall taken as walls of that opening (a wall all of glass, all passage).`)
 
@@ -860,10 +920,10 @@ export function buildPlan(d: Drawing, name: string): Plan2dResult {
     }
     const area = parseArea(t.text)
     const flat = flatTypeOf({ name: t.text, kind: 'other' })
-    // a name has letters; a measurement with a word on it ("8'-5\" CLG", "Sill H=3'-0\"", "2.4 m") names no room; a bare
-    // number ("12", "P-3": a parking bay, a room number) does (core guessKind reads a bay)
+    // a name has letters (any script: শয়ন কক্ষ); a measurement with a word on it ("8'-5\" CLG", "Sill H=3'-0\"", "2.4 m")
+    // names no room; a bare number ("12", "P-3": a parking bay, a room number) does (core guessKind reads a bay)
     const number = /^\s*([A-Z]-?)?\d{1,4}\s*$/i.test(t.text)
-    if ((!/[A-Za-z]{2}/.test(t.text) || /\d\s*['"′″’]|\d\s*(mm|cm|m|ft|in)\b/i.test(t.text)) && !flat && !number) continue
+    if ((!/\p{L}{2}/u.test(t.text) || /\d\s*['"′″’]|\d\s*(mm|cm|m|ft|in)\b/i.test(t.text)) && !flat && !number) continue
     // a stair's arrow ("UP", "DN") and a door / window tag ("D-16", "Win-18", "W3") name no room
     if (NOT_A_NAME.test(t.text)) continue
     if (!room) {
