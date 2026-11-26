@@ -219,6 +219,121 @@ export function alignColumns(ref: Pillar[], mine: Pillar[]): { offset: Pt; match
   return best && best.matched >= MIN_COLUMNS ? best : null
 }
 
+/** a plan's walls shorter than this say nothing about where it stands (a jamb, a stub) */
+const ALIGN_MIN_WALL_M = 0.5
+/** two walls lie on one line when their centre lines are this close (m) and this parallel */
+const ALIGN_LINE_M = 0.15
+const ALIGN_PAR = Math.sin((2 * Math.PI) / 180)
+/** of the smaller plan's walls, at least this share must stand on the other's for an alignment */
+export const ALIGN_SHARE = 0.25
+
+/**
+ * Two floors of one set stacked (session 31 levels, Stage 2 of Docs/PLAN_DRAWING_SETS.md: "levels stack by their shared grid
+ * and core"): the shift that puts `mine` (its own frame) on `ref` — on the columns when both have MIN_COLUMNS that match
+ * (alignColumns), else on the walls: every pair of corners proposes a shift (10 cm bins vote), the 40 most voted and `hint`
+ * (where the files' own frames put it: one CAD model, one page layout) are scored by how much of `mine`'s wall length then
+ * lies on `ref`'s walls (parallel, centre lines within 15 cm), the best refined to its matched walls. Floors share their
+ * outer walls, the stair and lift shafts and the columns' lines; a floor sharing under ALIGN_SHARE of the smaller plan's walls
+ * (or a tenth of the bigger's) is not placed (null: the person types it). Translation only: a set's plans are drawn the same way up.
+ */
+export function alignPlans(ref: Unit, mine: Unit, hint?: Pt): { offset: Pt; by: 'columns' | 'walls'; share: number; errM?: number } | null {
+  if ((ref.pillars?.length ?? 0) >= MIN_COLUMNS && (mine.pillars?.length ?? 0) >= MIN_COLUMNS) {
+    const c = alignColumns(ref.pillars!, mine.pillars!)
+    if (c) return { offset: c.offset, by: 'columns', share: c.matched / Math.min(ref.pillars!.length, mine.pillars!.length) }
+  }
+  const lines = (u: Unit) => {
+    const V = new Map(u.vertices.map((v) => [v.id, v]))
+    return u.walls.flatMap((w) => {
+      const a = V.get(w.a), b = V.get(w.b)
+      const L = a && b ? Math.hypot(b.x - a.x, b.y - a.y) : 0
+      if (!a || !b || L < ALIGN_MIN_WALL_M || (w.heightM ?? 1) === 0) return []
+      const d = { x: (b.x - a.x) / L, y: (b.y - a.y) / L }
+      return [{ a, b, L, d, n: { x: -d.y, y: d.x } }]
+    }).sort((p, q) => q.L - p.L).slice(0, 300) // ponytail: the 300 longest walls carry a floor's place (an IFC storey has thousands)
+  }
+  const R = lines(ref), M = lines(mine)
+  if (!R.length || !M.length) return null
+  // how much of mine's wall length lies on ref's walls when shifted by `o`; with each matched pair's normal and miss (for refining)
+  const fit = (o: Pt) => {
+    let on = 0
+    const pairs: { n: Pt; e: number; w: number }[] = []
+    for (const m of M) {
+      const a = { x: m.a.x + o.x, y: m.a.y + o.y }
+      let best = 0, bn = m.n, be = 0
+      for (const r of R) {
+        if (Math.abs(m.d.x * r.d.y - m.d.y * r.d.x) > ALIGN_PAR) continue
+        const e = (a.x - r.a.x) * r.n.x + (a.y - r.a.y) * r.n.y
+        if (Math.abs(e) > ALIGN_LINE_M) continue
+        const t = (p: Pt) => (p.x - r.a.x) * r.d.x + (p.y - r.a.y) * r.d.y
+        const ta = t(a), tb = ta + (m.d.x * r.d.x + m.d.y * r.d.y) * m.L
+        const over = Math.min(Math.max(ta, tb), r.L) - Math.max(Math.min(ta, tb), 0)
+        if (over > best) (best = over), (bn = r.n), (be = e)
+      }
+      if (best > 0) on += best, pairs.push({ n: bn, e: be, w: best })
+    }
+    return { on, pairs }
+  }
+  // every pair of corners votes for the shift that puts one on the other (10 cm bins)
+  const votes = new Map<string, { o: Pt; n: number }>()
+  const ends = (ls: typeof R) => ls.flatMap((l) => [l.a, l.b])
+  for (const p of ends(R))
+    for (const q of ends(M)) {
+      const o = { x: p.x - q.x, y: p.y - q.y }
+      const k = `${Math.round(o.x / 0.1)},${Math.round(o.y / 0.1)}`
+      const v = votes.get(k) ?? votes.set(k, { o, n: 0 }).get(k)!
+      v.n++
+    }
+  const cands = [...votes.values()].sort((a, b) => b.n - a.n).slice(0, 40).map((v) => v.o)
+  if (hint) cands.unshift(hint)
+  let best: { o: Pt; on: number; pairs: { n: Pt; e: number; w: number }[] } | null = null
+  for (const o of cands) {
+    const f = fit(o)
+    if (!best || f.on > best.on + 1e-6) best = { o, ...f }
+  }
+  const total = (ls: typeof R) => ls.reduce((s, l) => s + l.L, 0)
+  const share = best ? best.on / Math.min(total(R), total(M)) : 0
+  // (and a tenth of the bigger one's: a small plan fits some corner of anything)
+  if (!best || share < ALIGN_SHARE || best.on < 0.1 * Math.max(total(R), total(M))) return null
+  // refined: the shift that best closes each matched wall's miss along its normal (weighted by the length matched)
+  let [sxx, sxy, syy, bx, by] = [0, 0, 0, 0, 0]
+  for (const { n, e, w } of best.pairs) (sxx += w * n.x * n.x), (sxy += w * n.x * n.y), (syy += w * n.y * n.y), (bx -= w * n.x * e), (by -= w * n.y * e)
+  const det = sxx * syy - sxy * sxy
+  const dd = Math.abs(det) > 1e-9 ? { x: (bx * syy - by * sxy) / det, y: (by * sxx - bx * sxy) / det } : { x: 0, y: 0 }
+  const r4 = (x: number) => Math.round(x * 1e4) / 1e4
+  const offset = { x: r4(best.o.x + dd.x), y: r4(best.o.y + dd.y) }
+  // (how far its matched walls still miss, root mean square, m)
+  const after = fit(offset).pairs
+  const errM = Math.sqrt(after.reduce((s, p) => s + p.w * p.e * p.e, 0) / Math.max(1e-9, after.reduce((s, p) => s + p.w, 0)))
+  return { offset, by: 'walls', share: Math.round(share * 100) / 100, errM: Math.round(errM * 1000) / 1000 }
+}
+
+/**
+ * A set's floors stacked (lowest first): the first is the building's frame (offset 0); then, again and again, the floor that
+ * shares most with a floor already placed is aligned on it (alignPlans) — an upper floor finds the floor under it even when
+ * it shares little with the ground. `hint`: where its file puts it in the first floor's frame (one CAD model, one page
+ * layout). null: it shares too little with every placed floor (left where its own frame puts it, for the person to move).
+ */
+export function stackFloors(floors: { unit: Unit; hint?: Pt }[]): ({ offset: Pt; share: number; errM?: number; on: number } | null)[] {
+  const out: ({ offset: Pt; share: number; errM?: number; on: number } | null)[] = floors.map((_, i) => (i === 0 ? { offset: { x: 0, y: 0 }, share: 1, on: 0 } : null))
+  const tried = new Map<string, ReturnType<typeof alignPlans>>()
+  for (;;) {
+    let best: { j: number; i: number; a: NonNullable<ReturnType<typeof alignPlans>> } | null = null
+    for (const [j, f] of floors.entries()) {
+      if (out[j]) continue
+      for (const [i, placed] of out.entries()) {
+        if (!placed) continue
+        const k = `${i}>${j}`
+        if (!tried.has(k)) tried.set(k, alignPlans(floors[i].unit, f.unit, f.hint && { x: f.hint.x - placed.offset.x, y: f.hint.y - placed.offset.y }))
+        const a = tried.get(k)
+        if (a && (!best || a.share > best.a.share)) best = { j, i, a }
+      }
+    }
+    if (!best) return out
+    const o = out[best.i]!.offset
+    out[best.j] = { offset: { x: o.x + best.a.offset.x, y: o.y + best.a.offset.y }, share: best.a.share, ...(best.a.errM !== undefined ? { errM: best.a.errM } : {}), on: best.i }
+  }
+}
+
 /**
  * Where a traced level goes in `p`: on the flats' columns when at least MIN_COLUMNS of its columns match theirs (the
  * lowest floor's flats, mirrored ones too), else where the same drawing puts it, else null — he types the shift.
@@ -321,16 +436,17 @@ export function slotsOf(p: Project): { slot: Slot; label: string; unitIds: Id[] 
  * `p` with drawing `u` on exactly slot `s` (null: the slot emptied); `u` is stored as it is now. A floor of flats holds the
  * drawing as one flat at offset 0, no mirror: floor by floor, that floor changed, back to runs of floors alike (a range
  * split where one floor in it changes); the ground / a basement / the rooftop are levels at offset 0 (the same frame).
- * The drawings stay in `units` (he deletes one with removeDrawing).
+ * The drawings stay in `units` (he deletes one with removeDrawing). `offset`: where the drawing's frame stands in the building's
+ * (a set's floors stacked on their shared walls: alignPlans); a drawing already on a floor of flats keeps its own.
  */
-export function setSlot(p: Project, s: Slot, u: Unit | null): Project {
+export function setSlot(p: Project, s: Slot, u: Unit | null, offset: Pt = { x: 0, y: 0 }): Project {
   const units = u ? { ...p.units, [u.id]: u } : p.units
   const levels = (p.levels ?? []).filter((l) => l !== levelAt(p, s))
   if (s !== 'R' && s <= 0) {
-    if (u) levels.push({ unitId: u.id, kind: s === 0 ? 'ground' : 'basement', ...(s < 0 ? { n: -s } : {}), offset: { x: 0, y: 0 }, by: 'drawing' })
+    if (u) levels.push({ unitId: u.id, kind: s === 0 ? 'ground' : 'basement', ...(s < 0 ? { n: -s } : {}), offset, by: 'drawing' })
     return { ...p, units, levels }
   }
-  if (s === 'R') return { ...p, units, levels: u ? [...levels, { unitId: u.id, kind: 'rooftop', offset: { x: 0, y: 0 }, by: 'drawing' }] : levels }
+  if (s === 'R') return { ...p, units, levels: u ? [...levels, { unitId: u.id, kind: 'rooftop', offset, by: 'drawing' }] : levels }
   const on = (k: number) => (k === s ? (u ? [u.id] : []) : [...new Set(p.floors.filter((g) => g.from <= k && k <= g.to).flatMap((g) => g.flats))])
   const floors: Project['floors'] = []
   for (let k = 1; k <= Math.max(s, ...p.floors.map((g) => g.to)); k++) {
@@ -342,7 +458,7 @@ export function setSlot(p: Project, s: Slot, u: Unit | null): Project {
   }
   const used = new Set(floors.flatMap((g) => g.flats))
   const flats = Object.fromEntries(Object.entries(p.flats).filter(([stem]) => used.has(stem)))
-  if (u && !flats[u.id]) flats[u.id] = { unitId: u.id, offset: { x: 0, y: 0 } }
+  if (u && !flats[u.id]) flats[u.id] = { unitId: u.id, offset }
   return { ...p, units, flats, floors, levels }
 }
 

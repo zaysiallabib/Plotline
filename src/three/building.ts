@@ -275,8 +275,9 @@ function outerSide(w: Wall, unit: Unit, inside: (p: Pt) => boolean): number {
   return !probe(1) ? 1 : !probe(-1) ? -1 : 0
 }
 
+// (none — a floor still a picture to trace, nothing drawn on it yet — is an empty geometry, not a crash)
 const merge = (geos: THREE.BufferGeometry[]) => {
-  const g = mergeGeometries(geos)!
+  const g = geos.length ? mergeGeometries(geos)! : new THREE.BufferGeometry()
   geos.forEach((x) => x.dispose())
   return g
 }

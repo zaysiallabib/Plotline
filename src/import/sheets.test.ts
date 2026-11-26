@@ -6,7 +6,7 @@
 import { describe, expect, test } from 'vitest'
 import type { Pt } from '../core'
 import type { ArcPrim, Seg } from './plan2d'
-import { drawingArea, kindOfNumber, kindOfTitle, levelOf, parseSlots, readSheet, setChoices, sheetNumberOf, shapeKind, slotsFor, slotsWords, type SheetPage, type SheetText } from './sheets'
+import { drawingArea, kindOfNumber, kindOfTitle, levelOf, parseSlots, readSheet, setChoices, sheetNumberOf, shapeKind, slotsFor, slotsWords, storeysOf, type SheetPage, type SheetText } from './sheets'
 
 /** a text: its start at (x, y) on its baseline, as wide as its letters */
 const T = (text: string, x: number, y: number, h = 12): SheetText => {
@@ -201,6 +201,26 @@ describe('the set', () => {
     expect(slotsFor([levelOf('BASEMENT'), levelOf('1ST FLOOR'), levelOf('2ND FLOOR'), levelOf('ATTIC FLOOR PLAN')])).toEqual([[-1], [0], [1], [2]])
     expect(slotsFor([levelOf('GROUND FLOOR'), levelOf('1ST FLOOR'), levelOf('TYPICAL FLOOR PLAN'), levelOf('8TH FLOOR')])).toEqual([[0], [1], [2, 3, 4, 5, 6, 7], [8]])
     expect(slotsFor([levelOf('GROUND FLOOR'), levelOf('TYPICAL FLOOR PLAN'), levelOf('ROOF')])).toEqual([[0], [1], ['R']])
+  })
+  test('how tall the building is, as the brochure says it: a typical floor with no numbers runs up to its top floor', () => {
+    expect(storeysOf('2B+G+12')).toMatchObject({ basements: 2, floors: 12 }) // Rangs The Sanctuary
+    expect(storeysOf('B+G+M+12')).toMatchObject({ basements: 1, floors: 13 }) // The Majestic: the mezzanine is floor 1
+    expect(storeysOf('G + 9')).toMatchObject({ basements: 0, floors: 9 })
+    expect(storeysOf('Basement + Ground Floor + 9 (10 storied')).toMatchObject({ basements: 1, floors: 9 }) // Akter Aleena
+    expect(storeysOf(': 10 Storied')).toMatchObject({ floors: 9 }) // Eastern Housing Pearl: the ground is a storey
+    expect(storeysOf('Floors: 09')).toMatchObject({ floors: 8 }) // Noboneer
+    expect(storeysOf('14-STOREY')).toMatchObject({ floors: 13 })
+    for (const t of ['Storey', 'UP TO BASEMENT-01', 'Unit Per Floor: 01', 'FLOOR : 2', `TOILET 5'-0" x 8'-0"`]) expect(storeysOf(t)).toBeNull()
+    expect(slotsFor([levelOf('GROUND FLOOR PLAN'), levelOf('TYPICAL FLOOR PLAN'), levelOf('ROOF FLOOR PLAN')], 8)).toEqual([[0], [1, 2, 3, 4, 5, 6, 7, 8], ['R']])
+    expect(setChoices([{ kind: 'plan', level: levelOf('GROUND FLOOR PLAN') }, { kind: 'plan', level: levelOf('TYPICAL FLOOR PLAN') }], 8).map((x) => x.slots)).toEqual([[0], [1, 2, 3, 4, 5, 6, 7, 8]])
+  })
+  test("a typical floor's floors in a run of their own, and the Spanish planta tipo (not planta tipo A, a flat)", () => {
+    expect(levelOf('TYPICAL FLOOR PLAN 3RD–8TH')).toEqual({ at: [3, 4, 5, 6, 7, 8], typical: true })
+    expect(levelOf('TYPICAL FLOOR PLAN (2ND-9TH)')?.at).toEqual([2, 3, 4, 5, 6, 7, 8, 9])
+    expect(levelOf('Typical Floor Plan (1st to 13th)')?.at).toHaveLength(13)
+    expect(levelOf('FLOORS 2-8')?.at).toEqual([2, 3, 4, 5, 6, 7, 8])
+    expect(levelOf('PLANTA TIPO')).toEqual({ at: [], typical: true })
+    expect(levelOf('PLANTA TIPO A')).toBeNull()
   })
   test('ticks: the first floor plan of each floor becomes its drawing; a ceiling plan of the same floor is kept out; elevations and sections are kept, details left out; the person decides last', () => {
     const c = setChoices([

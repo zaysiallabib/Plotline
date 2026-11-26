@@ -49,13 +49,14 @@ import { FloorList, NewProject } from './FloorList'
 import { getPicture, putPicture } from './pictures'
 import { putShell } from './shells'
 import type { SetChoice, SetFile, SetRow } from './SetPanel'
+import type { Storeys } from '../import/sheets'
 import PrintBox from './PrintBox'
 import { SAMPLES, sampleLine, type Sample } from './samples'
 import { CONVERTED_PICTURE, toPlanPicture } from '../import/picture'
 import type { PdfDoc } from '../import/pdf'
 import type { Box } from '../import/sheets'
 import { IMPORT_ACCEPT, expandZips, filesOfDrop, importFile, importFormatOf, lockedFormatOf, mainFile, siblingsOf, type DropFile, type ImportResult, type ImportedStorey, type LayerRole, type LayerRoles } from '../import'
-import { PROJECTS_KEY, drawingName, keepApartments, keepReview, newProject, projectWith, parseProjects, projectTower, readProjects, saveProjects, setSlot, slotLabel, slotsOf, syncUnit, type Project, type ProjectPlan, type Slot } from '../data/building/projects'
+import { PROJECTS_KEY, drawingName, keepApartments, keepReview, newProject, projectWith, parseProjects, projectTower, readProjects, saveProjects, setSlot, slotLabel, slotsOf, stackFloors, syncUnit, type Project, type ProjectPlan, type Slot } from '../data/building/projects'
 import { finishesKey, keptFor, layoutKey, putKept, readFinishes, splitKept } from '../data/building/apartments'
 import { floorIn, roleIn, stemIn } from '../data/building'
 import { HARD, snapMove, snapPoint, type Snap } from './snap'
@@ -1130,7 +1131,7 @@ export default function StudioApp() {
    * plan, schedule or interior elevation is kept with the project as a picture (Project.sheets). The project's floors are
    * the floors read; its first drawing opens.
    */
-  const buildSet = async (rows: SetChoice[], files: SetFile[]) => {
+  const buildSet = async (rows: SetChoice[], files: SetFile[], storeys: Storeys | null = null) => {
     closeSet()
     const pdf = await import('../import/pdf')
     const stop = new AbortController()
@@ -1139,37 +1140,63 @@ export default function StudioApp() {
     const kept = rows.filter((r) => r.kind !== 'plan' && r.used)
     const all = [...plans.flatMap((r) => r.slots)]
     const numbers = all.filter((s): s is number => typeof s === 'number')
-    let p = newProject(newId(), name, { basements: Math.max(0, ...numbers.map((s) => -s)), floors: Math.max(1, ...numbers), rooftop: all.includes('R') })
+    let p = newProject(newId(), name, { basements: Math.max(0, storeys?.basements ?? 0, ...numbers.map((s) => -s)), floors: Math.max(1, storeys?.floors ?? 0, ...numbers), rooftop: all.includes('R') })
     const pictureOf = async (r: SetChoice, px: number): Promise<{ pic: PlanImage; pxPerPt: number }> => {
       const { canvas, pxPerPt } = await pdf.renderView(files[r.file].doc, r.page, r.frame, px)
       return { pic: { dataUrl: canvas.toDataURL('image/webp', 0.9), naturalW: canvas.width, naturalH: canvas.height, name: `${files[r.file].name.replace(/\.pdf$/i, '')} p${r.page}.webp` }, pxPerPt }
     }
     let first: Id | null = null
     let pictures = 0
+    let stacked = 0
     try {
-      for (const [i, r] of [...plans, ...kept].entries()) {
+      // every plan read first, then the floors stacked on what they share (session 31 levels): the lowest drawn floor is the
+      // building's frame, each other floor read at a known scale lands on the floor it shares most walls with — the page's own
+      // placement offered as a hint (a CAD set prints its plans where the model has them). A floor drawn as a picture to trace is
+      // put there too: its picture lined up so what is traced on it stands over the floor below.
+      const reads: (ImportResult | null)[] = []
+      for (const [i, r] of plans.entries()) {
         if (stop.signal.aborted) return toast('Stopped building the project')
         setReading({ name, stage: `drawing ${i + 1} of ${plans.length + kept.length}`, fraction: i / (plans.length + kept.length), stop })
-        if (r.kind === 'plan') {
-          const read = await pdf.importPdf(files[r.file].doc, files[r.file].name, r.page, r.frame, r.view.scale).catch(() => null)
-          let u: Unit
-          if (read && pdf.readsAsPlan(read)) u = read.storeys[0].unit
-          else {
-            // its lines make no plan: the drawing's picture, to trace (scaled when the sheet prints its scale: 1 : n)
-            const { pic, pxPerPt } = await pictureOf(r, 4000)
-            u = { ...emptyUnit(), ...(r.view.scale ? { planImage: { src: pic.name, pxPerM: pxPerPt / (r.view.scale * (0.0254 / 72)), originPx: { x: 0, y: 0 } } } : {}) }
-            await putPicture(u.id, pic)
-            pictures++
-          }
-          u = { ...u, name: drawingName(p, r.slots[0]), projectName: name }
-          for (const s of r.slots) p = setSlot(p, s, u)
-          first ??= u.id
-        } else {
-          const id = newId()
-          await putPicture(id, (await pictureOf(r, 2400)).pic)
-          const which = r.which ?? (r.kind === 'elevation' ? r.view.facade : r.kind === 'section' ? r.view.mark : undefined)
-          p = { ...p, sheets: [...(p.sheets ?? []), { id, kind: r.kind, title: r.view.title || `Page ${r.page}`, ...(which ? { which } : {}), ...(r.view.scale ? { scale: r.view.scale } : {}), file: files[r.file].name, page: r.page }] }
+        reads.push(await pdf.importPdf(files[r.file].doc, files[r.file].name, r.page, r.frame, r.view.scale).catch(() => null))
+      }
+      const sure = (x: ImportResult | null): x is ImportResult => !!x && !!x.storeys[0]?.unit.walls.length && !x.notes.some((n) => /^Scale: [^.]*guessed|^Scale not set/.test(n))
+      const rank = (r: SetChoice) => Math.min(...r.slots.map((s) => (s === 'R' ? 1e3 : s)))
+      const order = plans.map((_, i) => i).filter((i) => sure(reads[i])).sort((a, b) => rank(plans[a]) - rank(plans[b]) || +pdf.readsAsPlan(reads[b]!) - +pdf.readsAsPlan(reads[a]!))
+      const ref = order[0] !== undefined ? reads[order[0]]! : null
+      const hint = (x: ImportResult, r: SetChoice): Pt | undefined =>
+        ref && r.file === plans[order[0]].file && Math.abs(x.unitScale - ref.unitScale) < 1e-6 * ref.unitScale ? { x: (x.origin.x - ref.origin.x) * x.unitScale, y: -(x.origin.y - ref.origin.y) * x.unitScale } : undefined
+      const stack = stackFloors(order.map((i) => ({ unit: reads[i]!.storeys[0].unit, hint: hint(reads[i]!, plans[i]) })))
+      const placeOf = new Map(order.map((i, k) => [i, stack[k]]))
+      for (const [i, r] of plans.entries()) {
+        const read = reads[i]
+        const at = placeOf.get(i)
+        if (at && i !== order[0]) stacked++
+        let u: Unit
+        let offset: Pt = { x: 0, y: 0 }
+        if (read && pdf.readsAsPlan(read)) (u = read.storeys[0].unit), (offset = at?.offset ?? offset)
+        else {
+          // its lines make no plan: the drawing's picture, to trace — scaled when the sheet's scale is known (printed 1 : n, or
+          // its dimensions agree), lined up on the floors it stacks on (its picture's pixel for the building frame's origin)
+          const { pic, pxPerPt } = await pictureOf(r, 4000)
+          const s = r.view.scale ? r.view.scale * (0.0254 / 72) : sure(read) ? read.unitScale : 0
+          const pxPerM = s ? pxPerPt / s : 0
+          const d = at?.offset ?? { x: 0, y: 0 }
+          const originPx = read && at ? { x: (read.origin.x - r.frame.x0) * pxPerPt - d.x * pxPerM, y: (r.frame.y1 - read.origin.y) * pxPerPt - d.y * pxPerM } : { x: 0, y: 0 }
+          u = { ...emptyUnit(), ...(pxPerM ? { planImage: { src: pic.name, pxPerM, originPx } } : {}) }
+          await putPicture(u.id, pic)
+          pictures++
         }
+        u = { ...u, name: drawingName(p, r.slots[0]), projectName: name }
+        for (const s of r.slots) p = setSlot(p, s, u, offset)
+        first ??= u.id
+      }
+      for (const [i, r] of kept.entries()) {
+        if (stop.signal.aborted) return toast('Stopped building the project')
+        setReading({ name, stage: `drawing ${plans.length + i + 1} of ${plans.length + kept.length}`, fraction: (plans.length + i) / (plans.length + kept.length), stop })
+        const id = newId()
+        await putPicture(id, (await pictureOf(r, 2400)).pic)
+        const which = r.which ?? (r.kind === 'elevation' ? r.view.facade : r.kind === 'section' ? r.view.mark : undefined)
+        p = { ...p, sheets: [...(p.sheets ?? []), { id, kind: r.kind, title: r.view.title || `Page ${r.page}`, ...(which ? { which } : {}), ...(r.view.scale ? { scale: r.view.scale } : {}), file: files[r.file].name, page: r.page }] }
       }
     } catch (e) {
       return showError(`Could not build the project: ${e instanceof Error ? e.message : String(e)}`)
@@ -1181,7 +1208,7 @@ export default function StudioApp() {
     setActive({ id: p.id })
     setListOpen(true)
     if (first) openDrawing(ps, first)
-    toast(`${name}: ${plans.length} drawing${plans.length === 1 ? '' : 's'} on their floors${pictures ? ` (${pictures} as pictures to trace)` : ''}, ${kept.length} kept with the project — the list on the right`)
+    toast(`${name}: ${plans.length} drawing${plans.length === 1 ? '' : 's'} on their floors${pictures ? ` (${pictures} as pictures to trace)` : ''}${stacked ? `, ${stacked} stacked on the floor${stacked === 1 ? '' : 's'} they share walls with` : ''}, ${kept.length} kept with the project — the list on the right`)
   }
   useEffect(() => {
     if (!sheetView) return
@@ -1393,7 +1420,9 @@ export default function StudioApp() {
     if (!p || !storeProjects(ps)) return
     const t = projectTower(p)
     const mine = a?.drawing && p.units[a.drawing] ? stemIn(t, p.units[a.drawing]) : undefined
-    const stem = (mine && roleIn(t, mine) === 'flat' ? mine : undefined) ?? Object.keys(t.FLATS).find((s) => roleIn(t, s) === 'flat') ?? mine ?? Object.keys(t.LEVELS ?? {})[0]
+    // (on a floor with something drawn: a set's floor still a picture to trace shows nothing to stand on)
+    const drawn = (s: string) => t.FLATS[s].unit.walls.length > 0
+    const stem = (mine && roleIn(t, mine) === 'flat' && drawn(mine) ? mine : undefined) ?? Object.keys(t.FLATS).find((s) => roleIn(t, s) === 'flat' && drawn(s)) ?? (mine && drawn(mine) ? mine : undefined) ?? Object.keys(t.FLATS).find(drawn) ?? mine ?? Object.keys(t.LEVELS ?? {})[0]
     if (!stem) return toast('Put a drawing on a floor first: Draw, or Use drawing…')
     const k = t.LEVELS?.[stem]
     openBuilding(`/u/${encodeURIComponent(stem)}?floor=${floorIn(t, stem)}&view=building${k !== undefined ? `&pick=${k}` : ''}`)
@@ -2783,7 +2812,7 @@ export default function StudioApp() {
           {printOpen && <PrintBox unit={unit} onClose={() => setPrintOpen(false)} />}
           {setFiles && (
             <Suspense fallback={null}>
-              <SetPanel files={setFiles} onOpenOne={openOne} onBuild={(rows, files) => void buildSet(rows, files)} onClose={closeSet} />
+              <SetPanel files={setFiles} onOpenOne={openOne} onBuild={(rows, files, storeys) => void buildSet(rows, files, storeys)} onClose={closeSet} />
             </Suspense>
           )}
           {sheetView && (

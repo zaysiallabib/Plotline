@@ -9,7 +9,7 @@
  */
 import { useEffect, useMemo, useState } from 'react'
 import type { PdfDoc } from '../import/pdf'
-import { KEPT, SHEET_KINDS, norm, parseSlots, readSheet, setChoices, slotsWords, type Box, type SetSlot, type SheetKind, type SheetRead, type View } from '../import/sheets'
+import { KEPT, SHEET_KINDS, norm, parseSlots, readSheet, setChoices, slotsWords, type Box, type SetSlot, type SheetKind, type SheetRead, type Storeys, type View } from '../import/sheets'
 
 export interface SetFile {
   name: string
@@ -80,12 +80,14 @@ const keyOf = (r: SetRow) => (r.view.title ? norm(r.view.title) : '')
 interface Props {
   files: SetFile[]
   onOpenOne: (row: SetRow, files: SetFile[]) => void
-  onBuild: (rows: SetChoice[], files: SetFile[]) => void
+  /** `storeys`: how tall the set says the building is (a brochure's "2B+G+12"), when a page says it */
+  onBuild: (rows: SetChoice[], files: SetFile[], storeys: Storeys | null) => void
   onClose: () => void
 }
 
 export default function SetPanel({ files, onOpenOne, onBuild, onClose }: Props) {
   const [rows, setRows] = useState<SetRow[]>([])
+  const [storeys, setStoreys] = useState<(Storeys & { page: number }) | null>(null)
   const [reading, setReading] = useState<{ at: number; of: number } | null>({ at: 0, of: files.reduce((a, f) => a + f.doc.numPages, 0) })
   // every page read in turn (a frame between pages, so the list grows on screen), then each drawing's small picture
   useEffect(() => {
@@ -105,6 +107,8 @@ export default function SetPanel({ files, onOpenOne, onBuild, onClose }: Props) 
           } catch {
             read = { views: [{ kind: 'other', title: '', box: { x0: -1e9, y0: -1e9, x1: 1e9, y1: 1e9 }, by: 'shape' }] }
           }
+          const said = read.storeys
+          if (said && live.current) setStoreys((x) => x ?? { ...said, page: p })
           const got = read.views.map((view, i): SetRow => {
             const r: SetRow = { key: `${fi}:${p}:${i}`, file: fi, page: p, frame: view.box, view, ...(read.number ? { number: read.number } : {}), kind: view.kind, which: null, tick: null, yours: false }
             const c = mine[keyOf(r)]
@@ -133,9 +137,12 @@ export default function SetPanel({ files, onOpenOne, onBuild, onClose }: Props) 
   }, [onClose])
 
   const choices = useMemo<SetChoice[]>(() => {
-    const made = setChoices(rows.map((r) => ({ kind: r.kind, level: r.kind === r.view.kind ? r.view.level : null, use: r.view.use, slots: r.kind === 'plan' && r.which !== null ? parseSlots(r.which) ?? [] : null, tick: r.tick })))
+    const made = setChoices(
+      rows.map((r) => ({ kind: r.kind, level: r.kind === r.view.kind ? r.view.level : null, use: r.view.use, slots: r.kind === 'plan' && r.which !== null ? parseSlots(r.which) ?? [] : null, tick: r.tick })),
+      storeys?.floors ?? 0,
+    )
     return rows.map((r, i) => ({ ...r, slots: made[i].slots, used: made[i].tick }))
-  }, [rows])
+  }, [rows, storeys])
 
   if (import.meta.env.DEV) Object.assign(window, { __plotlineSet: { rows: choices, reading: !!reading } }) // the sets scoreboard reads what the list holds
   /** a change to a row, remembered by its title for the next set */
@@ -193,6 +200,11 @@ export default function SetPanel({ files, onOpenOne, onBuild, onClose }: Props) 
             <h3 className="label">
               {GROUP_WORDS[k]} <span>{of.length}</span>
             </h3>
+            {k === 'plan' && storeys && (
+              <p className="muted">
+                Page {storeys.page} says “{storeys.words}”: {storeys.basements ? `${storeys.basements} basement${storeys.basements > 1 ? 's' : ''}, ` : ''}the ground and {storeys.floors} floor{storeys.floors === 1 ? '' : 's'} over it — a typical floor with no numbers goes on every floor left up to {storeys.floors}.
+              </p>
+            )}
             {k === 'plan' && firstOnGround && <p className="muted">This set has no ground-floor plan, so its 1st floor is the ground floor (as American and Chilean sets count). Type the floors to change it: G, 1, 2–8, B1, Roof.</p>}
             <ol>
               {of.map((c) => (
@@ -240,7 +252,7 @@ export default function SetPanel({ files, onOpenOne, onBuild, onClose }: Props) 
           {plans.length ? `${plans.length} drawing${plans.length === 1 ? '' : 's'} on ${floors}` : 'No plan ticked'} · {kept.length} kept · {choices.length - plans.length - kept.length} left out
         </span>
         <button onClick={onClose}>Cancel</button>
-        <button className="primary" disabled={!!reading || (!plans.length && !kept.length) || choices.some((c) => c.used && bad(c))} onClick={() => onBuild(choices, files)}>
+        <button className="primary" disabled={!!reading || (!plans.length && !kept.length) || choices.some((c) => c.used && bad(c))} onClick={() => onBuild(choices, files, storeys)}>
           Build the project
         </button>
       </div>
