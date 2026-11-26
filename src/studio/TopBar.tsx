@@ -24,7 +24,7 @@ interface Props {
   autoTrace: { disabled: boolean; onClick: () => void } | null
   /** errors in Issues: Preview 3D says so on hover (it never locks) */
   errors: number
-  /** the Studio is empty: its own Choose plan image… is the one blue button, Preview 3D waits plain */
+  /** the Studio is empty: its own Choose files… is the one blue button, Preview 3D waits plain */
   quiet: boolean
   /** the name Preview 3D gives this drawing while none is typed ("Floor plan A" for a whole floor): the name box's grey words */
   untitled: string

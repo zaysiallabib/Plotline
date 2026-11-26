@@ -21,7 +21,7 @@ What a developer does first:
 1. **Make the project:** Studio → **⋯** → **New project** — its name, basements, floors and rooftop (§6).
 2. **Bring in each floor plan:** in the floor list on the right click **Draw** beside a floor, drop the sheet (a picture,
    a PDF, or the architect's IFC / DXF) on the Studio and set the scale with **S** (§5). An IFC makes every floor at once.
-   No file of your own yet? **Try a sample ▾** under the dashed box of an empty Studio opens a real building's IFC, DXF,
+   No file of your own yet? **Try a sample ▾** beside **Choose files…** in an empty Studio opens a real building's IFC, DXF,
    PDF, SVG or 3D model from the internet in one click (§5).
 3. **Trace it:** **Auto-trace** → **Whole floor**, then answer **Check these** on the right (§5).
 4. **Name the flats and give the plan its floors:** check the flat names written on the plan (part two flats that came
@@ -705,7 +705,7 @@ drawing.
   below).
 - **Right:** **↶ Undo** / **↷ Redo**, **Auto-trace** (once a plan picture is in), **Preview 3D** (the blue button: your
   drawing in the 3D view, in a new tab), **Building** (shows / hides the project's floor list, §6), and **⋯**.
-- While the Studio is empty, **Choose plan image…** in the middle is the blue button and Preview 3D is plain: there is
+- While the Studio is empty, **Choose files…** in the middle is the blue button and Preview 3D is plain: there is
   only ever one blue button. With no wall drawn yet (an empty Studio, or only a 3D model's outside shape), Preview 3D
   says "Nothing drawn yet to show in 3D" instead of opening a 3D page with nothing to build.
 
@@ -723,14 +723,16 @@ drawing.
 | | **Change list ↗** | Opens `/changes` in a new tab. Only with the online database |
 | Account | **Sign in** / your email | Your account, your company's projects, members and buyer links ("Accounts" below). Only with the online database |
 
-**Loading the plan picture.** With nothing drawn, the middle says **Start with a plan**: a dashed box (drop the picture
-on it, or anywhere on the page, or click **Choose plan image…**) and, beside it, the **New project** card (§6; while the Building list is open on the right the card is there
-instead, once). Pictures:
-PNG, JPG, WEBP or TIFF, up to 10 MB; an iPhone's HEIC photo only in a browser that opens it (Safari), else a message says
-how to get a JPEG. The brochure PDF and the architect's IFC, DXF, PDF, SVG or 3D model — or a folder or .zip of them —
-can be dropped there too.
+**The door.** With nothing drawn, the middle says **Drop your drawings** — "The architect's set (PDF), CAD files (DXF), a
+building model (IFC), or a plan picture — a file, several, a folder or a .zip." Drop them on the dashed box or anywhere on
+the page, or click **Choose files…** (the one blue button; it picks any of them, several at once). What you drop decides
+what comes next (§5 "What happens with each kind"). Under the box, **Open a project** lists the projects kept in this
+browser, newest first, each with its floors and drawings ("3 floors · 3 drawings"): a click opens it — its floors on the
+right, its lowest drawn floor on the sheet. **Start an empty project** under the list is the New project card (§6: its
+name and floors first, a drawing for each floor after). Pictures: PNG, JPG, WEBP or TIFF, up to 10 MB; an iPhone's HEIC
+photo only in a browser that opens it (Safari), else a message says how to get a JPEG.
 
-**Try a sample ▾** (under the dashed box) lists eight real buildings' files found on the internet and free to pass on —
+**Try a sample ▾** (beside Choose files…) lists eight real buildings' files found on the internet and free to pass on —
 at least one of each kind Plotline reads, each with its kind and size ("IFC · 415 KB"); rest the mouse on one for who
 made it and its licence. Click one and it opens exactly as if you had dropped it: the two IFCs make their floors (the
 flat opens with its 7 named rooms), the DXFs and the SVG open as a drawing, the school PDF opens as a drawing at its
@@ -1119,15 +1121,15 @@ it without asking the map again. Map and buildings © OpenStreetMap contributors
 
 ### Bring in the architect's file
 
-Instead of a picture to trace, drop the architect's own file on the Studio (or ⋯ → **Import…** / **Choose plan
-image…**). Its walls ARE the drawing, so there is no picture behind it (the status bar says "no picture lined up"); a
+Instead of a picture to trace, drop the architect's own file on the Studio (or ⋯ → **Import…** / **Choose
+files…**). Its walls ARE the drawing, so there is no picture behind it (the status bar says "no picture lined up"); a
 picture can still be dropped later to see the sheet behind. Every format and how it was tested: [FORMATS.md](FORMATS.md).
 Dropped (or imported) onto a drawing, a file asks first: "Replace the drawing on screen with *file*? Undo brings it
 back." — **Replace**, and one **Ctrl+Z** (or ↶ Undo) gives the drawing that was there back, on its picture as before and
 with its Check these rows; **Cancel** keeps it. The same for a Plotline file (.json). A whole building (an IFC of several
 storeys) makes a project of its own: a drawing open in a project stays in its project; one open in no project is
 replaced, and it says so before ("Make a project of *file*'s 5 floors? The drawing on screen is in no project…").
-To see each kind without a file of your own: **Try a sample ▾** in the empty Studio ("Loading the plan picture" above).
+To see each kind without a file of your own: **Try a sample ▾** in the empty Studio ("The door" above).
 
 | File | What happens |
 |---|---|
@@ -1290,7 +1292,7 @@ You say what the building is first, then give each floor a drawing. A drawing is
 lift lobby); one drawing can be on any floors you like.
 
 **Start a project**
-1. Studio → **⋯** → **New project** (or the **New project** card beside the picture box while the Studio is empty, or
+1. Studio → **⋯** → **New project** (or **Start an empty project** under the door of an empty Studio, or
    **Building**).
 2. Type its **Name**, **Basements** (0–5), **Floors above ground** (1–60), tick **Rooftop** or not. A ground floor is
    always there.

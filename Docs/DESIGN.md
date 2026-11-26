@@ -58,7 +58,7 @@ Contrast (measured by `src/lib/contrast.test.ts`, which fails if a token drifts)
   Scale `--fs-2xs … --fs-xl` = 10 · 11 · 12 · 13 · 15 · 18. Tabular numerals everywhere (`tnum` is on at the root).
 - Display: **Instrument Serif** (`--font-display`), 400 only, italic for emphasis inside a title. Scale
   `--fs-2xl … --fs-5xl` = 28 · 45 · 73 · 118 (golden steps). Letter-spacing −0.01em, line-height 1.05.
-  Where: the room's name in the walk, the Studio's empty state ("Start with a plan"), the front page, a sheet's title.
+  Where: the room's name in the walk, the Studio's empty state ("Drop your drawings"), the front page, a sheet's title.
 - Inscription (`.label`): 10 px, 500, capitals, `--track` 0.12em, muted. Where: over a value ("FLOOR 2"), a panel's
   section name, an eyebrow.
 - Both fonts load from Google Fonts in `index.html` (free; `Docs/SOURCES.md`). The system fallbacks are set.
@@ -143,8 +143,10 @@ One accent on the page: the primary button. Everything else is ink on marble.
 - Marks on the plan, so the sheet reads as a drawing, not an error list: terracotta = a numbered badge (it breaks the
   3D), amber = an 8 px dot whose number shows only when the mouse is near or its row is picked, grey = not drawn (the
   row is in the list); several at one spot share one outlined badge with their count.
-- Empty state: "Start with a plan" in the serif at `--fs-3xl`, the drop zone a dashed hairline on marble, the New
-  project card white.
+- Empty state — one door: "Drop your drawings" in the serif at `--fs-3xl`, one line naming what it takes in `--ink-2`,
+  the drop zone a dashed hairline on marble holding **Choose files…** (the screen's one blue button) and **Try a sample
+  ▾** side by side; under it, behind a hairline, the inscription OPEN A PROJECT over plain rows (name left, "3 floors · 3
+  drawings" muted right, a `--hover` wash under the mouse) and one link, Start an empty project. No card beside it.
 
 ## Phones (the viewer; built in session 31, not yet tried on a real phone)
 

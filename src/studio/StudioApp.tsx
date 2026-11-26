@@ -45,7 +45,7 @@ import { BIG_WALLS, bulkRows, exportedReview, fixSig, leaksAround, markIssues, r
 import { UNTRUSTED, askRow, rowPicture, type AiNote } from './localAI'
 import { ProjectPanel } from './ProjectPanel'
 import { NorthArrow, SitePanel } from './SitePanel'
-import { FloorList, NewProject } from './FloorList'
+import { FloorList } from './FloorList'
 import { deletePicture, getPicture, putPicture } from './pictures'
 import { putShell } from './shells'
 import type { SetChoice, SetFile, SetRow } from './SetPanel'
@@ -312,6 +312,11 @@ function rastersOf(im: HTMLImageElement): { gray: Gray; rgb: NonNullable<TraceJo
 
 /** what the Studio calls a drawing (its name box, Preview 3D): its own name, else "Type A" / "Floor plan A" / "Untitled unit" — its files and its buyer link too */
 const nameOf = (u: Unit): string => titleOf(u, deriveRooms(u))
+/** a saved project in the door's list: how many floors it has and how many drawings */
+const projectLine = (p: Project): string => {
+  const n = slotsOf(p).length, d = Object.keys(p.units).length
+  return `${n} floor${n === 1 ? '' : 's'} · ${d} drawing${d === 1 ? '' : 's'}`
+}
 const download = (name: string, text: string, type = 'application/json') => {
   const a = document.createElement('a')
   a.href = URL.createObjectURL(new Blob([text], { type }))
@@ -370,8 +375,8 @@ export default function StudioApp() {
 
   const wrapRef = useRef<HTMLDivElement>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
+  /** Choose files… / Import… / Ctrl+O: one picker for every kind Plotline reads (a set, a CAD file, a model, a picture, its own .json) */
   const fileRef = useRef<HTMLInputElement>(null)
-  const jsonRef = useRef<HTMLInputElement>(null)
   const fieldRef = useRef<HTMLInputElement>(null)
   const stateRef = useRef(state)
   stateRef.current = state
@@ -791,6 +796,20 @@ export default function StudioApp() {
     setActive({ id: p.id })
     setListOpen(true)
     toast(`${name}: pick a floor on the right and click Draw`)
+  }
+  /** the door's Open a project: the project in the frame and its lowest drawn floor above ground (else any) on the sheet */
+  const openProject = (id: Id) => {
+    activate(id)
+    const p = readProjects().find((x) => x.id === id)
+    const rows = p ? slotsOf(p).reverse() : []
+    const first = rows.find((r) => r.slot !== 'R' && r.slot > 0 && r.unitIds.length)?.unitIds[0] ?? rows.find((r) => r.unitIds.length)?.unitIds[0] ?? Object.keys(p?.units ?? {})[0]
+    if (first) openDrawing(fresh(), first)
+  }
+  /** ⋯ → New project, the door's Start an empty project: the floor list with the New project card */
+  const newEmptyProject = () => {
+    setBuildingOpen(false)
+    activate(null)
+    setListOpen(true)
   }
   // a picture loaded onto a project drawing is kept for it in this browser (the draft holds only the open one's)
   useEffect(() => {
@@ -2386,7 +2405,7 @@ export default function StudioApp() {
       }
       if (ctrl && (e.key === 'o' || e.key === 'O')) {
         e.preventDefault()
-        return jsonRef.current?.click()
+        return fileRef.current?.click()
       }
       // Esc anywhere in the room box (its name, a level, the Ramp tick box, Save) closes it, as Esc elsewhere does
       if (e.key === 'Escape' && popover && t.closest('.popover')) return setPopover(null)
@@ -2757,17 +2776,13 @@ export default function StudioApp() {
           setBuildingOpen(false)
           setListOpen((v) => !v)
         }}
-        onNewProject={() => {
-          setBuildingOpen(false)
-          activate(null)
-          setListOpen(true)
-        }}
+        onNewProject={newEmptyProject}
         site={siteOpen}
         onSite={() => {
           setBuildingOpen(false)
           setSiteOpen((v) => !v)
         }}
-        onImport={() => jsonRef.current?.click()}
+        onImport={() => fileRef.current?.click()}
         onExport={exportJson}
         onExportDxf={() => void exportDxf()}
         onExportGlb={exportGlb}
@@ -2776,8 +2791,7 @@ export default function StudioApp() {
         share={sharingConfigured ? { busy: sharing, onShare: () => void share() } : null}
         cloud={{ snapshot: cloudItem, changed: cloudChanged, onOpen: openFromCloud, onRenameOpen: renameOpen, toast }}
       />
-      <input ref={jsonRef} type="file" multiple accept={`.json,application/json,${IMPORT_ACCEPT}`} hidden onChange={(e) => (onFiles(e.target.files), (e.target.value = ''))} />
-      <input ref={fileRef} type="file" multiple accept={`image/png,image/jpeg,image/webp,.tif,.tiff,.heic,.heif,${IMPORT_ACCEPT}`} hidden onChange={(e) => (onFiles(e.target.files), (e.target.value = ''))} />
+      <input ref={fileRef} type="file" multiple accept={`${IMPORT_ACCEPT},image/png,image/jpeg,image/webp,.tif,.tiff,.heic,.heif,.json,application/json`} hidden onChange={(e) => (onFiles(e.target.files), (e.target.value = ''))} />
 
       <div className={listOpen ? 'main with-floors' : 'main'}>
         <nav className="tools" aria-label="Tools">
@@ -2857,31 +2871,24 @@ export default function StudioApp() {
             />
           )}
           {empty && (
+            // the one door (session 31 frame): whatever the architect sent — what is dropped decides what comes next
             <div className="empty">
               {!missingPlan && (
                 <>
-                  <h2>Start with a plan</h2>
-                  <p>Drop the floor plan from the brochure, trace its walls, then walk the flat in 3D.</p>
+                  <h2>{openSlot ? `Drop the drawing of ${openSlot.label.toLowerCase()}` : 'Drop your drawings'}</h2>
+                  <p>The architect’s set (PDF), CAD files (DXF), a building model (IFC), or a plan picture — a file, several, a folder or a .zip.</p>
                 </>
               )}
-              <div className="start">
-                <div className="drop">
-                  <svg width="32" height="32" viewBox="0 0 32 32" aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-                    <path d="M7 4.5h12l6 6v17H7z" />
-                    <path d="M19 4.5v6h6M11 15.5h4v7h6M15 15.5h6v4" />
-                  </svg>
-                  <p>
-                    {missingPlan
-                      ? `Plan image not found — drop \`${missingPlan}\` here to trace over it`
-                      : openSlot
-                        ? `Drop the plan picture of ${openSlot.label.toLowerCase()} here`
-                        : 'Drop the floor plan here'}
-                  </p>
-                  <p className="small muted">PNG, JPG, WEBP or TIFF, up to 10 MB — or the brochure PDF</p>
+              <div className="drop">
+                <svg width="32" height="32" viewBox="0 0 32 32" aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M7 4.5h12l6 6v17H7z" />
+                  <path d="M19 4.5v6h6M11 15.5h4v7h6M15 15.5h6v4" />
+                </svg>
+                <p>{missingPlan ? `Plan picture not found — drop \`${missingPlan}\` here to trace over it` : 'Drop them here, or anywhere on the page'}</p>
+                <div className="door">
                   <button className="primary" onClick={() => fileRef.current?.click()}>
-                    Choose plan image…
+                    Choose files…
                   </button>
-                  {!missingPlan && <p className="small muted">or drop an IFC / DXF / PDF / SVG / 3D model, a folder or a .zip</p>}
                   {!missingPlan && (
                     // (a press elsewhere moves the focus out and closes it; Esc too)
                     <div className="samples" onBlur={(e) => !e.currentTarget.contains(e.relatedTarget) && setSamplesOpen(false)} onKeyDown={(e) => e.key === 'Escape' && (e.stopPropagation(), setSamplesOpen(false))}>
@@ -2901,13 +2908,29 @@ export default function StudioApp() {
                     </div>
                   )}
                 </div>
-                {!project && !listOpen && !unit.vertices.length && !missingPlan && (
-                  <>
-                    <span className="or">or</span>
-                    <NewProject onCreate={createProject} />
-                  </>
-                )}
               </div>
+              {!project && !missingPlan && (
+                <div className="open-project">
+                  {projects.length > 0 && (
+                    <>
+                      <span className="label">Open a project</span>
+                      <ul>
+                        {[...projects].reverse().map((p) => (
+                          <li key={p.id}>
+                            <button title={`Open ${p.name}: its floors on the right, its first drawing on the sheet`} onClick={() => openProject(p.id)}>
+                              <span>{p.name}</span>
+                              <span className="muted">{projectLine(p)}</span>
+                            </button>
+                          </li>
+                        ))}
+                      </ul>
+                    </>
+                  )}
+                  <button className="link" title="A project with no drawing yet: its name, basements, floors and rooftop first, then a drawing for each floor" onClick={newEmptyProject}>
+                    Start an empty project
+                  </button>
+                </div>
+              )}
             </div>
           )}
           {trace && (

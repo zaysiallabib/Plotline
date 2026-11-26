@@ -50,7 +50,7 @@
 :where(.studio) button.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); font-weight: 500; }
 :where(.studio) button.primary:where(:hover:not(:disabled)) { background: color-mix(in srgb, var(--accent) 86%, var(--ink)); }
 /* a box's own main action (Save, Create project, Show building, a fix): an ordinary button, firmer — the screen keeps
-   its one blue button (Preview 3D; Choose plan image… on the empty sheet) */
+   its one blue button (Preview 3D; Choose files… on the empty sheet) */
 :where(.studio) :is(.popover, .floors, .new-project, .issue-pop, .print-box) button.primary { background: transparent; border-color: color-mix(in srgb, var(--ink) 30%, transparent); color: var(--ink); }
 :where(.studio) :is(.popover, .floors, .new-project, .issue-pop, .print-box) button.primary:where(:hover:not(:disabled)) { background: var(--hover); }
 :where(.studio) button.on { background: var(--accent-soft); border-color: transparent; color: var(--accent); font-weight: 500; }
@@ -224,24 +224,31 @@
 }
 .empty h2 { margin: 0; font-family: var(--font-display); font-size: var(--fs-3xl); font-weight: 400; letter-spacing: -0.01em; line-height: 1.05; }
 .empty h2 + p { margin: calc(-1 * var(--s-5)) 0 0; max-width: 560px; text-wrap: balance; color: var(--ink-2); font-size: var(--fs-lg); }
-.start { display: flex; align-items: stretch; gap: var(--s-5); pointer-events: auto; }
+/* the one door: a dashed hairline on marble, Choose files… (the one blue button) and Try a sample ▾ side by side */
 .empty .drop {
-  width: 340px;
-  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: var(--s-2);
+  width: min(440px, 100%);
+  display: flex; flex-direction: column; align-items: center; gap: var(--s-3);
   padding: var(--s-6) var(--s-5);
   border: 1px dashed color-mix(in srgb, var(--ink) 30%, transparent);
   border-radius: var(--r-lg);
+  pointer-events: auto;
 }
-.empty .drop svg { margin-bottom: var(--s-2); color: var(--ink-2); }
-.empty .drop p { margin: 0; max-width: 280px; overflow-wrap: anywhere; }
-.empty .drop .primary { margin: var(--s-3) 0 var(--s-1); }
-.start .or { display: flex; flex-direction: column; align-items: center; gap: var(--s-3); font-size: var(--fs-2xs); font-weight: 500; letter-spacing: var(--track); text-transform: uppercase; color: var(--muted); }
-.start .or::before, .start .or::after { content: ''; flex: 1; width: 1px; background: var(--line); }
+.empty .drop svg { color: var(--ink-2); }
+.empty .drop p { margin: 0; max-width: 360px; overflow-wrap: anywhere; color: var(--ink-2); }
+.empty .door { display: flex; align-items: center; gap: var(--s-2); margin-top: var(--s-2); }
 /* Try a sample ▾: its list opens under it like ⋯ */
 .empty .samples { position: relative; }
 .empty .samples .menu { position: absolute; z-index: 2; top: calc(100% + var(--s-2)); left: 50%; translate: -50% 0; width: 360px; padding: var(--s-1); display: flex; flex-direction: column; }
 .empty .samples .menu.up { top: auto; bottom: calc(100% + var(--s-2)); }
-.empty .new-project { width: 288px; padding: var(--s-5); text-align: left; background: var(--surface); border: 1px solid var(--hairline); border-radius: var(--radius); box-shadow: var(--shadow-sm); }
+/* Open a project: the saved ones under the door, newest first, a hairline over them */
+.open-project { width: min(440px, 100%); display: grid; gap: var(--s-2); text-align: left; pointer-events: auto; }
+.open-project > .label { padding-top: var(--s-3); border-top: 1px solid var(--line); }
+.open-project ul { list-style: none; margin: 0 calc(-1 * var(--s-2)); padding: 0; display: grid; gap: 2px; max-height: calc(6 * (var(--control) + 2px)); overflow: auto; }
+:where(.studio) .open-project li button { justify-content: space-between; gap: var(--s-4); width: 100%; padding: 0 var(--s-2); border: 0; background: transparent; font-weight: 400; text-align: left; }
+:where(.studio) .open-project li button:hover { background: var(--hover); }
+.open-project li button > span:first-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; line-height: var(--lh); }
+.open-project li .muted { flex: none; font-size: var(--fs-sm); }
+.open-project > .link { justify-self: start; }
 
 /* the New project card (in the middle, or in the floor list) */
 .new-project { display: flex; flex-direction: column; gap: var(--s-3); }
