@@ -530,7 +530,15 @@ export function traceTracks(gray0: Gray, opts: TrackOpts = {}): TrackTrace {
       const keep = ivs.filter((iv) => {
         if (iv.pil) return true // (a column is its own ink both sides of the line)
         const p = (u: number): Px => (horiz ? { x: u, y: l.c } : { x: l.c, y: u })
-        return sideContrast(gray, { a: p(iv.w0), b: p(iv.w1) }, iv.th) >= minContrast
+        // judged on the interval's own wall cross-sections, each at its measured width (median): a short thick riser
+        // where a wall changes width is absorbed into the next class above, and probed over the whole interval at that
+        // class's width the probe sat INSIDE the wider ink — no contrast, the real wall thrown away (Sheltech Level 2's
+        // lift junction; from Maheer's Plotline 2.0)
+        const samples: number[] = []
+        const from = Math.max(0, Math.ceil(iv.w0 - a)), to = Math.min(n - 1, Math.floor(iv.w1 - a))
+        const stride = Math.max(1, Math.floor((to - from + 1) / 24))
+        for (let i = from; i <= to; i += stride) if (lab[i] === W_) samples.push(sideContrast(gray, { a: p(a + i - 0.5), b: p(a + i + 0.5) }, wid[i]))
+        return samples.length > 0 && median(samples) >= minContrast
       })
       if (keep.length) tracks.push({ horiz, c: l.c, ivs: keep.sort((p, q) => p.f0 - q.f0), lab, a })
     }
