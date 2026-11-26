@@ -278,6 +278,48 @@ export function emptyUnit(): Unit {
 /** the screen holds a drawing (walls, names or columns): an import over it asks first and is one undo step */
 export const hasDrawing = (u: Unit): boolean => !!(u.walls.length || u.roomLabels.length || u.pillars?.length)
 
+/** What the drawing open came from (session 31 frame): a set's plan read from its lines, a file of its own, a picture to trace */
+export type Source = 'set' | 'file' | 'picture'
+/** What the Steps tick on: the drawing as it is and what was done with it */
+export interface StepEvidence {
+  /** the set's pages are all read (its panel open) */
+  setRead: boolean
+  /** the project was built from the set */
+  built: boolean
+  /** a file whose unit Plotline had to guess (its Read in row): a step of its own; checked = a unit picked there */
+  size?: { checked: boolean }
+  picture: boolean
+  scaled: boolean
+  walls: number
+  thick: boolean
+  openings: boolean
+  rooms: boolean
+  errors: number
+  previewed: boolean
+  shared: boolean
+}
+/**
+ * A DXF read from its lines (`readIn`: its unit, `yours` = picked by the person in Read in) whose file names no unit, or one
+ * that makes the plan absurd (src/import/dxf.ts "Units: none in the file …", "$INSUNITS 99 is not a length …", "the file says
+ * millimetres but …"): its size is a step of its own — ticked once a unit is picked. Any other file: no such step.
+ */
+export const sizeStep = (readIn: { yours: boolean } | null, notes: readonly string[] | null): StepEvidence['size'] =>
+  readIn && (readIn.yours || notes?.some((n) => /^Units: (none|\$INSUNITS|the file says)/.test(n))) ? { checked: readIn.yours } : undefined
+/**
+ * The Steps list follows the source, in plain words: a set → read it, check its floors, build, check, Preview 3D, share; a
+ * CAD / IFC file → read it (its size when it has no unit), check, Preview 3D, share — nothing to scale or trace; a picture →
+ * the tracing steps (Export is Share: a buyer link, a DXF, the 3D model, a print); nothing yet → the door. Unnumbered.
+ */
+export function stepsOf(source: Source | null, e: StepEvidence): [string, boolean][] {
+  const check: [string, boolean] = ['Check', e.walls > 0 && e.errors === 0]
+  const tail: [string, boolean][] = [['Preview 3D', e.previewed], ['Share', e.shared]]
+  if (source === 'set') return [['Read the set', e.setRead || e.built], ['Check the floors', e.built], ['Build', e.built], check, ...tail]
+  if (source === 'file') return [['Read the file', e.walls > 0], ...(e.size ? [['Check its size', e.size.checked] as [string, boolean]] : []), check, ...tail]
+  if (source === 'picture')
+    return [['Load plan', e.picture], ['Set scale', e.scaled], ['Trace walls', e.walls > 0], ['Wall thickness', e.thick], ['Openings', e.openings], ['Rooms', e.rooms], check, ['Share', e.shared]]
+  return [['Drop your drawings', false], ['Check', false], ...tail]
+}
+
 export function initialState(): StudioState {
   return {
     unit: emptyUnit(),
@@ -1831,12 +1873,14 @@ export interface StudioIssue {
   ids: Id[]
 }
 
-export function studioIssues(unit: Unit, rooms: Room[]): StudioIssue[] {
+/**
+ * `picture`: a plan picture is in (the Studio's own, not the unit's): with no wall yet it waits on its scale (S). A drawing
+ * with walls is in real lengths — read from a file, or drawn — and needs no picture under it (session 31 frame: an IFC's or
+ * a DXF's every floor said "no plan picture is lined up"); nothing dropped yet has nothing to say.
+ */
+export function studioIssues(unit: Unit, rooms: Room[], picture = true): StudioIssue[] {
   const out: StudioIssue[] = []
-  if (!unit.planImage) {
-    // a drawing with walls is in real lengths already: it only lacks its picture
-    out.push(unit.walls.length ? { level: 'warning', code: 'scale-not-set', message: 'No plan picture is lined up under this drawing (drop the picture on the page, then S)', ids: [] } : { level: 'error', code: 'scale-not-set', message: 'Scale is not set (S)', ids: [] })
-  }
+  if (picture && !unit.planImage && !unit.walls.length) out.push({ level: 'error', code: 'scale-not-set', message: 'Scale is not set (S)', ids: [] })
   for (const i of validate(unit)) out.push({ ...i, message: ISSUE_COPY[i.code] })
   if (unit.walls.length && !rooms.length) out.push({ level: 'warning', code: 'no-rooms', message: 'No closed rooms yet', ids: [] })
   if (rooms.length) {

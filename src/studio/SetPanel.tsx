@@ -122,9 +122,11 @@ interface Props {
   /** `storeys`: how tall the set says the building is (a brochure's "2B+G+12"), when a page says it */
   onBuild: (rows: SetChoice[], files: SetFile[], storeys: Storeys | null) => void
   onClose: () => void
+  /** whether pages are still being read (the Studio's Steps tick "Read the set" when they are all in) */
+  onReading?: (reading: boolean) => void
 }
 
-export default function SetPanel({ files, onRead, onOpenOne, onBuild, onClose }: Props) {
+export default function SetPanel({ files, onRead, onOpenOne, onBuild, onClose, onReading }: Props) {
   const [rows, setRows] = useState<SetRow[]>([])
   const [storeys, setStoreys] = useState<(Storeys & { page: number }) | null>(null)
   const [reading, setReading] = useState<{ at: number; of: number } | null>({ at: 0, of: files.reduce((a, f) => a + pagesOf(f), 0) })
@@ -187,6 +189,7 @@ export default function SetPanel({ files, onRead, onOpenOne, onBuild, onClose }:
     })()
     return () => void (live.current = false)
   }, [files, onRead])
+  useEffect(() => onReading?.(!!reading), [reading, onReading])
   useEffect(() => {
     const key = (e: KeyboardEvent) => e.key === 'Escape' && (e.stopPropagation(), onClose())
     addEventListener('keydown', key, true)

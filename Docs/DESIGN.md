@@ -58,7 +58,7 @@ Contrast (measured by `src/lib/contrast.test.ts`, which fails if a token drifts)
   Scale `--fs-2xs … --fs-xl` = 10 · 11 · 12 · 13 · 15 · 18. Tabular numerals everywhere (`tnum` is on at the root).
 - Display: **Instrument Serif** (`--font-display`), 400 only, italic for emphasis inside a title. Scale
   `--fs-2xl … --fs-5xl` = 28 · 45 · 73 · 118 (golden steps). Letter-spacing −0.01em, line-height 1.05.
-  Where: the room's name in the walk, the Studio's empty state ("Start with a plan"), the front page, a sheet's title.
+  Where: the room's name in the walk, the Studio's empty state ("Drop your drawings"), the front page, a sheet's title.
 - Inscription (`.label`): 10 px, 500, capitals, `--track` 0.12em, muted. Where: over a value ("FLOOR 2"), a panel's
   section name, an eyebrow.
 - Both fonts load from Google Fonts in `index.html` (free; `Docs/SOURCES.md`). The system fallbacks are set.
@@ -138,13 +138,19 @@ One accent on the page: the primary button. Everything else is ink on marble.
   openings as the architect draws them. Hover: `--accent-line`.
 - Left: the tool rail (icons 20 px, a tooltip with the key, the picked tool white with `--shadow-sm`). Top: one bar —
   the wordmark, the drawing's name and floor, Undo / Redo, Auto-trace, Preview 3D (the one primary button), Building, ⋯.
-- Right: the inspector (320 px, white, hairline left edge): Steps as a quiet list, Selection, Issues with the three
-  severity dots (terracotta / amber / grey).
+- Right: the project's column (280 px, marble, hairline left edge) — the frame of every drop: the project's name in the
+  serif at `--fs-2xl`, then the inscription FLOORS over the floor rows (the floor in 500, its drawing's name, where it came
+  from in muted 11 px under it; the open floor a white row with `--shadow-sm`), the floor plans, KEPT FROM THE DRAWING SET
+  as folding groups by kind (name, count, ▸ / ▾), SITE and TEAM as one line each (inscription, words, link). Beside it
+  the inspector (320 px, white, hairline left edge): Steps as a quiet list (Share's links under its step), Selection,
+  Issues with the three severity dots (terracotta / amber / grey).
 - Marks on the plan, so the sheet reads as a drawing, not an error list: terracotta = a numbered badge (it breaks the
   3D), amber = an 8 px dot whose number shows only when the mouse is near or its row is picked, grey = not drawn (the
   row is in the list); several at one spot share one outlined badge with their count.
-- Empty state: "Start with a plan" in the serif at `--fs-3xl`, the drop zone a dashed hairline on marble, the New
-  project card white.
+- Empty state — one door: "Drop your drawings" in the serif at `--fs-3xl`, one line naming what it takes in `--ink-2`,
+  the drop zone a dashed hairline on marble holding **Choose files…** (the screen's one blue button) and **Try a sample
+  ▾** side by side; under it, behind a hairline, the inscription OPEN A PROJECT over plain rows (name left, "3 floors · 3
+  drawings" muted right, a `--hover` wash under the mouse) and one link, Start an empty project. No card beside it.
 
 ## Phones (the viewer; built in session 31, not yet tried on a real phone)
 

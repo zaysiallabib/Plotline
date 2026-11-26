@@ -9,7 +9,7 @@ import { useEffect, useState, type ComponentProps } from 'react'
 import type { Unit } from '../core'
 import { useSession } from '../lib/auth'
 import { configured } from '../lib/supabase'
-import CloudBar from './CloudBar'
+import CloudBar, { type Pane } from './CloudBar'
 
 type Meta = 'name' | 'projectName' | 'floor' | 'areaSqft'
 
@@ -24,7 +24,7 @@ interface Props {
   autoTrace: { disabled: boolean; onClick: () => void } | null
   /** errors in Issues: Preview 3D says so on hover (it never locks) */
   errors: number
-  /** the Studio is empty: its own Choose plan image… is the one blue button, Preview 3D waits plain */
+  /** the Studio is empty: its own Choose files… is the one blue button, Preview 3D waits plain */
   quiet: boolean
   /** the name Preview 3D gives this drawing while none is typed ("Floor plan A" for a whole floor): the name box's grey words */
   untitled: string
@@ -43,6 +43,9 @@ interface Props {
   /** the database is set up: Share link (busy while it publishes) and Change list; null: neither shows */
   share: { busy: boolean; onShare: () => void } | null
   cloud: Omit<ComponentProps<typeof CloudBar>, 'open' | 'onClose' | 'onCard'>
+  /** the account card: open on one of its panes, or closed (the project column's Members / Links open it too) */
+  account: Pane | false
+  onAccount: (a: Pane | false) => void
 }
 
 const Icon = ({ d }: { d: string }) => (
@@ -62,8 +65,8 @@ function Item({ label, keys, on, title, disabled, onClick }: { label: string; ke
 
 export default function TopBar(p: Props) {
   const [menu, setMenu] = useState(false)
-  const [account, setAccount] = useState(false)
   const session = useSession()
+  const { unit, onMeta, account, onAccount: setAccount } = p
   // Esc (that one step only: caught first, so the Studio's own Esc does not also unpick) closes ⋯, else the account card
   // (also from its email box); a press elsewhere closes ⋯
   useEffect(() => {
@@ -82,7 +85,6 @@ export default function TopBar(p: Props) {
       removeEventListener('pointerdown', down)
     }
   }, [menu, account])
-  const { unit, onMeta } = p
 
   return (
     <header className="topbar">
@@ -105,7 +107,7 @@ export default function TopBar(p: Props) {
           <input type="number" placeholder="–" value={unit.areaSqft || ''} onChange={onMeta('areaSqft')} />
           <span className="unit">sft</span>
         </label>
-        <CloudBar {...p.cloud} open={account} onClose={() => setAccount(false)} onCard={() => setAccount(true)} />
+        <CloudBar {...p.cloud} open={account} onClose={() => setAccount(false)} onCard={() => setAccount('projects')} />
       </div>
 
       <div className="tb-right">
@@ -160,9 +162,9 @@ export default function TopBar(p: Props) {
                   <div className="menu-title">Account</div>
                   <Item
                     label={session ? (session.user.email ?? 'Account') : 'Sign in'}
-                    on={account}
+                    on={!!account}
                     title={session ? 'Your account and your company’s projects in the cloud' : 'Sign in to keep your work in the cloud for your company'}
-                    onClick={() => setAccount((v) => !v)}
+                    onClick={() => setAccount(account ? false : 'projects')}
                   />
                 </>
               )}

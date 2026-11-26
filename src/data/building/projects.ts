@@ -46,6 +46,8 @@ export interface Project {
    * (a type is drawn before it is put on floors). Absent in older projects: planOf derives it.
    */
   plan?: ProjectPlan
+  /** where each drawing came from, by its id (session 31 frame: the floor list says it, the Steps follow it); absent in older projects */
+  from?: Record<Id, DrawingSource>
   /**
    * The architect's outside shape (session 29, src/import), saved once for the building: projectTower puts it on every
    * drawing that has none of its own, at that floor's elevation. Absent in older projects.
@@ -80,6 +82,16 @@ export interface ProjectSheet {
   /** where it came from: the file and its page */
   file: string
   page: number
+}
+
+/**
+ * Where a drawing came from: read from the lines of a set's plan ('set'), from a CAD / IFC / PDF file of its own ('file'),
+ * or a picture to trace ('picture', a set's page among them) — and the plain line the floor list shows under it ("from page
+ * 7 · 2ND FLOOR PLAN · 1 : 48", "from Flat-A.dxf", "traced on img_3.webp").
+ */
+export interface DrawingSource {
+  kind: 'set' | 'file' | 'picture'
+  line: string
 }
 
 export interface ProjectPlan {
@@ -515,6 +527,7 @@ export function forkFloor(p: Project, s: Slot, unitId: Id, forkId: Id): Project 
   const name = `${u.name.trim() || 'Untitled drawing'} · ${slotLabel(s).toLowerCase()}`
   const fork: Unit = { ...structuredClone(u), id: forkId, name, ...(s !== 'R' && s > 0 ? { floor: s } : {}) }
   const units = { ...p.units, [forkId]: fork }
+  if (p.from?.[unitId]) p = { ...p, from: { ...p.from, [forkId]: p.from[unitId] } } // (the copy came from where its drawing did)
   const lv = levelAt(p, s)
   if (lv) return { ...p, units, levels: (p.levels ?? []).map((l) => (l === lv ? { ...l, unitId: forkId } : l)) }
   const k = s as number

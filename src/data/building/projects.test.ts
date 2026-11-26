@@ -142,6 +142,13 @@ describe('one floor on its own: a drawing on floors 1-4, floor 2 forked (founder
     expect(forkFloor(p, 3, 'nope', 'g')).toBe(p)
   })
 
+  test('the copy says where its drawing came from (session 31 frame: the floor list shows it)', () => {
+    const p = forkFloor({ ...p0, from: { a: { kind: 'set', line: 'from page 7 · 2ND FLOOR PLAN · 1 : 48' } } }, 2, 'a', 'f')
+    expect(p.from?.f).toEqual({ kind: 'set', line: 'from page 7 · 2ND FLOOR PLAN · 1 : 48' })
+    expect(p.from?.a).toEqual(p.from?.f)
+    expect(forkFloor(p0, 2, 'a', 'f').from).toBeUndefined() // (an older project has none)
+  })
+
   test('an older project: the mirrored neighbour comes along, where it stood', () => {
     const p = forkFloor(makeProject('q', box('a'), 2, 7, 'right'), 4, 'a', 'f')
     expect(p.floors.map((g) => `${g.from}-${g.to}:${g.flats}`)).toEqual(['2-3:a,a-m', '4-4:f,f-m', '5-7:a,a-m'])

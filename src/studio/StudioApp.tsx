@@ -29,7 +29,10 @@ import {
   studioIssues,
   wallLabelSides,
   hasDrawing,
+  sizeStep,
+  stepsOf,
   type Draft,
+  type Source,
   type PlanImage,
   type StudioState,
   type Target,
@@ -45,7 +48,7 @@ import { BIG_WALLS, bulkRows, exportedReview, fixSig, leaksAround, markIssues, r
 import { UNTRUSTED, askRow, rowPicture, type AiNote } from './localAI'
 import { ProjectPanel } from './ProjectPanel'
 import { NorthArrow, SitePanel } from './SitePanel'
-import { FloorList, NewProject } from './FloorList'
+import { FloorList } from './FloorList'
 import { deletePicture, getPicture, putPicture } from './pictures'
 import { putShell } from './shells'
 import type { SetChoice, SetFile, SetRow } from './SetPanel'
@@ -56,7 +59,7 @@ import { CONVERTED_PICTURE, toPlanPicture } from '../import/picture'
 import type { PdfDoc } from '../import/pdf'
 import type { Box } from '../import/sheets'
 import { IMPORT_ACCEPT, expandZips, filesOfDrop, importFile, importFormatOf, lockedFormatOf, mainFile, siblingsOf, type DropFile, type ImportResult, type ImportedStorey, type LayerRole, type LayerRoles } from '../import'
-import { PROJECTS_KEY, drawingName, keepApartments, keepReview, newProject, planOf as planOfProject, projectWith, parseProjects, projectTower, readProjects, saveProjects, setSlot, slotLabel, slotsOf, slotsText, stackFloors, syncUnit, type Project, type ProjectPlan, type Slot } from '../data/building/projects'
+import { PROJECTS_KEY, drawingName, keepApartments, keepReview, newProject, planOf as planOfProject, projectWith, parseProjects, projectTower, readProjects, saveProjects, setSlot, slotLabel, slotsOf, slotsText, stackFloors, syncUnit, type DrawingSource, type Project, type ProjectPlan, type Slot } from '../data/building/projects'
 import { finishesKey, keptFor, layoutKey, putKept, readFinishes, splitKept } from '../data/building/apartments'
 import { floorIn, roleIn, stemIn } from '../data/building'
 import { HARD, snapMove, snapPoint, type Snap } from './snap'
@@ -68,6 +71,7 @@ import { myOrg, session, useSession } from '../lib/auth'
 import { itemKey, linkStore, type CloudItem, type Kind } from '../lib/cloud'
 import { adoptPictures, pictureFromCloud, putOnline, withPictures } from '../lib/pictures'
 import TopBar from './TopBar'
+import type { Pane } from './CloudBar'
 import KeysSheet from './KeysSheet'
 import { fitSheet, frameOf, mToPx, mToScreen, screenToM, screenToPx } from './transform'
 import './studio.css'
@@ -312,6 +316,11 @@ function rastersOf(im: HTMLImageElement): { gray: Gray; rgb: NonNullable<TraceJo
 
 /** what the Studio calls a drawing (its name box, Preview 3D): its own name, else "Type A" / "Floor plan A" / "Untitled unit" — its files and its buyer link too */
 const nameOf = (u: Unit): string => titleOf(u, deriveRooms(u))
+/** a saved project in the door's list: how many floors it has and how many drawings */
+const projectLine = (p: Project): string => {
+  const n = slotsOf(p).length, d = Object.keys(p.units).length
+  return `${n} floor${n === 1 ? '' : 's'} · ${d} drawing${d === 1 ? '' : 's'}`
+}
 const download = (name: string, text: string, type = 'application/json') => {
   const a = document.createElement('a')
   a.href = URL.createObjectURL(new Blob([text], { type }))
@@ -351,6 +360,9 @@ export default function StudioApp() {
   const [samplesOpen, setSamplesOpen] = useState<false | 'down' | 'up'>(false)
   /** a drawing set (a PDF of several pages, or several PDFs) listed page by page in the Set panel (SetPanel) */
   const [setFiles, setSetFiles] = useState<SetFile[] | null>(null)
+  /** every page of the set is read (its panel says so): the Steps tick "Read the set" */
+  const [pagesIn, setPagesIn] = useState(false)
+  const onSetReading = useCallback((r: boolean) => setPagesIn(!r), [])
   /** the PDFs open now: the last set (or single PDF) stays open while its message offers "as a picture" / "its lines" */
   const openPdfDocs = useRef<PdfDoc[]>([])
   /** a kept drawing of the set (Project.sheets) shown big over the sheet */
@@ -370,8 +382,8 @@ export default function StudioApp() {
 
   const wrapRef = useRef<HTMLDivElement>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
+  /** Choose files… / Import… / Ctrl+O: one picker for every kind Plotline reads (a set, a CAD file, a model, a picture, its own .json) */
   const fileRef = useRef<HTMLInputElement>(null)
-  const jsonRef = useRef<HTMLInputElement>(null)
   const fieldRef = useRef<HTMLInputElement>(null)
   const stateRef = useRef(state)
   stateRef.current = state
@@ -411,7 +423,7 @@ export default function StudioApp() {
   const flats = useMemo(() => deriveFlats(unit, rooms), [unit, rooms])
   /** what Preview 3D titles the drawing while no name is typed (viewer/defaults.ts): the top bar's name box shows it in grey */
   const untitled = useMemo(() => titleOf({ ...unit, name: '' }, rooms, flats), [unit, rooms, flats])
-  const issues = useMemo(() => studioIssues(unit, rooms), [unit, rooms])
+  const issues = useMemo(() => studioIssues(unit, rooms, !!state.planImage), [unit, rooms, state.planImage])
   const labelSides = useMemo(() => wallLabelSides(unit, rooms), [unit, rooms])
   const errors = issues.filter((i) => i.level === 'error').length
   // the Issues and "Check these" rows as marks on the plan; their fixes are checked by applying them (issues.ts): once the
@@ -649,13 +661,21 @@ export default function StudioApp() {
       const bw = Math.max(bx.maxX - bx.minX, 1)
       const bh = Math.max(bx.maxY - bx.minY, 1)
       const zoom = Math.min(w / bw, h / bh) * 0.9
-      dispatch({
-        type: 'set-view',
-        view: { zoom, panX: (w - bw * zoom) / 2 - bx.minX * zoom, panY: (h - bh * zoom) / 2 - bx.minY * zoom },
-      })
+      const v = { zoom, panX: (w - bw * zoom) / 2 - bx.minX * zoom, panY: (h - bh * zoom) / 2 - bx.minY * zoom }
+      fitted.current = bounds ? null : v
+      dispatch({ type: 'set-view', view: v })
     },
     [size],
   )
+  // the sheet resized while the plan stands as it was fitted (the project's column opening beside a drop, a window made
+  // narrower): fitted again — once he pans or zooms, the view is his
+  const fitted = useRef<StudioState['view'] | null>(null)
+  useEffect(() => {
+    if (fitted.current && stateRef.current.view === fitted.current) fitView()
+  }, [fitView])
+  /** the fit for the sheet as it is now, for a drawing that arrives after an await (openDrawing's picture lookup) */
+  const fitRef = useRef(fitView)
+  fitRef.current = fitView
   useEffect(() => {
     if (img && fitOnLoad.current) {
       fitOnLoad.current = false
@@ -765,7 +785,7 @@ export default function StudioApp() {
           fitOnLoad.current = true
           dispatch({ type: 'set-plan-image', image: pic })
         } else if (u.planImage?.src) loadPlanSrc(u.planImage.src)
-        else fitView()
+        else fitRef.current() // (the sheet as it is now: the project column may have opened meanwhile)
       })
   }
   const activate = (id: Id | null) => {
@@ -791,6 +811,43 @@ export default function StudioApp() {
     setActive({ id: p.id })
     setListOpen(true)
     toast(`${name}: pick a floor on the right and click Draw`)
+  }
+  /** the door's Open a project: the project in the frame and its lowest drawn floor above ground (else any) on the sheet */
+  const openProject = (id: Id) => {
+    activate(id)
+    const p = readProjects().find((x) => x.id === id)
+    const rows = p ? slotsOf(p).reverse() : []
+    const first = rows.find((r) => r.slot !== 'R' && r.slot > 0 && r.unitIds.length)?.unitIds[0] ?? rows.find((r) => r.unitIds.length)?.unitIds[0] ?? Object.keys(p?.units ?? {})[0]
+    if (first) openDrawing(fresh(), first)
+  }
+  /** ⋯ → New project, the door's Start an empty project: the floor list with the New project card */
+  const newEmptyProject = () => {
+    setBuildingOpen(false)
+    activate(null)
+    setListOpen(true)
+  }
+  /**
+   * The frame is the project (session 31): the first drawing dropped on an empty Studio with no project open — one file, one
+   * picture — makes a project of one floor, named after its file, the drawing on floor 1; a single plan is a one-floor
+   * building from the start (a brochure flat is traced with the same clicks as before). With a project open, the drawing
+   * open in it records where it came from. A drawing of no project on screen is replaced as before (Undo brings it back).
+   * Gives the unit to load (its project's name on it).
+   */
+  const intoProject = (u: Unit, fileName: string, from: DrawingSource): Unit => {
+    const a = projRef.current
+    if (a) {
+      const d = a.drawing
+      if (d) storeProjects(readProjects().map((p) => (p.id === a.id ? { ...p, from: { ...p.from, [d]: from } } : p)))
+      return u
+    }
+    if (hasDrawing(stateRef.current.unit)) return u
+    const name = fileName.replace(/\.[^.]+$/, '')
+    const v = { ...u, projectName: u.projectName || name }
+    const p: Project = { ...setSlot(newProject(newId(), name, { basements: 0, floors: 1, rooftop: false }), 1, v), from: { [v.id]: from } }
+    if (!storeProjects([...readProjects(), p])) return u
+    setActive({ id: p.id, drawing: v.id })
+    setListOpen(true)
+    return v
   }
   // a picture loaded onto a project drawing is kept for it in this browser (the draft holds only the open one's)
   useEffect(() => {
@@ -940,7 +997,13 @@ export default function StudioApp() {
         im.onload = () => {
           fitOnLoad.current = true
           setMissingPlan(null)
-          const scaled = !!stateRef.current.unit.planImage
+          const st = stateRef.current
+          const scaled = !!st.unit.planImage
+          // (a picture under a drawing read from a file is only the sheet behind it: no new source)
+          if (!st.unit.walls.length) {
+            const v = intoProject(st.unit, file.name, { kind: 'picture', line: `traced on ${file.name}` })
+            if (v.projectName !== st.unit.projectName) dispatch({ type: 'set-meta', patch: { projectName: v.projectName } })
+          }
           dispatch({ type: 'set-plan-image', image: { dataUrl, naturalW: im.naturalWidth, naturalH: im.naturalHeight, name: file.name } })
           if (!scaled) void offerScale(im.naturalWidth, im.naturalHeight)
         }
@@ -1122,7 +1185,7 @@ export default function StudioApp() {
     const where = doc.numPages > 1 ? `Page ${page}` : name
     if (r && pdf.readsAsPlan(r)) {
       afterLoad.current = () => toast(`${where} read as a drawing (its own lines)`, { label: 'Use it as a picture instead', onClick: () => void asPicture() })
-      await takeImport(r, name)
+      await takeImport(r, name, false, doc.numPages > 1 ? `${name}, page ${page}` : name)
     } else {
       await asPicture()
       // (a page whose lines were not read — no scale on it — has nothing to offer instead)
@@ -1185,6 +1248,14 @@ export default function StudioApp() {
       return { pic: { dataUrl: canvas.toDataURL('image/webp', 0.9), naturalW: canvas.width, naturalH: canvas.height, name: `${files[r.file].name.replace(/\.pdf$/i, '')} p${r.page}.webp` }, pxPerPt }
     }
     let first: Id | null = null
+    // where each floor's drawing came from, as the floor list says it: "from page 7 · 2ND FLOOR PLAN · 1 : 48", "from Ground.dxf"
+    const from: Record<Id, DrawingSource> = {}
+    const lineOf = (rs: SetChoice[]) => {
+      const f = files[rs[0].file]
+      const where = f.doc ? `${files.length > 1 ? `${f.name}, ` : ''}page${rs.length > 1 ? 's' : ''} ${rs.map((x) => x.page).join(', ')}` : rs.map((x) => files[x.file].name).join(', ')
+      const scale = rs[0].view.scale
+      return ['from ' + where, rs.map((x) => x.view.title).filter(Boolean).join(', '), scale && `1 : ${Math.round(scale)}`].filter(Boolean).join(' · ')
+    }
     let pictures = 0
     let stacked = 0
     let sideBySide = 0
@@ -1257,6 +1328,7 @@ export default function StudioApp() {
             pictures++
           }
           u = { ...u, name: drawingName(p, r.slots[0]), projectName: p.name }
+          from[u.id] = { kind: drawn ? 'set' : 'picture', line: lineOf(group.map(({ m }) => m)) }
           const free = r.slots.filter((s) => !skip.has(s))
           for (const s of free) p = setSlot(p, s, u)
           if (!free.length) p = { ...p, units: { ...p.units, [u.id]: u } }
@@ -1282,6 +1354,7 @@ export default function StudioApp() {
           pictures++
         }
         u = { ...u, name: drawingName(p, r.slots[0]), projectName: p.name }
+        from[u.id] = { kind: u.walls.length ? 'set' : 'picture', line: lineOf([r]) }
         const free = r.slots.filter((s) => !skip.has(s))
         for (const s of free) p = setSlot(p, s, u, offset)
         if (!free.length) p = { ...p, units: { ...p.units, [u.id]: u } } // (its floors kept theirs: it waits on no floor)
@@ -1301,6 +1374,7 @@ export default function StudioApp() {
     } finally {
       setReading((x) => (x?.stop === stop ? null : x))
     }
+    p = { ...p, from: { ...p.from, ...from } }
     const ps = into ? before.map((x) => (x.id === p.id ? p : x)) : [...before, p]
     if (!storeProjects(ps)) return
     setActive({ id: p.id })
@@ -1339,7 +1413,7 @@ export default function StudioApp() {
    * what a read file gave, into the Studio (importArchitect above); `fileName`: for the project's name. Over a drawing it
    * asks first (one floor: Ctrl+Z brings the drawing back); `again`: the same file read again (a layer's role changed), no question
    */
-  const takeImport = async (r: ImportResult, fileName: string, again = false) => {
+  const takeImport = async (r: ImportResult, fileName: string, again = false, where = fileName) => {
     if (import.meta.env.DEV) Object.assign(window, { __plotlineLastImport: r }) // the formats scoreboard reads what the drop gave
     if (!again && r.storeys.length === 1 && !(await replaceAsked(fileName))) return
     // a whole building becomes a project of its own: a drawing open in a project stays there, one open in none would go
@@ -1370,8 +1444,10 @@ export default function StudioApp() {
     }
     if (r.storeys.length === 1) {
       const s = r.storeys[0]
+      // (one file on an empty Studio: a project of one floor — the frame is the project; read again: where it was)
+      const u = again ? at(s.unit, s.elevationM) : intoProject(at(s.unit, s.elevationM), fileName, { kind: 'file', line: `from ${where}` })
       fitOnUnit.current = true // (fitted once the render holds it: this runs after an await, React renders later)
-      dispatch({ type: 'load-unit', unit: at(s.unit, s.elevationM) })
+      dispatch({ type: 'load-unit', unit: u })
       setImportNotes(r.notes)
       return
     }
@@ -1386,14 +1462,16 @@ export default function StudioApp() {
     const name = fileName.replace(/\.[^.]+$/, '')
     let p = newProject(newId(), name, { basements: bases.length, floors: floors.length - 1, rooftop: !!roof })
     const elevations: Record<string, number> = {}
+    const from: Record<Id, DrawingSource> = {}
     const place = (slot: Slot, s: ImportedStorey) => {
       p = setSlot(p, slot, at({ ...s.unit, name: s.unit.name.trim() || s.name || slotLabel(slot), projectName: name }, s.elevationM))
       elevations[String(slot)] = s.elevationM
+      from[s.unit.id] = { kind: 'file', line: `from ${fileName}${s.name ? ` · ${s.name}` : ''}` }
     }
     bases.forEach((s, i) => place(-(bases.length - i), s))
     floors.forEach((s, i) => place(i, s))
     if (roof) place('R', roof)
-    p = { ...p, elevations, ...(shell ? { shell } : {}) }
+    p = { ...p, elevations, from, ...(shell ? { shell } : {}) }
     const ps = fresh()
     setActive({ id: p.id })
     setListOpen(true)
@@ -1480,9 +1558,15 @@ export default function StudioApp() {
   }
 
   // never locked by errors (founder 2026-10-03, 310fe76 unlocked the button but left this early return: a click did nothing)
+  /** the drawing (its id in the project, else its own) last looked at in 3D, and last sent out (a link, a DXF, the 3D model, a print): the Steps' last two */
+  const [previewed, setPreviewed] = useState<Id | null>(null)
+  const [sent, setSent] = useState<Id | null>(null)
+  const openKey = () => projRef.current?.drawing ?? stateRef.current.unit.id
   /** the draft in the 3D view, new tab; `query`: what that tab should do (`?export=glb`: save the 3D model, then stay) */
   const previewWith = useCallback(
     (query: string) => {
+      setPreviewed(openKey())
+      if (query) setSent(openKey())
       try {
         localStorage.setItem(PREVIEW_KEY, JSON.stringify(stateRef.current.unit))
       } catch {
@@ -1503,14 +1587,18 @@ export default function StudioApp() {
     const { writeDxf } = await import('../import/dxfWrite')
     const name = nameOf(u)
     download(`${slug(name)}.dxf`, writeDxf(u), 'application/dxf')
+    setSent(openKey())
     toast(`Saved ${slug(name)}.dxf — metres, layers WALLS, DOORS, WINDOWS, COLUMNS, TEXT, PLOTLINE_ZONES, PLOTLINE_KERBS`)
   }
   const exportGlb = () => (stateRef.current.unit.walls.length ? previewWith('?export=glb') : toast('Nothing drawn yet to export'))
   const [printOpen, setPrintOpen] = useState(false)
+  const print = () => (stateRef.current.unit.walls.length ? (setPrintOpen(true), setSent(openKey())) : toast('Nothing drawn yet to print'))
   // Building (ask 2): the draft's building in the viewer's Building view, the draft standing on one of its floors
   const [buildingOpen, setBuildingOpen] = useState(false)
   // Site (s27): where the building stands — one site for the whole building, so every drawing of the open project gets it
   const [siteOpen, setSiteOpen] = useState(false)
+  /** the account card (⋯ → your email; the project column's Members / Links): closed, or open on a pane */
+  const [account, setAccount] = useState<Pane | false>(false)
   const setSite = (site: Site | undefined) => {
     dispatch({ type: 'set-meta', patch: { site } })
     const a = projRef.current
@@ -1536,6 +1624,7 @@ export default function StudioApp() {
   }
   /** the floor list's Show building: the whole stack, entered by the open drawing's flat (else any flat, else a level picked) */
   const showProject = () => {
+    setPreviewed(openKey())
     const ps = fresh()
     const a = projRef.current
     const p = ps.find((x) => x.id === a?.id)
@@ -1565,6 +1654,7 @@ export default function StudioApp() {
       })
       if (!url) return
       await navigator.clipboard.writeText(url).catch(() => {})
+      setSent(openKey())
       toast(`Link copied: ${url}`, { label: 'Open', onClick: () => window.open(url, '_blank') })
     } catch (e) {
       toast(e instanceof WrongKey ? e.message : `Could not share: ${e instanceof Error ? e.message : String(e)}`)
@@ -1614,7 +1704,7 @@ export default function StudioApp() {
     setMissingPlan(null)
     dispatch({ type: 'set-plan-image', image: null })
     dispatch({ type: 'load-unit', unit: data, fresh: true })
-    requestAnimationFrame(() => fitView()) // after the render that holds it (no picture: nothing else fits the view)
+    requestAnimationFrame(() => fitRef.current()) // after the render that holds it (no picture: nothing else fits the view)
     void pictureFromCloud(data.id, null)
       .catch(() => null)
       .then((pic) => {
@@ -2386,7 +2476,7 @@ export default function StudioApp() {
       }
       if (ctrl && (e.key === 'o' || e.key === 'O')) {
         e.preventDefault()
-        return jsonRef.current?.click()
+        return fileRef.current?.click()
       }
       // Esc anywhere in the room box (its name, a level, the Ramp tick box, Save) closes it, as Esc elsewhere does
       if (e.key === 'Escape' && popover && t.closest('.popover')) return setPopover(null)
@@ -2723,6 +2813,33 @@ export default function StudioApp() {
   /** the first floor of the project the open drawing is on (the drop prompt names it) */
   const openSlot = project && active?.drawing ? slotsOf(project).find((r) => r.unitIds.includes(active.drawing!)) : undefined
 
+  // ----- the Steps follow the source (session 31 frame): a set being read, else where the open drawing came from — kept in
+  // its project — else what it holds (a picture: traced on it; walls in real sizes: read from a file)
+  const fromHere = project && active?.drawing ? project.from?.[active.drawing] : undefined
+  const source: Source | null = setFiles ? 'set' : (fromHere?.kind ?? (state.planImage || unit.planImage ? 'picture' : unit.walls.length ? 'file' : null))
+  const here = active?.drawing ?? unit.id
+  const steps = stepsOf(source, {
+    setRead: !!setFiles && pagesIn,
+    built: !setFiles && fromHere?.kind === 'set',
+    // (a DXF whose file names no unit, or a wrong one: its size is worth a look — the Read in row)
+    size: sizeStep(readIn, importNotes),
+    picture: !!state.planImage,
+    scaled: !!unit.planImage,
+    walls: unit.walls.length,
+    thick: unit.walls.some((w) => w.thicknessM >= 0.2),
+    openings: unit.walls.some((w) => w.openings.length > 0),
+    rooms: unit.roomLabels.length > 0,
+    errors,
+    previewed: previewed === here,
+    shared: state.exported || sent === here,
+  })
+  const shareActs = [
+    ...(sharingConfigured ? [{ label: sharing ? 'Sharing…' : 'Buyer link', title: 'Publish this drawing and copy a buyer link (/s/…) — as ⋯ → Share link', onClick: () => void share() }] : []),
+    { label: 'DXF', title: 'The drawing for AutoCAD or any drawing program (.dxf, metres) — as ⋯ → Export as DXF', onClick: () => void exportDxf() },
+    { label: '3D model', title: 'The furnished flat as one .glb for a render artist — as ⋯ → Export 3D model', onClick: exportGlb },
+    { label: 'Print', title: 'The plan as a sheet at 1 : 50, 1 : 100 or 1 : 200 — as ⋯ → Print plan…', onClick: print },
+  ]
+
   const meta = (k: 'name' | 'projectName' | 'floor' | 'areaSqft') => (e: React.ChangeEvent<HTMLInputElement>) => {
     const v = e.target.value
     dispatch({
@@ -2757,27 +2874,24 @@ export default function StudioApp() {
           setBuildingOpen(false)
           setListOpen((v) => !v)
         }}
-        onNewProject={() => {
-          setBuildingOpen(false)
-          activate(null)
-          setListOpen(true)
-        }}
+        onNewProject={newEmptyProject}
         site={siteOpen}
         onSite={() => {
           setBuildingOpen(false)
           setSiteOpen((v) => !v)
         }}
-        onImport={() => jsonRef.current?.click()}
+        onImport={() => fileRef.current?.click()}
         onExport={exportJson}
         onExportDxf={() => void exportDxf()}
         onExportGlb={exportGlb}
-        onPrint={() => (unit.walls.length ? setPrintOpen(true) : toast('Nothing drawn yet to print'))}
+        onPrint={print}
         onExportAnswers={exportAnswers}
         share={sharingConfigured ? { busy: sharing, onShare: () => void share() } : null}
         cloud={{ snapshot: cloudItem, changed: cloudChanged, onOpen: openFromCloud, onRenameOpen: renameOpen, toast }}
+        account={account}
+        onAccount={setAccount}
       />
-      <input ref={jsonRef} type="file" multiple accept={`.json,application/json,${IMPORT_ACCEPT}`} hidden onChange={(e) => (onFiles(e.target.files), (e.target.value = ''))} />
-      <input ref={fileRef} type="file" multiple accept={`image/png,image/jpeg,image/webp,.tif,.tiff,.heic,.heif,${IMPORT_ACCEPT}`} hidden onChange={(e) => (onFiles(e.target.files), (e.target.value = ''))} />
+      <input ref={fileRef} type="file" multiple accept={`${IMPORT_ACCEPT},image/png,image/jpeg,image/webp,.tif,.tiff,.heic,.heif,.json,application/json`} hidden onChange={(e) => (onFiles(e.target.files), (e.target.value = ''))} />
 
       <div className={listOpen ? 'main with-floors' : 'main'}>
         <nav className="tools" aria-label="Tools">
@@ -2857,31 +2971,24 @@ export default function StudioApp() {
             />
           )}
           {empty && (
+            // the one door (session 31 frame): whatever the architect sent — what is dropped decides what comes next
             <div className="empty">
               {!missingPlan && (
                 <>
-                  <h2>Start with a plan</h2>
-                  <p>Drop the floor plan from the brochure, trace its walls, then walk the flat in 3D.</p>
+                  <h2>{openSlot ? `Drop the drawing of ${openSlot.label.toLowerCase()}` : 'Drop your drawings'}</h2>
+                  <p>The architect’s set (PDF), CAD files (DXF), a building model (IFC), or a plan picture — a file, several, a folder or a .zip.</p>
                 </>
               )}
-              <div className="start">
-                <div className="drop">
-                  <svg width="32" height="32" viewBox="0 0 32 32" aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-                    <path d="M7 4.5h12l6 6v17H7z" />
-                    <path d="M19 4.5v6h6M11 15.5h4v7h6M15 15.5h6v4" />
-                  </svg>
-                  <p>
-                    {missingPlan
-                      ? `Plan image not found — drop \`${missingPlan}\` here to trace over it`
-                      : openSlot
-                        ? `Drop the plan picture of ${openSlot.label.toLowerCase()} here`
-                        : 'Drop the floor plan here'}
-                  </p>
-                  <p className="small muted">PNG, JPG, WEBP or TIFF, up to 10 MB — or the brochure PDF</p>
+              <div className="drop">
+                <svg width="32" height="32" viewBox="0 0 32 32" aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M7 4.5h12l6 6v17H7z" />
+                  <path d="M19 4.5v6h6M11 15.5h4v7h6M15 15.5h6v4" />
+                </svg>
+                <p>{missingPlan ? `Plan picture not found — drop \`${missingPlan}\` here to trace over it` : 'Drop them here, or anywhere on the page'}</p>
+                <div className="door">
                   <button className="primary" onClick={() => fileRef.current?.click()}>
-                    Choose plan image…
+                    Choose files…
                   </button>
-                  {!missingPlan && <p className="small muted">or drop an IFC / DXF / PDF / SVG / 3D model, a folder or a .zip</p>}
                   {!missingPlan && (
                     // (a press elsewhere moves the focus out and closes it; Esc too)
                     <div className="samples" onBlur={(e) => !e.currentTarget.contains(e.relatedTarget) && setSamplesOpen(false)} onKeyDown={(e) => e.key === 'Escape' && (e.stopPropagation(), setSamplesOpen(false))}>
@@ -2901,13 +3008,29 @@ export default function StudioApp() {
                     </div>
                   )}
                 </div>
-                {!project && !listOpen && !unit.vertices.length && !missingPlan && (
-                  <>
-                    <span className="or">or</span>
-                    <NewProject onCreate={createProject} />
-                  </>
-                )}
               </div>
+              {!project && !missingPlan && (
+                <div className="open-project">
+                  {projects.length > 0 && (
+                    <>
+                      <span className="label">Open a project</span>
+                      <ul>
+                        {[...projects].reverse().map((p) => (
+                          <li key={p.id}>
+                            <button title={`Open ${p.name}: its floors on the right, its first drawing on the sheet`} onClick={() => openProject(p.id)}>
+                              <span>{p.name}</span>
+                              <span className="muted">{projectLine(p)}</span>
+                            </button>
+                          </li>
+                        ))}
+                      </ul>
+                    </>
+                  )}
+                  <button className="link" title="A project with no drawing yet: its name, basements, floors and rooftop first, then a drawing for each floor" onClick={newEmptyProject}>
+                    Start an empty project
+                  </button>
+                </div>
+              )}
             </div>
           )}
           {trace && (
@@ -2934,7 +3057,7 @@ export default function StudioApp() {
           {printOpen && <PrintBox unit={unit} onClose={() => setPrintOpen(false)} />}
           {setFiles && (
             <Suspense fallback={null}>
-              <SetPanel files={setFiles} onRead={readSetFile} onOpenOne={openOne} onBuild={(rows, files, storeys) => void buildSet(rows, files, storeys)} onClose={closeSet} />
+              <SetPanel files={setFiles} onRead={readSetFile} onOpenOne={openOne} onBuild={(rows, files, storeys) => void buildSet(rows, files, storeys)} onClose={closeSet} onReading={onSetReading} />
             </Suspense>
           )}
           {sheetView && (
@@ -3071,6 +3194,16 @@ export default function StudioApp() {
             onClose={() => setListOpen(false)}
             onToast={toast}
             onSheet={(id, title) => void showSheet(id, title)}
+            site={{
+              line: unit.site ? `${unit.site.lat.toFixed(4)}, ${unit.site.lon.toFixed(4)} · true north ${Math.round(unit.northDeg)}°` : 'Not set: a made-up street stands round it',
+              open: siteOpen,
+              onToggle: () => {
+                setBuildingOpen(false)
+                setSiteOpen((v) => !v)
+              },
+            }}
+            onAccount={sharingConfigured && signedIn ? setAccount : undefined}
+            untitled={unit.walls.length ? untitled : 'Untitled drawing'}
           />
         )}
         <Panel
@@ -3102,6 +3235,8 @@ export default function StudioApp() {
           readIn={readIn}
           onReadIn={(pick) => void onReadIn(pick)}
           onLayerRole={onLayerRole}
+          steps={steps}
+          shareActs={shareActs}
         />
       </div>
 

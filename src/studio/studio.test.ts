@@ -6,7 +6,7 @@ import sheltechA from '../data/units/sheltech-a.json'
 import sheltechB from '../data/units/sheltech-b.json'
 import typeB from '../data/units/type-b.json'
 import typeC from '../data/units/type-c.json'
-import { EXTERIOR_M, ISSUE_COPY, MERGE_M, PARTITION_M, arcPoints, WALL_HEIGHT_M, endAlong, entityPoints, guessKind, idsInBox, initialState, selectionText, shared, isUnit, lengthMoves, normalizeUnit, wallsLook, openSpotsNear, reducer, slug, studioIssues, wallLabelSides, type Action, type Draft, type StudioState } from './model'
+import { EXTERIOR_M, emptyUnit, ISSUE_COPY, MERGE_M, PARTITION_M, arcPoints, WALL_HEIGHT_M, endAlong, entityPoints, guessKind, idsInBox, initialState, selectionText, shared, isUnit, lengthMoves, normalizeUnit, wallsLook, openSpotsNear, reducer, sizeStep, slug, stepsOf, studioIssues, wallLabelSides, type Action, type Draft, type StudioState } from './model'
 import { AI_KEY, drawnSize, openReview, sheetAxis, sizeCheck, studioReducer } from './review'
 import { mockTraceResult } from './autotraceMock'
 import { AI_KEY_STORAGE } from '../trace/ai'
@@ -1940,5 +1940,53 @@ describe('opening a drawing that the joining puts back as it was', () => {
     const flipped = { ...u, walls: u.walls.map((w, i) => ({ ...w, id: `x${i}`, a: w.b, b: w.a })) }
     expect(wallsLook(flipped)).toBe(wallsLook(u))
     expect(wallsLook({ ...u, vertices: u.vertices.map((v) => (v.id === 'v0' ? { ...v, x: v.x + 0.01 } : v)) })).not.toBe(wallsLook(u))
+  })
+})
+
+describe('the Steps follow the source (session 31 frame: "right now it is only based on photo")', () => {
+  const none = { setRead: false, built: false, picture: false, scaled: false, walls: 0, thick: false, openings: false, rooms: false, errors: 0, previewed: false, shared: false }
+  const words = (s: [string, boolean][]) => s.map(([l, d]) => `${d ? '✓' : '·'} ${l}`)
+
+  it('nothing dropped yet: the door, then check, Preview 3D, Share', () => {
+    expect(words(stepsOf(null, none))).toEqual(['· Drop your drawings', '· Check', '· Preview 3D', '· Share'])
+  })
+
+  it('a set: read, check its floors, build, check, Preview 3D, Share — no scale, no tracing', () => {
+    expect(words(stepsOf('set', { ...none, setRead: true }))).toEqual(['✓ Read the set', '· Check the floors', '· Build', '· Check', '· Preview 3D', '· Share'])
+    // built: its floors are drawings; a clean drawing checks, a look in 3D and a link tick the last two
+    expect(words(stepsOf('set', { ...none, built: true, walls: 12, previewed: true, shared: true }))).toEqual(['✓ Read the set', '✓ Check the floors', '✓ Build', '✓ Check', '✓ Preview 3D', '✓ Share'])
+    expect(stepsOf('set', { ...none, built: true, walls: 12, errors: 2 })[3]).toEqual(['Check', false])
+  })
+
+  it('a CAD / IFC file: read, check, Preview 3D, Share — its size a step only when the file says no unit', () => {
+    expect(words(stepsOf('file', { ...none, walls: 40 }))).toEqual(['✓ Read the file', '✓ Check', '· Preview 3D', '· Share'])
+    expect(words(stepsOf('file', { ...none, walls: 40, size: { checked: false } }))).toEqual(['✓ Read the file', '· Check its size', '✓ Check', '· Preview 3D', '· Share'])
+    expect(stepsOf('file', { ...none, walls: 40, size: { checked: true } })[1]).toEqual(['Check its size', true])
+    expect(stepsOf('file', none).some(([l]) => /scale|Trace/i.test(l))).toBe(false)
+  })
+
+  it('its size is a step only for a DXF whose file names no unit (or a wrong one), ticked once a unit is picked', () => {
+    const guessed = ['DXF version R14 (AC1014).', 'Units: none in the file — metres (guessed from the extent); the plan is 12.8 m across.']
+    expect(sizeStep({ yours: false }, guessed)).toEqual({ checked: false })
+    expect(sizeStep({ yours: false }, ['Units: $INSUNITS 99 is not a length Plotline knows — feet (guessed from the extent); the plan is 9 m across.'])).toEqual({ checked: false })
+    expect(sizeStep({ yours: false }, ['Units: the file says inches but the plan would be 300.0 m across — millimetres instead.'])).toEqual({ checked: false })
+    expect(sizeStep({ yours: true }, ['Units: millimetres, as you set them; the plan is 12.8 m across.'])).toEqual({ checked: true })
+    expect(sizeStep({ yours: false }, ['Units: millimetres ($INSUNITS 4); the plan is 12.8 m across.'])).toBeUndefined()
+    expect(sizeStep(null, guessed)).toBeUndefined() // (an IFC, an SVG, a PDF page: no Read in row)
+  })
+
+  it('a picture: the eight tracing steps as before, Export now Share', () => {
+    expect(words(stepsOf('picture', { ...none, picture: true }))).toEqual(['✓ Load plan', '· Set scale', '· Trace walls', '· Wall thickness', '· Openings', '· Rooms', '· Check', '· Share'])
+    expect(stepsOf('picture', { ...none, picture: true, scaled: true, walls: 9, thick: true, openings: true, rooms: true, shared: true }).every(([, d]) => d)).toBe(true)
+  })
+
+  it('no "scale not set" row for a drawing read in real sizes, nor before anything is dropped; a picture waits on S', () => {
+    const empty = emptyUnit()
+    expect(studioIssues(empty, [], false)).toEqual([])
+    expect(studioIssues(empty, []).map((i) => [i.code, i.level])).toEqual([['scale-not-set', 'error']])
+    const read = traceRect().unit
+    const noPicture = { ...read, planImage: undefined }
+    expect(studioIssues(noPicture, deriveRooms(noPicture), false).some((i) => i.code === 'scale-not-set')).toBe(false)
+    expect(studioIssues(noPicture, deriveRooms(noPicture), true).some((i) => i.code === 'scale-not-set')).toBe(false)
   })
 })
