@@ -479,7 +479,15 @@ function readModel(W: WebIfc, api: Api, model: number, fileName: string, t0: num
       const wm = worldMesh(g)
       if (!wm) continue
       if (wantBody) takeBody(bodyOf(owner), wm.P, wm.N, wm.I, false)
-      if (wantBody && owner !== mesh.expressID && isA(owner, W.IFCCURTAINWALL)) takeBody(partOf(owner, mesh.expressID), wm.P, wm.N, wm.I, false)
+      if (wantBody && isA(owner, W.IFCCURTAINWALL)) {
+        if (owner !== mesh.expressID) takeBody(partOf(owner, mesh.expressID), wm.P, wm.N, wm.I, false)
+        // a glass front with a body of its own (a balcony's glazing wrapped round it, Nordic housing): its upright faces are its parts
+        else
+          for (let t = 0; t < wm.I.length; t += 3) {
+            const [a, b, c] = [wm.I[t] * 3, wm.I[t + 1] * 3, wm.I[t + 2] * 3]
+            if (Math.abs(wm.N[a + 1]) < 0.3) partOf(owner, -1 - t - 1e6 * i).pts.push(planOfWorld(wm.P[a], wm.P[a + 2]), planOfWorld(wm.P[b], wm.P[b + 2]), planOfWorld(wm.P[c], wm.P[c + 2]))
+          }
+      }
       if (!shell) continue
       if (triangles + wm.I.length / 3 > TRIANGLE_CAP) {
         capped = true
