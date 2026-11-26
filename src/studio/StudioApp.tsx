@@ -1146,7 +1146,7 @@ export default function StudioApp() {
     const name = files[0].folder ?? files[0].name.replace(/\.[^.]+$/, '')
     const plans = rows.filter((r) => r.kind === 'plan' && r.used && r.slots.length)
     const kept = rows.filter((r) => r.kind !== 'plan' && r.used)
-    const all = [...plans.flatMap((r) => r.slots)]
+    const all = [...new Set(plans.flatMap((r) => r.slots))]
     const numbers = all.filter((s): s is number => typeof s === 'number')
     const shape = { basements: Math.max(0, storeys?.basements ?? 0, ...numbers.map((s) => -s)), floors: Math.max(1, storeys?.floors ?? 0, ...numbers), rooftop: all.includes('R') }
     // where it goes: the open project (asked), else a new one; a drawing open in no project is replaced (asked, as an import does)
@@ -1185,6 +1185,7 @@ export default function StudioApp() {
     let first: Id | null = null
     let pictures = 0
     let stacked = 0
+    let sideBySide = 0
     try {
       // every plan read first, then the floors stacked on what they share (session 31 levels): the lowest drawn floor is the
       // building's frame, each other floor read at a known scale lands on the floor it shares most walls with — the page's own
@@ -1199,7 +1200,9 @@ export default function StudioApp() {
       }
       const sure = (x: ImportResult | null): x is ImportResult => !!x && !!x.storeys[0]?.unit.walls.length && !x.notes.some((n) => /^Scale: [^.]*guessed|^Scale not set/.test(n))
       const rank = (r: SetChoice) => Math.min(...r.slots.map((s) => (s === 'R' ? 1e3 : s)))
-      const order = plans.map((_, i) => i).filter((i) => sure(reads[i])).sort((a, b) => rank(plans[a]) - rank(plans[b]) || +pdf.readsAsPlan(reads[b]!) - +pdf.readsAsPlan(reads[a]!))
+      // (flats joined side by side on one floor are not stacked: nothing says where they stand)
+      const joined = (r: SetChoice) => !!r.with || plans.some((m) => m.with === r.key)
+      const order = plans.map((_, i) => i).filter((i) => sure(reads[i]) && !joined(plans[i])).sort((a, b) => rank(plans[a]) - rank(plans[b]) || +pdf.readsAsPlan(reads[b]!) - +pdf.readsAsPlan(reads[a]!))
       const ref = order[0] !== undefined ? reads[order[0]]! : null
       // (one PDF's pages share its page frame; an architect's DXF / SVG files share the drawing's model frame)
       const hint = (x: ImportResult, r: SetChoice): Pt | undefined =>
@@ -1209,9 +1212,56 @@ export default function StudioApp() {
       const stack = stackFloors([...there.map(([, f]) => ({ unit: f.unit, at: f.offset })), ...order.map((i) => ({ unit: reads[i]!.storeys[0].unit, hint: there.length ? undefined : hint(reads[i]!, plans[i]) }))]).slice(there.length)
       const placeOf = new Map(order.map((i, k) => [i, stack[k]]))
       for (const [i, r] of plans.entries()) {
+        if (r.with) continue // (a flat joined to another's floor: drawn with it below)
         const read = reads[i]
         const at = placeOf.get(i)
         if (at && (there.length || i !== order[0])) stacked++
+        const group = plans.map((m, k) => ({ m, read: reads[k] })).filter(({ m }) => m === r || m.with === r.key)
+        if (group.length > 1) {
+          // flats of the same floors, nothing saying where each stands: side by side, 2 m apart, each named by its page
+          // ("TYPE-A") — their own lines when every one makes a plan, else one picture of them all to trace
+          const drawn = group.every(({ m, read }) => read && (m.read ? read.storeys[0]?.unit.walls.length : pdf.readsAsPlan(read)))
+          let u: Unit = { ...emptyUnit() }
+          if (drawn) {
+            let x = 0
+            for (const { m, read } of group) {
+              const v = read!.storeys[0].unit
+              const b = unitBounds(v)
+              const dx = x - b.minX, dy = -b.minY
+              const at = (p: { x: number; y: number }) => ({ x: p.x + dx, y: p.y + dy })
+              u = { ...u, vertices: [...u.vertices, ...v.vertices.map((q) => ({ ...q, ...at(q) }))], walls: [...u.walls, ...v.walls], roomLabels: [...u.roomLabels, ...v.roomLabels.map((l) => ({ ...l, ...at(l) })), ...(m.view.flat ? [{ id: newId(), name: m.view.flat, kind: 'other' as const, ...at({ x: (b.minX + b.maxX) / 2, y: b.minY + 0.4 }) }] : [])], pillars: [...(u.pillars ?? []), ...(v.pillars ?? []).map((q) => ({ ...q, ...at(q) }))] }
+              x += b.maxX - b.minX + 2
+            }
+          } else {
+            const docs = group.map(({ m }) => ({ m, doc: files[m.file].doc! })).filter((g) => g.doc)
+            const W = docs.reduce((a, { m }) => a + m.frame.x1 - m.frame.x0, 0), H = Math.max(...docs.map(({ m }) => m.frame.y1 - m.frame.y0))
+            const gap = 0.1 * H
+            const k = Math.min(4000 / (W + gap * (docs.length - 1)), 4000 / H)
+            const parts = []
+            for (const { m, doc } of docs) parts.push((await pdf.renderView(doc, m.page, m.frame, k * Math.max(m.frame.x1 - m.frame.x0, m.frame.y1 - m.frame.y0))).canvas)
+            const canvas = document.createElement('canvas')
+            canvas.width = Math.ceil(parts.reduce((a, c) => a + c.width, 0) + gap * k * (parts.length - 1))
+            canvas.height = Math.ceil(Math.max(...parts.map((c) => c.height)))
+            const g = canvas.getContext('2d')!
+            g.fillStyle = '#ffffff'
+            g.fillRect(0, 0, canvas.width, canvas.height)
+            let px = 0
+            for (const c of parts) g.drawImage(c, px, 0), (px += c.width + gap * k)
+            const scale = docs.every(({ m }) => m.view.scale && m.view.scale === docs[0].m.view.scale) ? docs[0].m.view.scale! * (0.0254 / 72) : 0
+            const pic: PlanImage = { dataUrl: canvas.toDataURL('image/webp', 0.9), naturalW: canvas.width, naturalH: canvas.height, name: `${name} ${group.map(({ m }) => m.view.flat).join(' ')}.webp` }
+            u = { ...u, ...(scale ? { planImage: { src: pic.name, pxPerM: k / scale, originPx: { x: 0, y: 0 } } } : {}) }
+            await putPicture(u.id, pic)
+            made.push(u.id)
+            pictures++
+          }
+          u = { ...u, name: drawingName(p, r.slots[0]), projectName: p.name }
+          const free = r.slots.filter((s) => !skip.has(s))
+          for (const s of free) p = setSlot(p, s, u)
+          if (!free.length) p = { ...p, units: { ...p.units, [u.id]: u } }
+          sideBySide += group.length
+          first ??= u.id
+          continue
+        }
         let u: Unit
         let offset: Pt = { x: 0, y: 0 }
         // (a DXF / SVG plan is its own lines whatever it makes: the file's lines are exact)
@@ -1268,7 +1318,8 @@ export default function StudioApp() {
       }
       toast(into ? `${name}'s floors taken out of ${into.name}` : `The project ${name} is gone`)
     }
-    toast(`${name}: ${plans.length} drawing${plans.length === 1 ? '' : 's'} on their floors${into ? ` of ${into.name}` : ''}${pictures ? ` (${pictures} as pictures to trace)` : ''}${stacked ? `, ${stacked} stacked on the floor${stacked === 1 ? '' : 's'} they share walls with` : ''}, ${kept.length} kept with the project — the list on the right`, { label: 'Undo', onClick: undo })
+    const drawings = plans.filter((r) => !r.with).length
+    toast(`${name}: ${drawings} drawing${drawings === 1 ? '' : 's'} on their floors${into ? ` of ${into.name}` : ''}${pictures ? ` (${pictures} as pictures to trace)` : ''}${stacked ? `, ${stacked} stacked on the floor${stacked === 1 ? '' : 's'} they share walls with` : ''}${sideBySide ? `, ${sideBySide} flats side by side on one floor (move each into place)` : ''}, ${kept.length} kept with the project — the list on the right`, { label: 'Undo', onClick: undo })
   }
   useEffect(() => {
     if (!sheetView) return

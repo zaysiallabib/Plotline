@@ -1240,6 +1240,14 @@ right; at its bottom, **Kept from the drawing set** lists every kept drawing ("E
 heights from the sections, windows from the elevations). Their pictures are kept with the project's other pictures (in
 this browser, and online for your company when signed in).
 
+**A floor drawn in parts joins:** two drawings on one page for the same floor whose titles differ only by the part
+("GROUND FLOOR PLAN (LEFT PART)" / "(RIGHT PART)", "PART A" / "PART B") are one drawing, as two halves under one title
+already were; two titled apart ("Ground Floor" and "Ground Floor – Enhanced Accessible") stay two ways to build it. A
+brochure that prints a page a flat for the same floors ("TYPE-A", "TYPE-B" … each "LEVEL 1 to 11") asks in one row at the
+top of Plans: tick it to put those flats **side by side on one floor drawing** (each named by its page; their own lines when
+every one makes a plan, else one picture of them all to trace) — nothing on the pages says where each flat stands, so you
+move each into place in the Studio; left unticked, only the first flat goes on those floors, as before.
+
 **With a project open,** Build the project asks first: "Add the set's floors (G, 1, 2) to the project open now? Or make
 a new project" — **Add to this project**, **New project** or **Cancel** (Esc). Added, the set's floors stack on the
 project's own drawn floors, and its shape grows to hold them (more floors, a rooftop). A floor that already has a drawing

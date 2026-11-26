@@ -150,6 +150,13 @@ describe('a page', () => {
     expect(r.views).toHaveLength(1)
     expect(inBox({ x: 300, y: 300 }, r.views[0].box) && inBox({ x: 900, y: 300 }, r.views[0].box)).toBe(true)
   })
+  test('a floor in halves titled by their parts is one view; two ways to build one floor stay two', () => {
+    const two = (a: string, b: string) => readSheet(page([T(a, 120, 690, 12), T(b, 720, 690, 12)], [...drawing(100, 100, 500, 680), ...drawing(700, 100, 1100, 680)])).views
+    expect(two('GROUND FLOOR PLAN (LEFT PART)', 'GROUND FLOOR PLAN (RIGHT PART)')).toHaveLength(1)
+    expect(two('2ND FLOOR PLAN - PART A', '2ND FLOOR PLAN - PART B')).toHaveLength(1)
+    expect(two('Ground Floor', 'Ground Floor – Enhanced Accessible (U2a)')).toHaveLength(2) // the Canadian fourplex: its accessible unit
+    expect(two('5/7/9 FLOOR PLAN', '6/8/10 FLOOR PLAN')).toHaveLength(2)
+  })
   test('a sheet of details (most of its titles say so) or of schedules is one page, not split', () => {
     const r = readSheet(page([T('FOUNDATION DETAIL', 300, 33, 12.5), T('WAINSCOT DETAIL', 300, 600, 12.5), T('TYPICAL INTERIOR WALL', 60, 285, 12.5)], [...drawing(300, 60, 500, 300), ...drawing(300, 620, 500, 780), ...drawing(60, 300, 250, 560)]))
     expect(r.views.map((v) => v.kind)).toEqual(['detail'])
@@ -257,6 +264,16 @@ describe('the set', () => {
     expect(['E-1', 'S-2', 'A-101', 'A-201'].map((n) => fv(`${n}.dxf`).kind)).toEqual(['elevation', 'section', 'plan', 'elevation'])
     // nothing said: its lines decide
     expect([fv('drawing.dxf', [], 5).kind, fv('drawing.dxf', [], 1).kind]).toEqual(['plan', 'other'])
+  })
+  test("a brochure's page a flat (TYPE-A, TYPE-B … all LEVEL 1 to 11): named on the page, joined to the first flat's floor when asked", () => {
+    const flatPage = (flat: string) => readSheet(page([T(flat, 300, 120, 30), T('TOWER-1', 300, 90, 12), T('LEVEL 1 to 11', 300, 75, 12)], drawing(100, 200, 900, 700))).views
+    expect(flatPage('TYPE-A')).toMatchObject([{ kind: 'plan', flat: 'TYPE-A', level: { at: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11] } }])
+    expect(flatPage('TYPE-C/G/K')[0].flat).toBe('TYPE-C/G/K')
+    const picks = ['TYPE-A', 'TYPE-B', 'TYPE-C/G/K'].map((flat) => ({ kind: 'plan' as const, level: levelOf('LEVEL 1 to 11'), flat }))
+    expect(setChoices(picks).map((x) => x.tick)).toEqual([true, false, false]) // as before: the first flat on the floors
+    expect(setChoices(picks, 0, true).map((x) => [x.tick, x.with])).toEqual([[true, undefined], [true, 0], [true, 0]])
+    // the same flat twice (a page and its larger copy) never joins itself
+    expect(setChoices([...picks.slice(0, 1), ...picks.slice(0, 1)], 0, true).map((x) => x.tick)).toEqual([true, false])
   })
   test('of two plans of one floor read already, the one with more rooms becomes its drawing', () => {
     const c = setChoices([

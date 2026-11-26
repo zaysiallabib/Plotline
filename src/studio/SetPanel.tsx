@@ -73,6 +73,8 @@ export interface SetRow {
 export interface SetChoice extends SetRow {
   slots: SetSlot[]
   used: boolean
+  /** another flat of the same floors: it joins this row's floor drawing (its key) */
+  with?: string
 }
 
 const KIND_WORDS: Record<SheetKind, string> = {
@@ -191,13 +193,20 @@ export default function SetPanel({ files, onRead, onOpenOne, onBuild, onClose }:
     return () => removeEventListener('keydown', key, true)
   }, [onClose])
 
+  // a brochure's page a flat for the same floors (TYPE-A, TYPE-B …): asked once — one floor drawing of them side by side, or the first only
+  const [joinFlats, setJoinFlats] = useState(false)
+  const picks = useMemo(
+    () => rows.map((r) => ({ kind: r.kind, level: r.kind === r.view.kind ? r.view.level : null, use: r.view.use, slots: r.kind === 'plan' && r.which !== null ? parseSlots(r.which) ?? [] : null, tick: r.tick, ...(r.read ? { rooms: roomsOf(r.read) } : {}), ...(r.view.flat ? { flat: r.view.flat } : {}) })),
+    [rows],
+  )
+  const flatsOfFloor = useMemo(() => {
+    const j = setChoices(picks, storeys?.floors ?? 0, true)
+    return rows.filter((_, i) => j[i].with !== undefined || j.some((x) => x.with === i))
+  }, [picks, rows, storeys])
   const choices = useMemo<SetChoice[]>(() => {
-    const made = setChoices(
-      rows.map((r) => ({ kind: r.kind, level: r.kind === r.view.kind ? r.view.level : null, use: r.view.use, slots: r.kind === 'plan' && r.which !== null ? parseSlots(r.which) ?? [] : null, tick: r.tick, ...(r.read ? { rooms: roomsOf(r.read) } : {}) })),
-      storeys?.floors ?? 0,
-    )
-    return rows.map((r, i) => ({ ...r, slots: made[i].slots, used: made[i].tick }))
-  }, [rows, storeys])
+    const made = setChoices(picks, storeys?.floors ?? 0, joinFlats)
+    return rows.map((r, i) => ({ ...r, slots: made[i].slots, used: made[i].tick, ...(made[i].with !== undefined ? { with: rows[made[i].with!].key } : {}) }))
+  }, [picks, rows, storeys, joinFlats])
 
   if (import.meta.env.DEV) Object.assign(window, { __plotlineSet: { rows: choices, reading: !!reading } }) // the sets scoreboard reads what the list holds
   /** a change to a row, remembered by its title for the next set */
@@ -220,8 +229,9 @@ export default function SetPanel({ files, onRead, onOpenOne, onBuild, onClose }:
       }),
     )
 
-  const plans = choices.filter((c) => c.kind === 'plan' && c.used)
+  const plans = choices.filter((c) => c.kind === 'plan' && c.used && !c.with)
   const kept = choices.filter((c) => c.kind !== 'plan' && c.used)
+  const joined = choices.filter((c) => c.with).length
   const floors = slotsWords([...new Set(plans.flatMap((c) => c.slots))])
   const pages = files.reduce((a, f) => a + pagesOf(f), 0)
   const which = (c: SetChoice): string => (c.which !== null ? c.which : c.kind === 'plan' ? slotsWords(c.slots) : c.kind === 'elevation' ? (c.view.facade ?? '') : c.kind === 'section' ? (c.view.mark ?? '') : '')
@@ -257,6 +267,16 @@ export default function SetPanel({ files, onRead, onOpenOne, onBuild, onClose }:
             <h3 className="label">
               {GROUP_WORDS[k]} <span>{of.length}</span>
             </h3>
+            {k === 'plan' && flatsOfFloor.length > 1 && (
+              <label className="check set-ask">
+                <input type="checkbox" checked={joinFlats} onChange={(e) => setJoinFlats(e.target.checked)} />
+                <span>
+                  {flatsOfFloor.length} plans are flats of the same floors ({flatsOfFloor.map((r) => r.view.flat).join(', ')}), and nothing on their pages says where each
+                  stands on the floor. Tick to put them side by side on one floor drawing (move each into place in the Studio); else only {flatsOfFloor[0].view.flat} goes on
+                  those floors.
+                </span>
+              </label>
+            )}
             {k === 'plan' && storeys && (
               <p className="muted">
                 Page {storeys.page} says “{storeys.words}”: {storeys.basements ? `${storeys.basements} basement${storeys.basements > 1 ? 's' : ''}, ` : ''}the ground and {storeys.floors} floor{storeys.floors === 1 ? '' : 's'} over it — a typical floor with no numbers goes on every floor left up to {storeys.floors}.
@@ -306,7 +326,7 @@ export default function SetPanel({ files, onRead, onOpenOne, onBuild, onClose }:
       })}
       <div className="set-foot">
         <span className="muted">
-          {plans.length ? `${plans.length} drawing${plans.length === 1 ? '' : 's'} on ${floors}` : 'No plan ticked'} · {kept.length} kept · {choices.length - plans.length - kept.length} left out
+          {plans.length ? `${plans.length} drawing${plans.length === 1 ? '' : 's'} on ${floors}${joined ? ` (${joined} more flat${joined === 1 ? '' : 's'} joined in)` : ''}` : 'No plan ticked'} · {kept.length} kept · {choices.length - plans.length - joined - kept.length} left out
         </span>
         <button onClick={onClose}>Cancel</button>
         <button className="primary" disabled={!!reading || (!plans.length && !kept.length) || choices.some((c) => c.used && bad(c))} onClick={() => onBuild(choices, files, storeys)}>

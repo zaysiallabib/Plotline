@@ -20,7 +20,7 @@
  *
  * Frame: the page as it is shown (pdf.ts turns a rotated page), y up, PDF points. Nothing here knows pdf.js.
  */
-import type { Pt } from '../core'
+import { flatTypeOf, type Pt } from '../core'
 import type { ArcPrim, Seg } from './plan2d'
 import { printedScale } from './plan2d'
 
@@ -77,6 +77,8 @@ export interface View {
   box: Box
   /** what told its kind */
   by: 'words' | 'number' | 'shape'
+  /** the flat a page of one plan draws, as it prints it ("TYPE-A", "TYPE-C/G/K"): a brochure's page a flat */
+  flat?: string
 }
 
 export interface SheetRead {
@@ -303,6 +305,9 @@ export function fileView(name: string, texts: { text: string }[], rooms = 0): Pi
   return { kind: rooms >= 2 ? 'plan' : 'other', title: base, by: 'shape' }
 }
 
+/** the words that name a part of a floor drawn in halves: "(LEFT PART)", "PART B", "EAST WING", "SHEET 2 OF 2" */
+const PART = /\b(?:(?:LEFT|RIGHT|NORTH|SOUTH|EAST|WEST|UPPER|LOWER)\s+(?:PART|HALF|SIDE|WING|PORTION)|(?:PART|HALF|PORTION|SECTOR|ZONE)\s*[-:]?\s*[A-Z0-9]{1,2}|MATCH\s*LINE|SHEET\s*\d+\s*OF\s*\d+)\b/g
+
 /** a note, a sentence, a dimension: never a view's title */
 const notATitle = (s: string): boolean => {
   const t = norm(s)
@@ -465,7 +470,11 @@ interface Title {
 export function readSheet(page: SheetPage): SheetRead {
   const r = viewsOf(page)
   const storeys = page.texts.map((t) => storeysOf(t.text)).find((s) => s)
-  return storeys ? { ...r, storeys } : r
+  // a page of one plan that names its flat in big letters ("TYPE-A" over "TOWER-1 LEVEL 1 to 11"): a flat's page
+  const plans = r.views.filter((v) => v.kind === 'plan')
+  const flat = plans.length === 1 ? [...page.texts].sort((a, b) => b.height - a.height).find((t) => t.text.trim().length <= 24 && flatTypeOf({ name: t.text, kind: 'other' })) : undefined
+  const views = flat ? r.views.map((v) => (v === plans[0] ? { ...v, flat: flat.text.trim() } : v)) : r.views
+  return { ...r, views, ...(storeys ? { storeys } : {}) }
 }
 function viewsOf(page: SheetPage): SheetRead {
   const { texts, segs, arcs, box } = page
@@ -641,8 +650,10 @@ function split(page: SheetPage, titles: Title[], drawings: Title[], scaleNear: (
     const box = { x0: Math.max(f.x0, inner.x0), y0: Math.max(f.y0, inner.y0), x1: Math.min(f.x1, inner.x1), y1: Math.min(f.y1, inner.y1) }
     return detailByScale({ ...c.view, box: box.x1 > box.x0 && box.y1 > box.y0 ? box : f, by: 'words', ...(s ? { scale: s } : {}) })
   })
-  // one floor drawn as two halves (its two flats, each under the same "FLOOR : 2") is one view: the whole floor
-  const key = (v: View) => (v.kind === 'plan' && v.level ? norm(v.title) : null)
+  // one floor drawn as two halves (its two flats, each under the same "FLOOR : 2"; "GROUND FLOOR PLAN (LEFT PART)" beside its
+  // "(RIGHT PART)") is one view: the whole floor. Two plans of one floor titled apart otherwise ("Ground Floor", "Ground Floor –
+  // Enhanced Accessible") are two ways to build it: two views
+  const key = (v: View) => (v.kind === 'plan' && v.level ? `${v.level.at.join()} ${norm(v.title).replace(PART, ' ').replace(/[()[\]–-]+/g, ' ').replace(/\s+/g, ' ').trim()}` : null)
   const out: View[] = []
   for (const v of views) {
     const same = key(v) && out.find((o) => key(o) === key(v) && o.use === v.use)
@@ -738,6 +749,8 @@ export interface SetPick {
   tick?: boolean | null
   /** its closed rooms, when it was read already (a DXF / SVG of the set): of two plans for one floor the richer is ticked */
   rooms?: number
+  /** the flat its page draws (View.flat) */
+  flat?: string
 }
 /** the kinds kept with the project as pictures when the set is built (plans become drawings; details, title pages and the rest are left out) */
 export const KEPT: SheetKind[] = ['elevation', 'section', 'site', 'schedule', 'interior']
@@ -747,9 +760,11 @@ export const KEPT: SheetKind[] = ['elevation', 'section', 'site', 'schedule', 'i
  * still free) and every view's tick — a plan is ticked when it is the first floor plan (not a ceiling, services or
  * foundation plan) for one of its floors, so a floor gets one drawing; elevations, sections, the site, schedules and
  * interior elevations are kept; the rest is left out. The person's own tick always stands. `floors`: how many floors over
- * the ground the set says the building has (storeysOf), for a typical floor that names none.
+ * the ground the set says the building has (storeysOf), for a typical floor that names none. `joinFlats`: plans of other flats
+ * for exactly the same floors (a brochure's page a flat: "TYPE-A", "TYPE-B" … all "LEVEL 1 to 11") join the first one's
+ * floor drawing (`with`: its index) instead of being left out.
  */
-export function setChoices(picks: SetPick[], floors = 0): { slots: SetSlot[]; tick: boolean }[] {
+export function setChoices(picks: SetPick[], floors = 0, joinFlats = false): { slots: SetSlot[]; tick: boolean; with?: number }[] {
   const auto = slotsFor(
     picks.map((p) => (p.kind === 'plan' && !p.slots ? p.level : null)),
     floors,
@@ -759,7 +774,7 @@ export function setChoices(picks: SetPick[], floors = 0): { slots: SetSlot[]; ti
   // diagram); in a set where none does, only the first is ticked (on the ground) — the person types the others' floors
   const named = picks.some((p, i) => p.kind === 'plan' && (p.slots ?? auto[i]).length)
   let first = true
-  const out: { slots: SetSlot[]; tick: boolean }[] = []
+  const out: { slots: SetSlot[]; tick: boolean; with?: number }[] = []
   // (in the set's order, but a plan read already with more rooms first: "Internal walls, first floor" before "External walls")
   const order = picks.map((_, i) => i).sort((a, b) => (picks[b].rooms ?? 0) - (picks[a].rooms ?? 0) || a - b)
   for (const i of order) {
@@ -772,7 +787,9 @@ export function setChoices(picks: SetPick[], floors = 0): { slots: SetSlot[]; ti
     const tick = p.tick ?? (!p.use && (slots.length ? slots.some((s) => !claimed.has(s)) : !named && first))
     if (!slots.length && tick && p.tick == null) first = false
     if (tick) for (const s of slots) claimed.add(s)
-    out[i] = { slots, tick }
+    // another flat's page for the very same floors: one floor drawing with the first (when asked)
+    const lead = joinFlats && !tick && p.tick == null && p.flat && slots.length ? order.slice(0, order.indexOf(i)).find((j) => out[j]?.tick && picks[j].flat && picks[j].flat !== p.flat && out[j].with === undefined && out[j].slots.join() === slots.join()) : undefined
+    out[i] = lead !== undefined ? { slots, tick: true, with: lead } : { slots, tick }
   }
   // a ticked plan with no floor named goes on the lowest floor still free, from the ground up
   for (const o of out)
