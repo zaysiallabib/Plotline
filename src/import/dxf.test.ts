@@ -192,6 +192,17 @@ describe('dxf fixtures', () => {
     expect(r.layers!.map((l) => [l.name, l.role, l.count]).sort()).toEqual([['A-FURN', 'ignore', 1], ['A-WALL', 'wall', 1]])
   })
 
+  test('a window block wider than its gap (its sill runs past the jambs) names the gap and keeps its width', async () => {
+    // a 6 m wall of two faces 125 mm apart with a 900 mm gap; a block "SILL" drawn on layer 0 — its two end lines 1.5 m apart, a
+    // sill line between — placed on A-GLAZ over the gap
+    const face = (y: number) => [[0, 1000], [1900, 6000]].flatMap(([a, b]) => ['0', 'LINE', '8', 'A-WALL', '10', a, '20', y, '11', b, '21', y])
+    const blocks = ['0', 'SECTION', '2', 'BLOCKS', '0', 'BLOCK', '2', 'SILL', '10', 0, '20', 0,
+      ...[[-300, 0, -300, 125], [1200, 0, 1200, 125], [-300, 62, 1200, 62]].flatMap(([a, b, c, e]) => ['0', 'LINE', '8', '0', '10', a, '20', b, '11', c, '21', e]), '0', 'ENDBLK', '0', 'ENDSEC']
+    const text = dxfOf(['9', '$INSUNITS', '70', 4], [...face(0), ...face(125), '0', 'INSERT', '2', 'SILL', '8', 'A-GLAZ', '10', 1000, '20', 0]).replace('0\nSECTION\n2\nENTITIES', [...blocks, '0', 'SECTION', '2', 'ENTITIES'].join('\n'))
+    const ops = (await importDxf(text, 'sill.dxf')).storeys[0].unit.walls.flatMap((w) => w.openings)
+    expect(ops.map((o) => [o.kind, +o.widthM.toFixed(3)])).toEqual([['window', 0.9]])
+  })
+
   test('a file that is not a DXF is refused in plain words', async () => {
     await expect(importDxf('hello', 'x.dxf')).rejects.toThrow()
   })
