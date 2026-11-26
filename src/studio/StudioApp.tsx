@@ -29,6 +29,7 @@ import {
   studioIssues,
   wallLabelSides,
   hasDrawing,
+  sizeStep,
   stepsOf,
   type Draft,
   type Source,
@@ -2821,7 +2822,7 @@ export default function StudioApp() {
     setRead: !!setFiles && pagesIn,
     built: !setFiles && fromHere?.kind === 'set',
     // (a DXF whose file names no unit, or a wrong one: its size is worth a look — the Read in row)
-    size: readIn && (readIn.yours || importNotes?.some((n) => /^Units: (none|$INSUNITS|the file says)/.test(n))) ? { checked: readIn.yours } : undefined,
+    size: sizeStep(readIn, importNotes),
     picture: !!state.planImage,
     scaled: !!unit.planImage,
     walls: unit.walls.length,
@@ -3202,6 +3203,7 @@ export default function StudioApp() {
               },
             }}
             onAccount={sharingConfigured && signedIn ? setAccount : undefined}
+            untitled={unit.walls.length ? untitled : 'Untitled drawing'}
           />
         )}
         <Panel

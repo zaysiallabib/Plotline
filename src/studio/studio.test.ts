@@ -6,7 +6,7 @@ import sheltechA from '../data/units/sheltech-a.json'
 import sheltechB from '../data/units/sheltech-b.json'
 import typeB from '../data/units/type-b.json'
 import typeC from '../data/units/type-c.json'
-import { EXTERIOR_M, emptyUnit, ISSUE_COPY, MERGE_M, PARTITION_M, arcPoints, WALL_HEIGHT_M, endAlong, entityPoints, guessKind, idsInBox, initialState, selectionText, shared, isUnit, lengthMoves, normalizeUnit, wallsLook, openSpotsNear, reducer, slug, stepsOf, studioIssues, wallLabelSides, type Action, type Draft, type StudioState } from './model'
+import { EXTERIOR_M, emptyUnit, ISSUE_COPY, MERGE_M, PARTITION_M, arcPoints, WALL_HEIGHT_M, endAlong, entityPoints, guessKind, idsInBox, initialState, selectionText, shared, isUnit, lengthMoves, normalizeUnit, wallsLook, openSpotsNear, reducer, sizeStep, slug, stepsOf, studioIssues, wallLabelSides, type Action, type Draft, type StudioState } from './model'
 import { AI_KEY, drawnSize, openReview, sheetAxis, sizeCheck, studioReducer } from './review'
 import { mockTraceResult } from './autotraceMock'
 import { AI_KEY_STORAGE } from '../trace/ai'
@@ -1963,6 +1963,16 @@ describe('the Steps follow the source (session 31 frame: "right now it is only b
     expect(words(stepsOf('file', { ...none, walls: 40, size: { checked: false } }))).toEqual(['✓ Read the file', '· Check its size', '✓ Check', '· Preview 3D', '· Share'])
     expect(stepsOf('file', { ...none, walls: 40, size: { checked: true } })[1]).toEqual(['Check its size', true])
     expect(stepsOf('file', none).some(([l]) => /scale|Trace/i.test(l))).toBe(false)
+  })
+
+  it('its size is a step only for a DXF whose file names no unit (or a wrong one), ticked once a unit is picked', () => {
+    const guessed = ['DXF version R14 (AC1014).', 'Units: none in the file — metres (guessed from the extent); the plan is 12.8 m across.']
+    expect(sizeStep({ yours: false }, guessed)).toEqual({ checked: false })
+    expect(sizeStep({ yours: false }, ['Units: $INSUNITS 99 is not a length Plotline knows — feet (guessed from the extent); the plan is 9 m across.'])).toEqual({ checked: false })
+    expect(sizeStep({ yours: false }, ['Units: the file says inches but the plan would be 300.0 m across — millimetres instead.'])).toEqual({ checked: false })
+    expect(sizeStep({ yours: true }, ['Units: millimetres, as you set them; the plan is 12.8 m across.'])).toEqual({ checked: true })
+    expect(sizeStep({ yours: false }, ['Units: millimetres ($INSUNITS 4); the plan is 12.8 m across.'])).toBeUndefined()
+    expect(sizeStep(null, guessed)).toBeUndefined() // (an IFC, an SVG, a PDF page: no Read in row)
   })
 
   it('a picture: the eight tracing steps as before, Export now Share', () => {

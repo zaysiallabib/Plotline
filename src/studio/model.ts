@@ -299,6 +299,13 @@ export interface StepEvidence {
   shared: boolean
 }
 /**
+ * A DXF read from its lines (`readIn`: its unit, `yours` = picked by the person in Read in) whose file names no unit, or one
+ * that makes the plan absurd (src/import/dxf.ts "Units: none in the file …", "$INSUNITS 99 is not a length …", "the file says
+ * millimetres but …"): its size is a step of its own — ticked once a unit is picked. Any other file: no such step.
+ */
+export const sizeStep = (readIn: { yours: boolean } | null, notes: readonly string[] | null): StepEvidence['size'] =>
+  readIn && (readIn.yours || notes?.some((n) => /^Units: (none|\$INSUNITS|the file says)/.test(n))) ? { checked: readIn.yours } : undefined
+/**
  * The Steps list follows the source, in plain words: a set → read it, check its floors, build, check, Preview 3D, share; a
  * CAD / IFC file → read it (its size when it has no unit), check, Preview 3D, share — nothing to scale or trace; a picture →
  * the tracing steps (Export is Share: a buyer link, a DXF, the 3D model, a print); nothing yet → the door. Unnumbered.

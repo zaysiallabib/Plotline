@@ -334,6 +334,8 @@ export function Panel({ state, dispatch, rooms, flats, issues, marks, bulks = []
   const stats = state.review?.unitId === unit.id ? state.review.stats : null
   const count = stats && roomCount(unit, rooms, stats, flats)
   const next = steps.findIndex(([, done]) => !done) // the step to do now (marked in the list)
+  /** nothing on the sheet yet (the door): the Steps only — no empty Selection, no Issues about nothing */
+  const bare = !state.planImage && !unit.vertices.length
   return (
     <aside className="panel">
       {state.tool === 'opening' && <OpeningPick state={state} dispatch={dispatch} />}
@@ -430,16 +432,18 @@ export function Panel({ state, dispatch, rooms, flats, issues, marks, bulks = []
         </section>
       )}
       {unit.shell && <OutsideShape shell={unit.shell} dispatch={dispatch} />}
-      <section>
-        <h3>Selection</h3>
-        {piece ? (
-          <PieceProps p={piece} rooms={rooms} dispatch={dispatch} edited={unit.furniture.length > 0} />
-        ) : pieces ? (
-          <p className="muted">Nothing selected. Click a piece of furniture.</p>
-        ) : (
-          <Selection state={state} dispatch={dispatch} rooms={rooms} flats={flats} />
-        )}
-      </section>
+      {!bare && (
+        <section>
+          <h3>Selection</h3>
+          {piece ? (
+            <PieceProps p={piece} rooms={rooms} dispatch={dispatch} edited={unit.furniture.length > 0} />
+          ) : pieces ? (
+            <p className="muted">Nothing selected. Click a piece of furniture.</p>
+          ) : (
+            <Selection state={state} dispatch={dispatch} rooms={rooms} flats={flats} />
+          )}
+        </section>
+      )}
       {pieces && onPlace && (
         <section>
           <h3>Add a piece</h3>
@@ -524,49 +528,51 @@ export function Panel({ state, dispatch, rooms, flats, issues, marks, bulks = []
           {ai && <LocalAIField />}
         </section>
       )}
-      <section>
-        <h3>{issues.length ? `Issues (${issues.length})` : 'Issues'}</h3>
-        {unit.walls.length > 1 && (
-          <button className="link" title="Every wall end inside another wall's body is joined there and every crossing is split — one undo step" onClick={() => dispatch({ type: 'join-walls' })}>
-            Join walls (overlaps and crossings)
-          </button>
-        )}
-        {listed.length === 0 && !bulks.length ? (
-          <p className="muted">No issues. Ready to export.</p>
-        ) : (
-          <>
-            <p className="muted legend">
-              <span className="num red" /> breaks the 3D <span className="num amber" /> worth a look <span className="num grey" /> cosmetic
-            </p>
-            <ul className="issues">
-              {bulks.map((b) => {
-                const open = b.key === openBulk
-                return (
-                  <li key={b.key} className={`group bulk${open ? ' open' : ''}`}>
-                    <button className="ghead" aria-expanded={open} title={open ? 'Fold them away and take their marks off the plan' : 'List them here and show their marks on the plan'} onClick={() => onBulk?.(open ? null : b.key)}>
-                      <span className={`num ${b.severity}`} />
-                      <span className="grow">
-                        <span className="gname">{b.message}</span>
-                        {!open && <span className="gfirst">{BULK_HINT[b.kind]}</span>}
-                      </span>
-                      <span className="chev" aria-hidden="true" />
-                    </button>
-                    {b.fix && (
-                      <span className="acts">
-                        <button className="link" title={`${b.fix.title} — one Ctrl+Z undoes it`} onClick={() => onFix(b.fix!)}>
-                          {b.fix.label}
-                        </button>
-                      </span>
-                    )}
-                    {open && <ul className="issues">{b.marks.map((m) => row(m))}</ul>}
-                  </li>
-                )
-              })}
-              {listed.map((m) => row(m))}
-            </ul>
-          </>
-        )}
-      </section>
+      {!bare && (
+        <section>
+          <h3>{issues.length ? `Issues (${issues.length})` : 'Issues'}</h3>
+          {unit.walls.length > 1 && (
+            <button className="link" title="Every wall end inside another wall's body is joined there and every crossing is split — one undo step" onClick={() => dispatch({ type: 'join-walls' })}>
+              Join walls (overlaps and crossings)
+            </button>
+          )}
+          {listed.length === 0 && !bulks.length ? (
+            <p className="muted">No issues.</p>
+          ) : (
+            <>
+              <p className="muted legend">
+                <span className="num red" /> breaks the 3D <span className="num amber" /> worth a look <span className="num grey" /> cosmetic
+              </p>
+              <ul className="issues">
+                {bulks.map((b) => {
+                  const open = b.key === openBulk
+                  return (
+                    <li key={b.key} className={`group bulk${open ? ' open' : ''}`}>
+                      <button className="ghead" aria-expanded={open} title={open ? 'Fold them away and take their marks off the plan' : 'List them here and show their marks on the plan'} onClick={() => onBulk?.(open ? null : b.key)}>
+                        <span className={`num ${b.severity}`} />
+                        <span className="grow">
+                          <span className="gname">{b.message}</span>
+                          {!open && <span className="gfirst">{BULK_HINT[b.kind]}</span>}
+                        </span>
+                        <span className="chev" aria-hidden="true" />
+                      </button>
+                      {b.fix && (
+                        <span className="acts">
+                          <button className="link" title={`${b.fix.title} — one Ctrl+Z undoes it`} onClick={() => onFix(b.fix!)}>
+                            {b.fix.label}
+                          </button>
+                        </span>
+                      )}
+                      {open && <ul className="issues">{b.marks.map((m) => row(m))}</ul>}
+                    </li>
+                  )
+                })}
+                {listed.map((m) => row(m))}
+              </ul>
+            </>
+          )}
+        </section>
+      )}
     </aside>
   )
 }

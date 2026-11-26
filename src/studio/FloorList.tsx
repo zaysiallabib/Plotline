@@ -52,7 +52,7 @@ export function NewProject({ onCreate }: { onCreate: (name: string, plan: Projec
       <strong>New project</strong>
       <label>
         <span>Name</span>
-        <input value={name} placeholder="e.g. Sheltech Banani" onChange={(e) => setName(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && create()} />
+        <input autoFocus value={name} placeholder="e.g. Sheltech Banani" onChange={(e) => setName(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && create()} />
       </label>
       <div className="pair">
         <label>
@@ -101,6 +101,8 @@ interface Props {
   site: { line: string; open: boolean; onToggle: () => void }
   /** signed in to a company: the account card on its Members or Links (as ⋯ → your email); absent: neither shows */
   onAccount?: (pane: 'members' | 'links') => void
+  /** the open drawing's name while none is typed, as the top bar shows it ("Floor plan A"): worked out once, by the Studio */
+  untitled: string
 }
 
 /** the views kept from the set, by kind, in the order an architect's set binds them: "Elevations 4" */
@@ -117,7 +119,7 @@ const KEPT_GROUPS: [SheetKind, string][] = [
 ]
 const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1)
 
-export function FloorList({ projects, project, drawing, unit, fresh, onStore, onCreate, onActivate, onOpen, onRename, onFurnish, onShow, onOldWay, onClose, onToast, onSheet, site, onAccount }: Props) {
+export function FloorList({ projects, project, drawing, unit, fresh, onStore, onCreate, onActivate, onOpen, onRename, onFurnish, onShow, onOldWay, onClose, onToast, onSheet, site, onAccount, untitled }: Props) {
   const [also, setAlso] = useState<Record<Id, string>>({})
   // a clicked button lets go of the keys (Enter / Space on it again must not draw another floor)
   const blur = (e: React.MouseEvent) => e.target instanceof HTMLButtonElement && e.target.blur()
@@ -152,7 +154,7 @@ export function FloorList({ projects, project, drawing, unit, fresh, onStore, on
     )
 
   const pid = project.id
-  const named = (id: Id) => (id === drawing ? nameOf(unit) : nameOf(project.units[id]))
+  const named = (id: Id) => (id === drawing ? unit.name.trim() || untitled : nameOf(project.units[id]))
   const drawings = Object.keys(project.units).sort((a, b) => named(a).localeCompare(named(b)))
   const mine = (ps: Project[]) => ps.find((p) => p.id === pid)
   const change = (f: (p: Project) => Project) => {
@@ -281,14 +283,14 @@ export function FloorList({ projects, project, drawing, unit, fresh, onStore, on
             <li key={String(r.slot)} className={here ? 'here' : ''}>
               <span className="lbl">{r.label}</span>
               <span className={id ? 'dwg' : 'dwg muted'}>{id ? `${named(id)}${r.unitIds.length > 1 ? ` + ${r.unitIds.length - 1} more` : ''}` : 'empty'}</span>
-              {from && (
-                <span className="from" title={from}>
-                  {from}
-                </span>
-              )}
               {flats && (
                 <span className="flats" title="The flats in this drawing (rooms joined by doors)">
                   — {flats}
+                </span>
+              )}
+              {from && (
+                <span className="from" title={from}>
+                  {from}
                 </span>
               )}
               <span className="acts">
