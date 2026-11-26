@@ -5,7 +5,7 @@
 import { beforeEach, expect, test, vi } from 'vitest'
 import type { Gray, TextItem } from './types'
 import { normaliseName, readInFaces } from './text'
-import { capacityCores, prepare, solveTraces } from './solve'
+import { capacityCores, pickTraces, prepare, prepareTraces, solveTraces } from './solve'
 import { deriveRooms } from '../core'
 
 const control = vi.hoisted(() => ({ replies: [] as string[], late: null as TextItem[] | null }))
@@ -94,4 +94,18 @@ test('one uncertain core read names nothing', async () => {
 test('a strip outside the face cannot name it', async () => {
   control.replies = ['', '', 'Hoistway', 'Hoistway', 'Hoistway']
   expect(await readInFaces(blank(), [square], { items: [], glyphPx: 8, rejected: [{ ...strip, box: { ...strip.box, x: 120 } }] }, 30)).toEqual([])
+})
+
+test('s31 calm on the whole floor: a lift or a stair printed at another size than drawn asks nothing; a bedroom still does', () => {
+  const gray = blank(), K = 30, offset = 20
+  const wall = (x0: number, y0: number, x1: number, y1: number) => {
+    for (let y = offset + y0 * K - 2; y <= offset + y1 * K + 2; y++) for (let x = offset + x0 * K - 2; x <= offset + x1 * K + 2; x++) gray.data[y * gray.width + x] = 0
+  }
+  wall(0, 0, 8, 0), wall(0, 4, 8, 4), wall(0, 0, 0, 4), wall(8, 0, 8, 4), wall(5, 0, 5, 4)
+  const item = (text: string, x: number, roomKind: TextItem['roomKind'], aM: number): TextItem => ({ text, kind: 'room', roomKind, box: { x: offset + x * K - 8, y: offset + 2 * K - 4, w: 16, h: 8 }, dims: { aM, bM: aM }, conf: 0.9, source: 'ocr' })
+  for (const name of ['LIFT', 'STAIRCASE']) {
+    const r = pickTraces(prepareTraces(gray, { text: { items: [item('BEDROOM', 2.5, 'bed', 3.2), item(name, 6.5, 'other', 2.2)] } }, { pxPerM: K }), undefined, true)
+    expect(r.unit.roomLabels.map((l) => l.name)).toContain(name === 'LIFT' ? 'Lift' : 'Staircase')
+    expect(r.review.filter((x) => x.kind === 'size-mismatch').map((x) => x.message.split(':')[0])).toEqual(['Bedroom'])
+  }
 })

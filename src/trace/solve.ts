@@ -2002,6 +2002,8 @@ export function dropForeignStubs(d: Draft, outlines: Pt[][]): Draft {
 const titleCase = (s: string) => s.toLowerCase().replace(/(^|[\s(/&-])([a-z])/g, (_, p, c) => p + c.toUpperCase())
 /** the building core's names — read loosely (the reader's L088Y / L0BBY is the lobby) */
 const CORE_NAME = /\b(L[O0][B8]{2}Y|LIFTS?|STAIRS?|HOISTWAY|CORE|STRETCHER|FIRE CORRIDOR)\b/
+/** a lift or a stair by its room name (no printed-size rows for them: pickTraces) */
+const liftOrStair = (name: string) => /\b(LIFTS?|STAIR(S|CASE)?|HOISTWAY)\b/.test(name.toUpperCase()) && !/\bLOBBY\b/.test(name.toUpperCase())
 /**
  * s25 (AUTOTRACE_100 §3 #13): the sheet says it is a ground floor / basement / rooftop — a printed PARKING / DRIVEWAY /
  * RAMP and no bedroom among the room names, or a lobby and no room name at all. Never guessed from how little was traced.
@@ -2858,7 +2860,9 @@ export function pickTraces(p: Prepared, pickPx?: Px, whole = false, chosen?: Ret
     const whole = h.green || h.source === 'green' || h.what === AOD_HINT
     if (whole) guessedBy.add(id)
     const what = h.source === 'colour' ? 'the fill colour of named rooms' : h.source === 'green' ? 'the green (planter) fill' : h.what === AOD_HINT ? 'its size and thin-line sides (an AOD / shaft, no door?)' : (h.what ?? 'a drawn fixture')
-    review.push({ id: newId(), at, kind: 'low-confidence', message: `Room type guessed from ${what}${row ? `, its name from the size table (the row of that size)` : ''}${whole ? '; its edges are traced as low walls' : ''} — check`, entityId: id })
+    // (s31 calm, beside the whole floor's core: a stair named from its drawn flight — 8 or more evenly spaced treads,
+    // findStairs — is sure: no row)
+    if (h.what !== 'stair treads') review.push({ id: newId(), at, kind: 'low-confidence', message: `Room type guessed from ${what}${row ? `, its name from the size table (the row of that size)` : ''}${whole ? '; its edges are traced as low walls' : ''} — check`, entityId: id })
   }
   const pending: Room[] = []
   // (s27: a guessed kind only where the room is big enough to be one — a 3 m² toilet sharing the bedrooms' floor colour
@@ -3004,9 +3008,11 @@ export function pickTraces(p: Prepared, pickPx?: Px, whole = false, chosen?: Ret
   }
 
   // ── printed sizes: the face along the sheet's axes vs the label's dims (core printedSizeCheck, the Studio's own rule)
+  // (s31 calm: not for a lift or a stair — a lift's print is its car, a stair's its flight; the shaft / stair hall
+  // drawn round them is bigger by design, and the whole floor now keeps every one of them)
   for (const r of named) {
     const dm = dimsOf.get(r.id)
-    if (!dm) continue
+    if (!dm || liftOrStair(r.name)) continue
     const { off, drawn: e, printed: pair } = printedSizeCheck(roomInnerPolygon(r, u), draft.th0, dm.aM, dm.bM, KNOBS.sizeTolM)
     if (off)
       review.push({ id: newId(), at: r.centroid, kind: 'size-mismatch', message: `${r.name}: drawn ${formatFeetInches(e.w)} × ${formatFeetInches(e.h)}, printed ${formatFeetInches(pair[0])} × ${formatFeetInches(pair[1])}`, entityId: r.id })
@@ -3178,7 +3184,7 @@ export function pickTraces(p: Prepared, pickPx?: Px, whole = false, chosen?: Ret
     if (it.kind !== 'room' || !it.sizeUnread || it.dims) continue
     const at = toM({ x: it.box.x + it.box.w / 2, y: it.box.y + it.box.h / 2 })
     const r = named.find((x) => pointInPolygon(at, roomPolygon(x, u)))
-    if (!r) continue
+    if (!r || liftOrStair(r.name)) continue
     const fitted = fits.some((f) => f.guessed && f.label === it)
     const msg = fitted ? `${r.name}: printed size not read for sure — it looks like ${it.sizeGuess} (the walls fit that); type the size to confirm` : `${r.name}: its printed size could not be read${it.sizeGuess ? ` (perhaps ${it.sizeGuess})` : ''} — type it`
     review.push({ id: newId(), at, kind: 'other', message: msg, entityId: r.id })
