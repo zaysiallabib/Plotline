@@ -35,19 +35,28 @@ const compose = (outer: Xf, inner: Xf): Xf => ({
 })
 const IDENT: Xf = { m: [1, 0, 0, 1], o: { x: 0, y: 0 } }
 
-/** MTEXT formatting codes stripped: \P = new line, {\fArial|b0;…}, \A1;, \H2.5x;, \C1;, \W, \Q, \T, \L \O \K, %%d %%p %%c, ^J */
-export function stripMtext(s: string): string {
+/** AutoCAD's %% codes: degree, plus-minus, diameter; underline / overline on-off draw nothing; %%% is a % */
+const PERCENT: Record<string, string> = { d: '°', p: '±', c: 'Ø', u: '', o: '', '%': '%' }
+const MTEXT_CODES = /\\([\\{}])|\\[Uu]\+([\da-fA-F]{4})|\\S([^;]*);|\\P|\^J|\\~|\\[pACFHQTWacfhqtw][^;]*;|\\[LlOoKkNn]|%%([dDpPcCuUoO%])|[{}]/g
+const TEXT_CODES = /()\\[Uu]\+([\da-fA-F]{4})()|%%([dDpPcCuUoO%])/g
+
+/**
+ * A text's words without its codes, in ONE pass so an escaped character never turns into a code (ours merged with
+ * Maheer's Plotline 2.0): \P (and ^J) = a new line, \~ = a space, {\fArial|b0;…} \A1; \H2.5x; \C1; \W \Q \T \p…; \L \O
+ * \K \N go, \S1#2; = 1/2, \U+09B6 = that letter (a Bangla name in a file older than AutoCAD 2007: শয়ন কক্ষ), \{ \} \\ =
+ * the character itself, %%d %%p %%c = ° ± Ø. `single`: a TEXT (one line), where only \U+ and %% are codes — its braces
+ * and backslashes are its own.
+ */
+export function plainMtext(s: string, single = false): string {
   return s
-    .replace(/\\P|\^J/g, '\n')
-    .replace(/\\[ACFHQTWfpc][^;]*;/g, '')
-    .replace(/\\[LlOoKkNn~]/g, '')
-    .replace(/\\S([^;^]*)[\^/#]([^;]*);/g, '$1/$2')
-    .replace(/%%[dD]/g, '°')
-    .replace(/%%[pP]/g, '±')
-    .replace(/%%[cC]/g, 'Ø')
-    .replace(/%%[uUoO]/g, '')
-    .replace(/%%%/g, '%')
-    .replace(/[{}]/g, '')
+    .replace(single ? TEXT_CODES : MTEXT_CODES, (code: string, literal?: string, hex?: string, fraction?: string, percent?: string) => {
+      if (literal) return literal
+      if (hex) return String.fromCharCode(parseInt(hex, 16))
+      if (fraction !== undefined) return fraction.replace(/[\^#]/g, '/')
+      if (percent) return PERCENT[percent.toLowerCase()]
+      return code === '\\P' || code === '^J' ? '\n' : code === '\\~' ? ' ' : ''
+    })
+    .trim()
 }
 
 interface Flat {
@@ -383,12 +392,12 @@ function flatten(dxf: IDxf, entities: IEntity[], xf: Xf, out: Flat, block: strin
       }
       case 'TEXT': {
         const t = e as ITextEntity
-        if (t.text) out.texts.push({ layer: e.layer ?? '0', at: apply(xf, t.startPoint ?? { x: 0, y: 0, z: 0 }), text: stripMtext(t.text), height: (t.textHeight ?? 1) * rscale, ...(t.startPoint?.z ? { z: t.startPoint.z } : {}) })
+        if (t.text) out.texts.push({ layer: e.layer ?? '0', at: apply(xf, t.startPoint ?? { x: 0, y: 0, z: 0 }), text: plainMtext(t.text, true), height: (t.textHeight ?? 1) * rscale, ...(t.startPoint?.z ? { z: t.startPoint.z } : {}) })
         break
       }
       case 'MTEXT': {
         const t = e as IMtextEntity
-        if (t.text) out.texts.push({ layer: e.layer ?? '0', at: apply(xf, t.position ?? { x: 0, y: 0, z: 0 }), text: stripMtext(t.text), height: (t.height ?? 1) * rscale })
+        if (t.text) out.texts.push({ layer: e.layer ?? '0', at: apply(xf, t.position ?? { x: 0, y: 0, z: 0 }), text: plainMtext(t.text), height: (t.height ?? 1) * rscale })
         break
       }
       case 'DIMENSION': {
@@ -477,7 +486,7 @@ export async function importDxf(text: string, name: string, mine?: LayerRoles, p
   const box = ext(wallish.length ? wallish : flat.segs)
   const extent = Math.max(box.w, box.h)
   const sizeArea = flat.texts.reduce((acc, t) => {
-    const d = parseDims(stripMtext(t.text))
+    const d = parseDims(t.text)
     return acc + (d ? d.aM * d.bM : 0)
   }, 0)
   let scale: number

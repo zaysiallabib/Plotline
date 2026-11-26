@@ -9,7 +9,7 @@ import { describe, expect, test } from 'vitest'
 import { deriveRooms, validate } from '../core'
 import { EXTERIOR_M, PARTITION_M } from '../studio/model'
 import { MAX_DXF_ENTITIES, importDxf } from './dxf'
-import { splinePoints, stripMtext } from './dxf'
+import { plainMtext, splinePoints } from './dxf'
 import { MAX_DXF_BYTES, importFile } from './index'
 import { roleOf } from './plan2d'
 
@@ -70,8 +70,24 @@ describe('dxf fixtures', () => {
   })
 
   test('mtext formatting codes are stripped', () => {
-    expect(stripMtext(`{\\fArial|b1;BED ROOM}\\P13'-0" x 16'-0"`)).toBe(`BED ROOM\n13'-0" x 16'-0"`)
-    expect(stripMtext('\\A1;\\H2.5x;LIVING %%p 2 %%d')).toBe('LIVING ± 2 °')
+    expect(plainMtext(`{\\fArial|b1;BED ROOM}\\P13'-0" x 16'-0"`)).toBe(`BED ROOM\n13'-0" x 16'-0"`)
+    expect(plainMtext('\\A1;\\H2.5x;LIVING %%p 2 %%d')).toBe('LIVING ± 2 °')
+    expect(plainMtext('%%c600 %%%')).toBe('Ø600 %')
+  })
+
+  // Maheer's Plotline 2.0 (src/dxf/dxf.test.ts), on our decoder
+  test('unicode escapes, escaped braces and backslashes survive; a TEXT keeps its own braces', () => {
+    expect(plainMtext(String.raw`{\C1;BEDROOM}\P12´-0\U+00B4`)).toBe('BEDROOM\n12´-0´')
+    expect(plainMtext(String.raw`{\pxqc;\L\U+0042ED\l}\P\{A\} \\P \S1#2;`)).toBe('BED\n{A} \\P 1/2')
+    expect(plainMtext(String.raw`{A} \U+0042ED`, true)).toBe('{A} BED')
+    expect(plainMtext(String.raw`%%c100 \P`, true)).toBe(String.raw`Ø100 \P`)
+  })
+
+  test('a Bangla room name written as \\U+ codes (a file older than AutoCAD 2007) names its room in Bangla', async () => {
+    const r = await importDxf(fixture('bangla-room'), 'bangla-room.dxf')
+    const u = r.storeys[0].unit
+    expect(u.roomLabels.map((l) => [l.name, l.printedSize])).toEqual([['শয়ন কক্ষ', `13'-0" x 9'-10"`]])
+    expect(deriveRooms(u).map((x) => x.name)).toEqual(['শয়ন কক্ষ'])
   })
 
   test('MLINE walls (two lines drawn as one): a closed 4 x 3 m room of 20 cm walls', async () => {

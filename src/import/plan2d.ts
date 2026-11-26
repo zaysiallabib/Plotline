@@ -860,10 +860,10 @@ export function buildPlan(d: Drawing, name: string): Plan2dResult {
     }
     const area = parseArea(t.text)
     const flat = flatTypeOf({ name: t.text, kind: 'other' })
-    // a name has letters; a measurement with a word on it ("8'-5\" CLG", "Sill H=3'-0\"", "2.4 m") names no room; a bare
-    // number ("12", "P-3": a parking bay, a room number) does (core guessKind reads a bay)
+    // a name has letters (any script: শয়ন কক্ষ); a measurement with a word on it ("8'-5\" CLG", "Sill H=3'-0\"", "2.4 m")
+    // names no room; a bare number ("12", "P-3": a parking bay, a room number) does (core guessKind reads a bay)
     const number = /^\s*([A-Z]-?)?\d{1,4}\s*$/i.test(t.text)
-    if ((!/[A-Za-z]{2}/.test(t.text) || /\d\s*['"′″’]|\d\s*(mm|cm|m|ft|in)\b/i.test(t.text)) && !flat && !number) continue
+    if ((!/\p{L}{2}/u.test(t.text) || /\d\s*['"′″’]|\d\s*(mm|cm|m|ft|in)\b/i.test(t.text)) && !flat && !number) continue
     // a stair's arrow ("UP", "DN") and a door / window tag ("D-16", "Win-18", "W3") name no room
     if (NOT_A_NAME.test(t.text)) continue
     if (!room) {
