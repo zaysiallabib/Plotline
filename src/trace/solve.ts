@@ -1283,16 +1283,29 @@ function dilate(m: Uint8Array, w: number, h: number, r: number, borderIsSet = tr
  * drawings (solid dark ink at least 0.4 m across with a leafy texture — a column or a black fill is flat). A printed
  * SUNSHADE / PLANTER label marks its face (solveTraces). Blobs under 0.5 m² (a pot plant) are dropped.
  */
-export function planterMask(plan: Gray, wallInk: Uint8Array, pxPerM: number, green?: Uint8Array): Uint8Array {
+export function planterMask(plan: Gray, wallInk: Uint8Array, pxPerM: number, green?: Uint8Array, text?: TextTrace): Uint8Array {
   const { width: w, height: h, data } = plan
   const seed = new Uint8Array(w * h)
   const dt = edt(wallInk, w, h)
   const deep = 0.2 * pxPerM
+  // printed labels (and the white the text erase leaves) on a dark floor vary as much as leaves do: never foliage; a
+  // green patch behind its label still is (from Maheer's Plotline 2.0)
+  const print = new Uint8Array(w * h)
+  for (const it of text?.items ?? []) {
+    if (it.kind === 'other' && !FLAT_LABEL.test(normaliseName(it.text.split('\n')[0]).replace(/[^A-Z0-9]+/g, ' ').trim())) continue
+    const b = it.box, pad = deep + 2
+    for (let y = Math.max(0, Math.floor(b.y - pad)); y < Math.min(h, Math.ceil(b.y + b.h + pad)); y++) print.fill(1, y * w + Math.max(0, Math.floor(b.x - pad)), y * w + Math.min(w, Math.ceil(b.x + b.w + pad)))
+  }
   for (let y = 2; y < h - 2; y++)
     for (let x = 2; x < w - 2; x++) {
       const i = y * w + x
-      if (green?.[i]) seed[i] = 1
-      if (dt[i] < deep) continue
+      if (green?.[i]) {
+        // (a JPEG's pale-green halo round coloured text is single pixels: over a label only a green patch counts)
+        let support = 0
+        if (print[i]) for (let dy = -2; dy <= 2; dy++) for (let dx = -2; dx <= 2; dx++) support += green[i + dy * w + dx]
+        if (!print[i] || support >= 5) seed[i] = 1
+      }
+      if (print[i] || dt[i] < deep) continue
       // leafy: the 5×5 neighbourhood varies (foliage 50–120 mottled); a fill or a column is one grey
       let s = 0, s2 = 0
       for (let dy = -2; dy <= 2; dy++) for (let dx = -2; dx <= 2; dx++) (s += data[i + dy * w + dx]), (s2 += data[i + dy * w + dx] ** 2)
@@ -1583,7 +1596,8 @@ function floodFlat(d: Draft, at: Pt, blocked: (p: Pt) => boolean, capSqm: number
 /**
  * Faces of the flat. With a click: every closed face on the floor the flood from the click reaches (floodFlat), the
  * closed rooms mostly surrounded by it, and the planters at its edge; `touched` = every wall the flood met (the flat's
- * unclosed walls go into the draft too). Without a click: the largest region grown across partitions and doors.
+ * unclosed walls go into the draft too). Without a click: the region holding the most printed bedroom names, then the
+ * largest region grown across partitions and doors.
  */
 function pickFlat(
   d: Draft,
@@ -1658,15 +1672,18 @@ function pickFlat(
     const covered = onFloor.reduce((t, r) => t + r.areaSqm, 0)
     return { rooms, open: fl.sqm > covered + 2, touched: fl.touched, inFlood: fl.inFlood, region: fl.region }
   }
-  // no click: the largest closed region (grown the same way, without the entrance step)
-  let best = new Set<Room>(), bestA = 0
+  // no click: the closed region holding the most printed BED names (a newly closed unnamed core never becomes "the flat";
+  // a stamp or a numeral alone changes nothing on a common floor), then the largest (grown the same way, without the
+  // entrance step) — from Maheer's Plotline 2.0
+  let best = new Set<Room>(), bestA = 0, bestNames = -1
   const seen = new Set<Room>()
   for (const r of d.rooms) {
     if (seen.has(r) || !ok(r)) continue
     const g = grow([r], false)
     g.forEach((x) => seen.add(x))
     const A = [...g].reduce((t, x) => t + x.areaSqm, 0)
-    if (A > bestA) (bestA = A), (best = g)
+    const N = names.filter((n) => /\b(?:M\.?\s*)?BED(?:ROOM)?\b/.test(n.name) && [...g].some((x) => pointInPolygon(n.p, polys.get(x)!))).length
+    if (N > bestNames || (N === bestNames && A > bestA)) (bestNames = N), (bestA = A), (best = g)
   }
   return { rooms: best, open: false, touched: new Set() }
 }
@@ -2118,7 +2135,7 @@ export function prepareTraces(gray: Gray, inputs: SolveInputs, opts: AutoTraceOp
   const furniture = inputs.walls ? undefined : union(union(furnitureMask(plan, k0, inkT), hatchMask(plan, k0, inkT)), dashMask(plan, k0, inkT))
   const ink = { ...masks0, glass: opts.rgb ? glassMask(opts.rgb, k0) : undefined }
   // founder rule 2: plant sections before any wall tracing (sized by the raster's own wall width, the 5" prior)
-  const plants = planterMask(plan, ink.wall, k0, inputs.green)
+  const plants = planterMask(plan, ink.wall, k0, inputs.green, text)
   const tracker = opts.tracker ?? KNOBS.tracker
   // tracks: the plant green comes out before tracing (founder rule 2), the glass colour is window evidence
   // (…and the furniture with it, whitened the same way)
@@ -2339,7 +2356,8 @@ export type Prepared = ReturnType<typeof prepareTraces>
  * One flat chosen on the sheet's whole draft (pre-shift metres; the draft is only read) from the spot `at`: the fitted
  * rooms around it (pickByRooms) + the floor the flood from it reaches, the thin-line faces against them, the walls beside
  * the flooded floor — never the core, nor a room another flat of the floor already holds (`taken`, Level 4: the floor's
- * flats are chosen one after another and never share a room). `at` null: the largest closed region (no click).
+ * flats are chosen one after another and never share a room). `at` null: the closed region with the most printed
+ * bedrooms, then the largest (no click).
  */
 interface Sel {
   at: Pt | null
