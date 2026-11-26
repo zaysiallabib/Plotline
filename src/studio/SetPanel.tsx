@@ -181,7 +181,7 @@ function HeightsRow({ row, typed, onType }: { row: SetRow; typed?: { heights: He
 }
 
 /** the set's heights together, as the project will be built: one line, and a question where two drawings differ */
-function HeightsSum({ heights, differ, answers, onAnswer }: { heights: SetHeights | null; differ: SetHeights['differ']; answers: Record<string, number>; onAnswer: (key: string, i: number) => void }) {
+function HeightsSum({ heights, any, differ, answers, onAnswer }: { heights: SetHeights | null; any: boolean; differ: SetHeights['differ']; answers: Record<string, number>; onAnswer: (key: string, i: number) => void }) {
   const lv = (m: number) => `${m < 0 ? '−' : '+'}${Math.abs(m).toFixed(2)}`
   const what = (key: string) => (/^-?\d+$/.test(key) ? `Floor ${key === '0' ? 'G' : Number(key) < 0 ? `B${-key}` : key}` : FIELD_WORDS[key.replace(/M$/, '') as HeightField])
   return (
@@ -200,7 +200,10 @@ function HeightsSum({ heights, differ, answers, onAnswer }: { heights: SetHeight
           . From {heights.from.length === 1 ? heights.from[0] : `${heights.from[0]} and ${heights.from.length - 1} more`}; a floor no drawing shows repeats the storey under it.
         </p>
       ) : (
-        <p className="muted">No level marks read on these drawings: every storey stays 3.20 m floor to floor, as before. Type the heights under a section to build to them.</p>
+        <p className="muted">
+          {any ? 'No level marks read on its sections and elevations' : 'No section or elevation in this set prints its levels'}: every storey stays 3.20 m floor to floor, as before.
+          {any ? ' Type the heights under a section to build to them.' : ''}
+        </p>
       )}
       {differ.map((d) => (
         <div key={d.key} className="set-ask set-differ">
@@ -261,8 +264,9 @@ export default function SetPanel({ files, onRead, onOpenOne, onBuild, onClose }:
           const said = read.storeys
           if (said && live.current) setStoreys((x) => x ?? { ...said, page: p })
           const got = read.views.map((view, i): SetRow => {
-            // its level marks (any view but a plan: a page read as a detail or other may be a section the person sets)
-            const h = page && view.kind !== 'plan' ? viewHeights(page, view) : null
+            // its level marks: a section's, an elevation's (a detail or interior elevation the person may set as one too; a brochure's
+            // photo and word pages are not read for them — their outlined letters are tens of thousands of lines)
+            const h = page && ['section', 'elevation', 'detail', 'interior'].includes(view.kind) ? viewHeights(page, view) : null
             const r: SetRow = { key: `${fi}:${p}:${i}`, file: fi, page: p, frame: view.box, view, ...(read.number ? { number: read.number } : {}), kind: view.kind, which: null, tick: null, yours: false, ...(h ? { heights: heightsOf(h), marks: h.marks.length } : {}) }
             const c = mine[keyOf(r)]
             return c ? { ...r, kind: c.kind, which: c.which, tick: c.tick, yours: true, ...(c.heights ? { typed: c.heights } : {}) } : r
@@ -437,10 +441,7 @@ export default function SetPanel({ files, onRead, onOpenOne, onBuild, onClose }:
           </section>
         )
       })}
-      {!reading && rows.some(drawn) && <HeightsSum heights={heights} differ={heights?.differ ?? []} answers={answers} onAnswer={(k, i) => setAnswers((a) => ({ ...a, [k]: i }))} />}
-      {!reading && !rows.some(drawn) && rows.length > 0 && (
-        <p className="muted set-heights-none">No section or elevation in this set prints its levels: every storey stays {(3.048 + 0.15).toFixed(2)} m floor to floor, as before.</p>
-      )}
+      {!reading && rows.length > 0 && <HeightsSum heights={heights} any={rows.some(drawn)} differ={heights?.differ ?? []} answers={answers} onAnswer={(k, i) => setAnswers((a) => ({ ...a, [k]: i }))} />}
       <div className="set-foot">
         <span className="muted">
           {plans.length ? `${plans.length} drawing${plans.length === 1 ? '' : 's'} on ${floors}${joined ? ` (${joined} more flat${joined === 1 ? '' : 's'} joined in)` : ''}` : 'No plan ticked'} · {kept.length} kept · {choices.length - plans.length - joined - kept.length} left out

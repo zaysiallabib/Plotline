@@ -318,7 +318,6 @@
 .set-heights label.yours input { color: var(--ink); }
 .set-heights > .muted { align-self: center; font-size: var(--fs-sm); }
 .set-heights-sum p { color: var(--ink-2); }
-.set-heights-none { margin-top: var(--s-3) !important; }
 .set-differ > span { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s-1) var(--s-3); }
 .set-differ .check { display: inline-flex !important; }
 .set-foot {
