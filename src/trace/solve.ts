@@ -3469,7 +3469,13 @@ async function prepareSquare(gray: Gray, opts: AutoTraceOpts) {
   let text: TextTrace = { items: [] }
   try {
     const { readText } = await import('./text')
-    text = opts.text ? { ...opts.text, items: [...opts.text.items] } : await readText(gray, opts.ocr)
+    // (the card's % moves while the print is read, 0 to 40 %, in whole steps: the longest part of the read is never a still 0 %)
+    let shown = 0
+    const onProgress = (done: number, total: number) => {
+      const f = Math.floor((40 * done) / total)
+      if (f > shown) opts.onProgress?.('text', (shown = f) / 100)
+    }
+    text = opts.text ? { ...opts.text, items: [...opts.text.items] } : await readText(gray, { ...opts.ocr, onProgress })
     if (opts.ai) text = await (await import('./ai')).askAi(text, gray, opts.ai)
   } catch (e) {
     review.push({ id: newId(), at: { x: 0, y: 0 }, kind: 'other', message: `Could not read the printed text (${(e as Error).message}) — rooms stay unnamed` })
