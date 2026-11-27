@@ -1,6 +1,6 @@
 /** The word table on material names as the 48 measured IFCs write them (Docs/review/outside/TABLES.md). */
 import { describe, expect, test } from 'vitest'
-import { classOf, coveringOption, frameOption, outerOf, outsideOption, railKind, toneGlass } from './materials'
+import { classOf, coveringOption, frameOption, outerOf, outsideOption, railColor, railKind, toneGlass } from './materials'
 
 describe('material names → the outside finish (session 31 ifcmap)', () => {
   test.each([
@@ -88,6 +88,20 @@ describe('roofs, railings, frames', () => {
     expect(railKind(['KAITEET', 'Metalli', 'Alumiini'])).toBe('railing')
     expect(railKind(['Aluminio'])).toBe('railing')
     expect(railKind(['Railing:1100mm [GUARDRAIL]', 'Default'])).toBeNull()
+  })
+
+  test("a railing's colour from its names, as its kind offers it (its kind's own colour: none kept)", () => {
+    expect(railColor(['Steel, Paint Finish, Dark Gray'], 'railing')).toBe('anthracite')
+    expect(railColor(['Iron, Cast'], 'railing')).toBe('black')
+    expect(railColor(['Geländer RAL 9016', 'Stahl'], 'railing')).toBe('white')
+    expect(railColor(['Metall - schwarz'], 'glass')).toBe('black')
+    expect(railColor(['Metal - Stainless Steel,Polished', 'Glass'], 'glass')).toBeNull() // (silver: a glass front's own)
+    expect(railColor(['Metall - Edelstahl, poliert'], 'grille')).toBe('silver') // (a grille is black by its own)
+    expect(railColor(['Holz - Birke'], 'timber')).toBe('oak')
+    expect(railColor(['Walnut'], 'timber')).toBe('walnut')
+    expect(railColor(['Teak'], 'timber')).toBeNull() // (teak: a timber railing's own)
+    expect(railColor(['Holz - Birke'], 'railing')).toBeNull() // (no timber colour on metal)
+    expect(railColor(['Railing:1100mm [GUARDRAIL]', 'Default'], 'railing')).toBeNull()
   })
 
   test("a window's frame from its names", () => {

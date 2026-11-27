@@ -74,7 +74,8 @@ reads in Firefox today, with what fails and why: [SAMPLES.md](SAMPLES.md).
   material layer set (a render takes the file's colour: beige crépi is Sand render), the commonest the building's own
   when the named walls make at least 30 % of the outer walls. The outside shape wears the same pictures (its dressed
   surfaces carry texture coordinates in metres); Finishes → Whole building changes it there too. IfcRailing makes the
-  low wall under it glass / metal / timber (Made of) or a low wall of its own on a balcony edge; IfcRoof's kind (or what
+  low wall under it glass / metal / timber (Made of, its Colour from the material's words) or a low wall of its own on a
+  balcony edge; IfcRoof's kind (or what
   its slopes show), pitch and covering are the project's roof setting (a freeform roof keeps the file's own shape); a
   curtain wall keeps its mullion spacing and frame colour; a window's frame colour comes from its names. The street is
   the ground storey — the one named Ground / EG / RDC / 1F, else the storey at the file's elevation 0, else the lowest

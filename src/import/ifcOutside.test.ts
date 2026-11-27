@@ -52,6 +52,11 @@ describe('outside.ifc: a storey of timber-clad walls over an empty datum storey'
     const u = r.storeys[1].unit
     const low = u.walls.filter((w) => w.lowKind)
     expect(low.map((w) => w.lowKind)).toEqual(['glass', 'glass'])
+    // its rails' colour from the railing's material names: polished stainless is a glass front's own (nothing kept), "Steel, Paint Finish, Dark Gray" anthracite
+    expect(low.map((w) => [w.standsAlone ?? false, w.railColor])).toEqual([
+      [false, undefined],
+      [true, 'anthracite'],
+    ])
     const alone = low.find((w) => w.standsAlone)!
     const [a, b] = [u.vertices.find((v) => v.id === alone.a)!, u.vertices.find((v) => v.id === alone.b)!]
     expect(Math.abs(b.x - a.x)).toBeCloseTo(6, 1)

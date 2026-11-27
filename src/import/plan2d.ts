@@ -15,8 +15,8 @@
  *            3600") = printedSize; a flat-name text ("TYPE-A ±2736 SFT") = a label of kind 'other' (core.flatTypeOf).
  * The layer → meaning table (roleOf) is what the notes show staff.
  */
-import { FT, deriveRooms, flatTypeOf, newId, pointInPolygon, roomPolygon, validate } from '../core'
-import type { LowWallKind, Opening, OpeningKind, Pillar, Pt, Room, RoomLabel, Unit, ValidationIssue, Vertex, Wall } from '../core'
+import { FT, deriveRooms, flatTypeOf, newId, pointInPolygon, railColors, roomPolygon, validate } from '../core'
+import type { LowWallKind, RailColor, Opening, OpeningKind, Pillar, Pt, Room, RoomLabel, Unit, ValidationIssue, Vertex, Wall } from '../core'
 import { EXTERIOR_M, PARTITION_M, WALL_HEIGHT_M, ZONE_LINE_M, emptyUnit, guessKind, initialState, normalizeUnit, openingDefaults, reducer } from '../studio/model'
 import { parseArea, parseDims, parseSide } from '../trace/text'
 
@@ -158,6 +158,8 @@ interface Piece {
   h?: number
   /** Plotline's own export (its centre line's layer, dxfWrite.ts axisLayer): what the low wall is made of, its outside finish */
   low?: LowWallKind
+  /** a railing's own colour (Wall.railColor), one its kind offers */
+  color?: RailColor
   out?: string
   dir: Pt
   n: Pt
@@ -524,9 +526,10 @@ function roomPolygons(loops: Pt[][], wallLength: number): RoomMode | null {
 const stripText = (s: string): string => s.replace(/\s+/g, ' ').trim()
 /**
  * Plotline's own export: a wall's centre line, on a layer named for its thickness in tenths of a millimetre, then what a
- * low wall is made of and the wall's outside finish when it has them (dxfWrite.ts axisLayer: PLOTLINE_AXES_2540_OUT_BRICK_RED)
+ * low wall is made of (and a railing's colour) and the wall's outside finish when it has them (dxfWrite.ts axisLayer:
+ * PLOTLINE_AXES_500_LOW_RAILING_ANTHRACITE, PLOTLINE_AXES_2540_OUT_BRICK_RED)
  */
-const AXES = /^PLOTLINE_AXES_(\d+)(?:_LOW_([A-Z]+))?(?:_OUT_([A-Z0-9_]+))?$/i
+const AXES = /^PLOTLINE_AXES_(\d+)(?:_LOW_([A-Z]+)(?:_([A-Z]+))?)?(?:_OUT_([A-Z0-9_]+))?$/i
 const LOW_KINDS: LowWallKind[] = ['glass', 'railing', 'grille', 'timber', 'fence', 'chainlink']
 
 /**
@@ -624,9 +627,11 @@ export function buildPlan(d: Drawing, name: string): Plan2dResult {
   const axes =
     axisLines.length && axesAgree(axisLines, d.loops.filter((l) => role(l) === 'wall' || role(l) === 'kerb'), d.segs.filter((g) => g.inst !== undefined), s)
       ? axisLines.map((g) => {
-          const [, t, low, out] = AXES.exec(g.layer)!
+          const [, t, low, col, out] = AXES.exec(g.layer)!
           const k = low?.toLowerCase() as LowWallKind | undefined
-          return { ...piece(P(g.a), P(g.b), Number(t) / 1e4, heightOf(g)), ...(k && LOW_KINDS.includes(k) ? { low: k } : {}), ...(out ? { out: `fo_out_${out.toLowerCase()}` } : {}) }
+          const kind = k && LOW_KINDS.includes(k) ? k : undefined
+          const c = col?.toLowerCase() as RailColor | undefined
+          return { ...piece(P(g.a), P(g.b), Number(t) / 1e4, heightOf(g)), ...(kind ? { low: kind } : {}), ...(kind && c && railColors(kind).includes(c) ? { color: c } : {}), ...(out ? { out: `fo_out_${out.toLowerCase()}` } : {}) }
         })
       : null
   if (axisLines.length) notes.push(axes ? `${axes.length} walls read from their centre lines, exactly as exported.` : 'Walls were changed in a CAD program since the export: read from their outlines.')
@@ -899,7 +904,7 @@ export function buildPlan(d: Drawing, name: string): Plan2dResult {
         if (t1 - t0 < (o.exact ? 0.01 : MIN_GAP) || (openings.length && openings[openings.length - 1].offsetM + openings[openings.length - 1].widthM > t0 - w.t0)) continue
         openings.push({ id: newId(), kind: o.kind, offsetM: t0 - w.t0, widthM: t1 - t0, heightM: defaults.heightM, sillM: defaults.sillM, ...(o.kind === 'door' ? { hinge: o.hinge, swing: o.swing } : {}) })
       }
-      unit0.walls.push({ id: newId(), a: a.id, b: b.id, thicknessM: w.thick, heightM: w.h ?? usualH, openings, ...(w.low ? { lowKind: w.low } : {}) })
+      unit0.walls.push({ id: newId(), a: a.id, b: b.id, thicknessM: w.thick, heightM: w.h ?? usualH, openings, ...(w.low ? { lowKind: w.low } : {}), ...(w.low && w.color ? { railColor: w.color } : {}) })
     }
   }
   // the Studio's own load path (join walls, drop stubs, heal straight runs), then no wall end left touching another (nodeGraph)

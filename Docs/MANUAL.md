@@ -1388,7 +1388,8 @@ finish, the commonest the whole building's (a render takes its colour from the f
 roof takes the covering its words say (tiles, zinc, slate, shingles, gravel, a green roof, terrace tiles) and its kind
 from the file (gable, hip, shed, flat; a freeform roof keeps the file's own shape), its pitch from its slopes; a railing
 (IfcRailing) makes the low wall under it glass, metal or timber (**Made of**), or becomes a low wall of its own along a
-balcony's edge; a glass front keeps the file's mullion spacing and frame colour, and its solid panels (a curtain wall's
+balcony's edge, its **Colour** from its material's words ("Steel, Paint Finish, Dark Gray" anthracite, "Iron, Cast" black,
+RAL 9016 white, birch light oak; stainless or aluminium stays silver); a glass front keeps the file's mullion spacing and frame colour, and its solid panels (a curtain wall's
 spandrels) become its **Solid band** — metal when their material says so, else dark glass; a window's frame takes its colour from
 its names (white, anthracite / RAL 7016, black, timber); a gable wall stops at its eaves (the gable is in the outside
 shape). The outside shape wears the same pictures as Plotline's own walls, and **Finishes** in the 3D view shows each as
@@ -1556,8 +1557,9 @@ From the ⋯ menu, what a developer or their architect asks for:
   **DOORS** (leaf, swing and the two jambs; a wide opening with no door is a block of its two jambs), **WINDOWS**,
   **COLUMNS**, **TEXT** (names and sizes; a raised floor's name sits at that height), **PLOTLINE_ZONES** (a level's flush
   lines), **PLOTLINE_KERBS** (walls of 20 cm or less) and **PLOTLINE_AXES_…** (each wall's centre line, one layer per
-  thickness — leave them in the file; a low wall's **Made of** and a wall's outside finish ride in the layer's name,
-  `PLOTLINE_AXES_500_LOW_GLASS`, `PLOTLINE_AXES_2540_OUT_BRICK_RED`, so a glass balustrade comes back glass and a brick
+  thickness — leave them in the file; a low wall's **Made of** (with a railing's **Colour**) and a wall's outside finish
+  ride in the layer's name, `PLOTLINE_AXES_500_LOW_GLASS`, `PLOTLINE_AXES_500_LOW_RAILING_ANTHRACITE`,
+  `PLOTLINE_AXES_2540_OUT_BRICK_RED`, so a glass balustrade comes back glass, an anthracite railing anthracite and a brick
   wall brick, the commonest finish the building's own). Dropped back untouched it opens exactly as it was ("Written by Plotline and not
   changed since"). Saved again by a CAD program it is read from its lines and layers ("… walls read from their centre
   lines, exactly as exported"): all 20 built-in flats and levels come back exactly the same, curved ramps and parking
@@ -1918,8 +1920,8 @@ Things that are confusing or not finished. Each one is a job on the list.
   whole-floor drawing (the Studio's way) knows its neighbours. In the Building view a piece can be added, not moved or
   deleted (do that in the Dollhouse). On the other floors of the same drawing a flat's outside pieces (put there with
   **All N floors with this drawing**, §3) show only where the Building view draws furniture (by quality), and lit as the inside.
-- A low wall's **Made of** is kept in the drawing, the 3D and the Building view, but not in a DXF given back (it comes back
-  solid), and an architect's file (IFC) brings its railings as its own shape, not as a Made of. With Finishes open, a
+- A low wall's **Made of** and a railing's **Colour** are kept in the drawing, the 3D, the Building view and a DXF given back
+  (in its centre line's layer); an architect's file (IFC) sets them from its railings (IfcRailing). With Finishes open, a
   click on a railing or glass front offers the balcony's wall paint (its own colour is under Edit openings → Colour). The
   daylight lets a glass front, a railing, a grille or a chain-link through (a glass-fronted veranda is nearly as bright as an
   open one, a timber railing a little less, a board fence little); the room behind it was already lit as through an open
