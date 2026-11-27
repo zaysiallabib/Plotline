@@ -322,6 +322,7 @@ const SCALE: Record<string, Rule> = {
   ...each(['hanging_picture_frame_01', ...ART], ART_RULE),
   tv_55: TV_RULE,
   tv_55_wall: TV_RULE,
+  rollershutter_window_01: [['x', 'y'], 0.7, 1.4], // wider or taller on its own: fitted to the opening it covers
   rug_round: [['x', 'z'], 0.6, 2, true],
 }
 export function resizeLimits(assetId: string): ResizeLimits | null {

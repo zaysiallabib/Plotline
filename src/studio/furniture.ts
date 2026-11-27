@@ -695,7 +695,7 @@ const ALSO_IN: Record<string, Tab[]> = {
   basin: ['Dining'], vanity: ['Dining'], [CURTAINS]: ['Living'], wash_basin: ['Bath'], water_filter: ['Dining'], console_table: ['Dining'],
   floor_lamp: ['Living'], table_lamp: ['Bedroom'], pendant_light: ['Dining'], chandelier_01: ['Dining', 'Living'],
   bench_upholstered: ['Living'], prayer_mat: ['Living'], wall_mirror: ['Living'], washing_machine: ['Bath'], exhaust_fan: ['Bath'],
-  planter_edge: ['Greenery'], porch_roof: ['Outdoor'], ac_outdoor: ['Lights & AC'],
+  planter_edge: ['Greenery'], porch_roof: ['Outdoor'], exterior_aircon_unit: ['Lights & AC'],
 }
 /** Kinds also listed in Office (a study's desk, chair and shelves are a bedroom's too). */
 const OFFICE = new Set(['desk', 'chair', 'shelf'])

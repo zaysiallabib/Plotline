@@ -26,7 +26,7 @@ serves the same rules, so check a new service there.
 
 | Question | Where it comes from | Costs | Stays? |
 |---|---|---|---|
-| The furniture library (154 pieces) | 33 scanned 3D models from **Poly Haven** + 121 pieces built in our own code, wearing textures from **Poly Haven** and **ambientCG** | free (CC0, no credit needed) | permanent |
+| The furniture library (170 pieces) | 35 scanned 3D models from **Poly Haven** + 135 pieces built in our own code, wearing textures from **Poly Haven** and **ambientCG** | free (CC0, no credit needed) | permanent |
 | The letters | **Instrument Sans** and **Instrument Serif** from **Google Fonts** | free (SIL Open Font License) | permanent |
 | The sunlight | **No outside service**: a published formula (NOAA's) in our own code | free | permanent |
 | The wind | **Open-Meteo**'s weather archive, once per building site; a built-in **Dhaka table** (Open-Meteo 2015–2024) with no site | free, non-commercial only | **TEMPORARY** — a paid plan or our own copy of the data once Plotline earns money |
@@ -44,9 +44,9 @@ serves the same rules, so check a new service there.
 
 | What | Used for | From | Licence / cost | Status |
 |---|---|---|---|---|
-| **39 scanned 3D models** (sofas, chairs, tables, lamps, a ceiling fan, a clock, plants, a bench, a bistro set, a covered car…) | 33 are pieces in the library; 4 plants sit in pots built in code; 2 give the leaves and bark of the code-built trees and shrubs | Poly Haven — https://polyhaven.com (each model's page in `public/assets/MANIFEST.md`) | **CC0** (public domain): free for anything, no credit required; we list the authors anyway | permanent |
-| **121 code-built pieces** (beds, wardrobes, kitchens, bathroom fittings, TVs, rugs, curtains, frames, AC units, pots and planters, trees, shrubs, loungers, pergola, gym and play pieces…) | The rest of the library — Poly Haven has no modern bed, bathroom, kitchen, gym or play equipment | Our own code (`src/furnish/procedural.ts`) | ours | permanent |
-| **The library** (Edit furniture → Add in the 3D view; Add a piece with F in the Studio) | 154 pieces in 11 groups (Living, Dining, Bedroom, Office, Kitchen, Bath, Lights & AC, Greenery, Outdoor, Lobby & gym, Decor) | both of the above | free | permanent |
+| **41 scanned 3D models** (sofas, chairs, tables, lamps, a ceiling fan, a clock, plants, a bench, a bistro set, a covered car, an AC outdoor unit, a roller shutter…) | 35 are pieces in the library; 4 plants sit in pots built in code; 2 give the leaves and bark of the code-built trees and shrubs | Poly Haven — https://polyhaven.com (each model's page in `public/assets/MANIFEST.md`) | **CC0** (public domain): free for anything, no credit required; we list the authors anyway | permanent |
+| **135 code-built pieces** (beds, wardrobes, kitchens, bathroom fittings, TVs, rugs, curtains, frames, AC units, pots and planters, trees, shrubs, loungers, pergola, gym and play pieces; outside: canopies, a porch roof, sunshades, an awning, fins, louvres, a jaali screen, an edge planter, a fire escape, a name sign, solar panels, a chimney, a flagpole…) | The rest of the library — Poly Haven has no modern bed, bathroom, kitchen, gym or play equipment | Our own code (`src/furnish/procedural.ts`) | ours | permanent |
+| **The library** (Edit furniture → Add in the 3D view; Add a piece with F in the Studio) | 170 pieces in 12 groups (Living, Dining, Bedroom, Office, Kitchen, Bath, Lights & AC, Greenery, Outdoor, Outside, Lobby & gym, Decor) | both of the above | free | permanent |
 | **21 texture sets** (wood floors, marble, tiles, plaster, fabrics, rug, metal, turf, paving, asphalt, concrete, deck boards, gym rubber, soil) | What floors, walls, furniture and outdoor areas are made of | 10 from Poly Haven, 11 from ambientCG — https://ambientcg.com | **CC0** | permanent |
 | **2 sky / light pictures (HDRIs)**: a small photo studio (`interior.hdr`), a clear sky (`sky.hdr`) | The soft light inside the rooms; the sky through windows and from the Dollhouse | Poly Haven (studio_small_09, kloofendal_43d_clear_puresky) | **CC0** | permanent |
 | **2 wall pictures** (sea, dawn) | The framed art on the walls | Cropped from two Poly Haven sky photos (umhlanga_sunrise, kiara_1_dawn) | **CC0** | permanent |

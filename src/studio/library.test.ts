@@ -75,7 +75,7 @@ describe('the Outside group (session 31): what hangs on a building or stands on 
   it('lists every piece made for the outside, by kind; the edge planter also under Greenery, the porch roof under Outdoor', () => {
     const outside = listing('').find((g) => g.name === 'Outside')!
     const ids = outside.kinds.flatMap((k) => k.items.map((i) => i.id))
-    expect(ids).toEqual(expect.arrayContaining(['canopy_glass', 'canopy_slab', 'porch_roof', 'sunshade', 'awning_fabric', 'fins_vertical', 'louvre_screen', 'jaali_screen', 'planter_edge', 'fire_escape', 'solar_panel', 'chimney', 'flagpole', 'name_sign']))
+    expect(ids).toEqual(expect.arrayContaining(['canopy_glass', 'canopy_slab', 'porch_roof', 'sunshade', 'rollershutter_window_01', 'exterior_aircon_unit', 'awning_fabric', 'fins_vertical', 'louvre_screen', 'jaali_screen', 'planter_edge', 'fire_escape', 'solar_panel', 'chimney', 'flagpole', 'name_sign']))
     for (const id of ids.filter((id) => kitAsset(id)?.mount === 'wall')) expect(kitAsset(id)!.outdoor, id).toBe(true) // each one may go on an outer face
     expect(entry('planter_edge')!.rooms).toEqual(['Greenery', 'Outside'])
     expect(entry('porch_roof')!.rooms).toEqual(['Outdoor', 'Outside'])
