@@ -13,7 +13,7 @@ import { askAi, buildMontage, montageItems, parseAiAnswer, parseMontageAnswer, s
 import { FIXTURES, SHOTS, loadPgm, writePng } from './evalio'
 import { sameLabel, scoreText } from './textEval'
 import { H as SIZE_H, band, capBand, confirmed, decode, lcsMatches, readSizes, renderFont, tessConfirms } from './sizes'
-import { applyTables, chunkWords, classifyRoom, cleanForOcr, cropInFace, findTables, findTextLines, inTable, groupWords, numberMarks, numberRows, plusNumber, splitStack, itemFromAi, normaliseName, ownGlyphs, parseArea, parseDims, readText, readTypes, reaskList, reaskReason, snapRoomWords, trimName, type OcrWord } from './text'
+import { applyTables, chunkWords, classifyRoom, cleanForOcr, cropInFace, findTables, findTextLines, inTable, groupWords, numberMarks, numberRows, ocrEngines, plusNumber, splitStack, itemFromAi, normaliseName, ownGlyphs, parseArea, parseDims, readText, readTypes, reaskList, reaskReason, snapRoomWords, trimName, type OcrWord } from './text'
 import { guessKind } from '../studio/model'
 
 const ft = (f: number, i = 0) => (f + i / 12) * FT
@@ -847,5 +847,59 @@ describe('applyTables', () => {
     applyTables([n], [{ box: { x: 600, y: 1200, w: 400, h: 150 }, rows: [{ name: 'MASTER BED', num: 3, roomKind: 'bed', sizeText: `11'-06" x 10'-00"`, dims: parseDims(`11'-06" x 10'-00"`)!, box: { x: 600, y: 1280, w: 210, h: 13 } }] }])
     expect([n.kind, n.roomKind, n.text]).toEqual(['room', 'bed', 'MASTER BED'])
     expect(n.dims!.aM / FT).toBeCloseTo(11.5, 3)
+  })
+})
+
+describe('OCR engines (s31 hang lane: one engine that never starts held the whole read for ever)', () => {
+  type Engine = Awaited<ReturnType<NonNullable<Parameters<typeof ocrEngines>[2]>>>
+  let ids = 0
+  /** a stand-in engine: what it was told, in order; `recognize` answers the image's first byte */
+  const engine = (log: string[]) =>
+    ({
+      id: `fake-${++ids}`,
+      setParameters: async (p: Record<string, string>) => void log.push(`set ${JSON.stringify(p)}`),
+      recognize: async (img: Uint8Array) => (log.push(`read ${img[0]}`), { jobId: 'j', data: { text: String(img[0]), confidence: 90 } }),
+      terminate: async () => void log.push('end'),
+    }) as unknown as Engine
+  const never = () => new Promise<Engine>(() => {})
+
+  test('a read finishes on the engines that came up when one never does', async () => {
+    const log: string[] = []
+    const ocr = await ocrEngines(3, {}, (() => { let k = 0; return () => (k++ === 1 ? never() : Promise.resolve(engine(log))) })())
+    await ocr.set({ tessedit_pageseg_mode: '7' })
+    const reads = await Promise.all([1, 2, 3, 4].map((b) => ocr.read(new Uint8Array([b]))))
+    expect(reads.map((r) => r.data.text)).toEqual(['1', '2', '3', '4'])
+    expect(ocr.up()).toBe(2)
+    await ocr.end()
+    expect(log.filter((l) => l === 'end')).toHaveLength(2)
+  })
+
+  test('an engine that comes up late gets the settings first, before any line', async () => {
+    const late: string[] = []
+    let open: (e: Engine) => void = () => {}
+    let k = 0
+    const ocr = await ocrEngines(2, {}, () => (k++ === 0 ? Promise.resolve(engine([])) : new Promise<Engine>((r) => (open = r))))
+    await ocr.set({ tessedit_pageseg_mode: '7', user_defined_dpi: '300' })
+    await ocr.set({ tessedit_char_whitelist: '0123' })
+    open(engine(late))
+    await Promise.all([5, 6, 7, 8].map((b) => ocr.read(new Uint8Array([b]))))
+    await ocr.end()
+    expect(late[0]).toBe(`set ${JSON.stringify({ tessedit_pageseg_mode: '7', user_defined_dpi: '300', tessedit_char_whitelist: '0123' })}`)
+    expect(late.slice(1).every((l) => !l.startsWith('set'))).toBe(true)
+  })
+
+  test('every start failing fails the read with the first reason (it never waits)', async () => {
+    await expect(ocrEngines(2, {}, () => Promise.reject(new Error('the OCR engine could not load')))).rejects.toThrow('the OCR engine could not load')
+  })
+
+  test('an engine that comes up after the read ended is stopped at once', async () => {
+    const log: string[] = []
+    let open: (e: Engine) => void = () => {}
+    let k = 0
+    const ocr = await ocrEngines(2, {}, () => (k++ === 0 ? Promise.resolve(engine([])) : new Promise<Engine>((r) => (open = r))))
+    await ocr.end()
+    open(engine(log))
+    await new Promise((r) => setTimeout(r, 0))
+    expect(log).toEqual(['end'])
   })
 })
