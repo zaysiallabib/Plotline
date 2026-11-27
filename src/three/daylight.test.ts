@@ -449,6 +449,17 @@ describe('a big floor bakes in bounded work (s31 bigifc: the LTU A-House floor n
   })
 })
 
+test("a glass wall's spandrel band is solid to the daylight (session 31 outside2): less light, none of it at the floor", () => {
+  const u = TEST_UNIT
+  const rooms = core.deriveRooms(u)
+  const w = u.walls.find((x) => x.openings.some((o) => o.kind === 'window'))!
+  const as = (patch: Partial<core.Opening>): Unit => ({ ...u, walls: u.walls.map((x) => (x !== w ? x : { ...x, openings: x.openings.map((o) => (o.kind === 'window' ? { ...o, sillM: 0, heightM: Math.min(2.4, x.heightM), ...patch } : o)) })) })
+  const room = rooms.find((r) => r.wallIds.includes(w.id) && r.kind !== 'balcony')!
+  const sum = (x: Unit) => Array.from(bakeDaylight(x, core.deriveRooms(x)).regions.get(`floor:${room.id}`)!.E).reduce((a, b) => a + b, 0)
+  expect(sum(as({ spandrelM: 1 }))).toBeLessThan(sum(as({})) * 0.95)
+  expect(sum(as({ spandrelM: 0 }))).toBeCloseTo(sum(as({})), 6)
+})
+
 describe('daylight through a glass front (session 31 outside2: lowwall left a glass or railing low wall solid)', () => {
   const base = typeA as unknown as Unit
   const rooms = core.deriveRooms(base)

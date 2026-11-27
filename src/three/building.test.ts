@@ -1229,6 +1229,24 @@ describe("the building's outside (session 31 facade): what the tower's walls and
     expect(count(walls, PLASTER)).toBe(count(b, PLASTER) + count(b, BRICK) - count(walls, BRICK))
   })
 
+  test("a glass wall's spandrel on the tower (session 31 outside2): a dark band at each storey's foot, its glass above it; none set, as before", async () => {
+    const DARK = '1e2427'
+    const glass = (u: Unit, patch: object): Unit => ({ ...u, walls: u.walls.map((w) => ({ ...w, openings: w.openings.map((o) => (o.kind === 'window' ? { ...o, sillM: 0, heightM: 2.4, ...patch } : o)) })) })
+    const t = bti as unknown as { FLATS: Record<string, { unit: Unit }> }
+    const save = t.FLATS['type-b'].unit
+    try {
+      t.FLATS['type-b'].unit = glass(save, { spandrelM: 0.9 })
+      const b = await tower({ ...A, floor: 2 })
+      expect([3, 5, 8].map((k) => count(b, DARK, k) > 0)).toEqual([true, true, true])
+      t.FLATS['type-b'].unit = glass(save, { spandrelM: 0.9, spandrel: 'outside' })
+      expect(count(await tower({ ...A, floor: 2 }, { s_outside: 'fo_out_brick_red' }), DARK)).toBe(0)
+      t.FLATS['type-b'].unit = glass(save, {})
+      expect(count(await tower({ ...A, floor: 2 }), DARK)).toBe(0)
+    } finally {
+      t.FLATS['type-b'].unit = save
+    }
+  })
+
   test('the edges in their own finish (concrete, metal) whatever the walls: a plaster tower with concrete edges keeps its walls plaster', async () => {
     const CONC = 'd4d8d8' // (fair-faced concrete's tint)
     const b = await tower({ ...A, floor: 2 }, { s_edges: 'fo_edge_concrete' })

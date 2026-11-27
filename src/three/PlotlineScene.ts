@@ -2429,6 +2429,14 @@ export class PlotlineScene {
       const ref = this.outside.frame(u.id, id)
       m.material = ref ? materialFor(ref) : BUILT.get(m)!
     })
+    // a glass wall's spandrel panels in the outside finish (openings.ts): its wall's, as the wall's outer face wears it
+    const runs = outerRuns(u)
+    this.staticGroup.traverse((o) => {
+      if (!o.userData.spandrel) return
+      const wallId = o.parent?.userData.wallId as Id | undefined
+      const ref = wallId ? this.outside.wall(u.id, runs.get(wallId) ?? wallId, floor) : null
+      ;(o as THREE.Mesh).material = materialFor(ref ?? EXTERIOR_PLASTER)
+    })
   }
 
   /**

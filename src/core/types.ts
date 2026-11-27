@@ -33,6 +33,12 @@ export interface Opening {
   sillM: number // 0 for doors/passages
   /** a glass wall's mullion spacing (m) as the architect's file draws it (an IFC curtain wall's); absent: equal bays of at most 1.4 m */
   bayM?: number
+  /**
+   * A glass wall's opaque band at the foot of each storey (m; absent or 0: glass from floor to top) — the curtain wall's
+   * spandrel panel over the slab — and what it is: dark glass (the default), metal, or the building's outside finish.
+   */
+  spandrelM?: number
+  spandrel?: 'dark' | 'metal' | 'outside'
   /** door swing/hinge side hint (kind 'door' only; ignored on sliders); purely visual */
   hinge?: 'a' | 'b'
   swing?: 'in' | 'out'

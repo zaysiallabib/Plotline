@@ -971,6 +971,11 @@ had.
   zone lines take no openings.
 - **Glass wall**: click a wall and all of it becomes glass, floor to top. For part of a wall, drag the glass's end
   shorter, or split the wall first (W, click on it).
+- A glass wall picked has **Solid band** (0 = glass to the floor): an opaque panel at the foot of its glass on every
+  floor it stands on, as an office tower's curtain wall has over each slab — type its height (2'-6" is usual), then
+  **Band of**: **Dark glass** (back-painted, the start), **Metal** (anthracite) or **The outside walls** (the building's
+  outside finish — brick in a brick tower). The 3D card (**Edit ▾ → Openings**, click the glass wall) has the same two.
+  Less daylight comes in where the band is.
 - With a door picked: **H** flips the hinge side, **Shift+H** which way it swings.
 - **Curtains:** a window or sliding door in a bed, living, dining or study room gets a pair by itself when the other
   side is outside (a veranda, a shaft, open air); a glass wall never does. Doors and passages get none by themselves.
@@ -1355,7 +1360,8 @@ finish, the commonest the whole building's (a render takes its colour from the f
 roof takes the covering its words say (tiles, zinc, slate, shingles, gravel, a green roof, terrace tiles) and its kind
 from the file (gable, hip, shed, flat; a freeform roof keeps the file's own shape), its pitch from its slopes; a railing
 (IfcRailing) makes the low wall under it glass, metal or timber (**Made of**), or becomes a low wall of its own along a
-balcony's edge; a glass front keeps the file's mullion spacing and frame colour; a window's frame takes its colour from
+balcony's edge; a glass front keeps the file's mullion spacing and frame colour, and its solid panels (a curtain wall's
+spandrels) become its **Solid band** — metal when their material says so, else dark glass; a window's frame takes its colour from
 its names (white, anthracite / RAL 7016, black, timber); a gable wall stops at its eaves (the gable is in the outside
 shape). The outside shape wears the same pictures as Plotline's own walls, and **Finishes** in the 3D view shows each as
 chosen — change the whole building there (it changes the shape's walls too), or one wall, one floor, the frames, the
@@ -1897,7 +1903,7 @@ is a job (hand-tested 2026-10-05, updated since).
 | Boundary wall, parapet, low wall | Yes under 1.2 m — Edit openings: drag an end dot, drag it across, type Length / Height, **Made of** (solid, glass, metal railing, steel grille, timber railing, timber fence, chain-link), a railing's **Colour**, Cornice, delete; a solid one's outside finish as a wall's (Finishes) | Yes — plus Made of, Colour and Cornice up to 2.4 m (a fence, a boundary wall); **Outside** | The glass's tint; a chain-link fence's colour |
 | Balcony slab edge | It follows the balcony: every balcony's edge stands out | The same | Its depth and colour |
 | Kerb, free-standing screen | Yes under 1.2 m, as a low wall | Yes | — |
-| Glass wall | Yes — width, height, sill, slide, delete; its frame colour (Finishes → Window frames) | Yes | Glass colour. Cannot be *added* in 3D |
+| Glass wall | Yes — width, height, sill, slide, delete; its frame colour (Finishes → Window frames); its **Solid band** and what it is | Yes — and its Solid band | Glass colour. Cannot be *added* in 3D |
 | Door, double door, gate, window, passage | Yes — kind, width, height, sill, slide, delete; a window's or slider's **Frame** colour | Yes — plus hinge side and swing; a window's **Frame** | Door material. Cannot be *added* in 3D |
 | Column | No | Yes — each corner and side by mouse (or typed), move, delete, add | — |
 | Ceiling, slab, ceiling height, ceiling lights | One room's ceiling can be clicked in Finishes, but only one ceiling colour exists | No | Everything else |

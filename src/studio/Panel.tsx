@@ -6,11 +6,12 @@ import { towerOf } from '../data/building'
 import { buildingOf, outsideRecord, readFinishes, saveFinishes } from '../data/building/apartments'
 import { FRAMES_SLOT, OUTSIDE_SLOT, frameKey, outerRuns, outsideKey } from '../furnish/finishes'
 import { withOwnOptions } from '../furnish/own'
+import { isGlazing } from '../furnish/presets'
 import { LOCAL_AI_KEY, START_CMD, START_LINE, isLocalUrl, localAISettings, testLocalAI, type AiNote, type LocalAI } from './localAI'
 import { placementLabel, placementRange, placementSize } from '../furnish/kit'
 import { resizeAxes, surfaceOf } from './furniture'
 import { LibraryPanel } from './LibraryPanel'
-import { EXTERIOR_M, LOW_KINDS, PARTITION_M, RAIL_COLOR_WORDS, WALL_TYPES, findEntity, formatLevel, openingDefaults, parseLevel, rampDirs, selectionText, shared, wallTypeOf, type StudioIssue, type StudioState, type WallType } from './model'
+import { EXTERIOR_M, LOW_KINDS, PARTITION_M, RAIL_COLOR_WORDS, SPANDREL_WORDS, WALL_TYPES, findEntity, formatLevel, openingDefaults, parseLevel, rampDirs, selectionText, shared, wallTypeOf, type StudioIssue, type StudioState, type WallType } from './model'
 import { AI_KEY, LOOKS_RIGHT, SHOW_ME, TRACKER_KEY, answerId, fewRooms, roomCount, type StudioAction as Action } from './review'
 import { groupRows, REVIEW_KIND, type Bulk, type Fix, type Mark, type MarkFixes, type Severity } from './issues'
 import type { AutoTraceStats } from '../trace/types'
@@ -804,6 +805,7 @@ function Selection({ state, dispatch, rooms, flats }: { state: StudioState; disp
           <LenInput valueM={toB} onCommit={(m) => patch({ offsetM: L - o.widthM - m })} />
         </Row>
         {(o.kind === 'window' || o.kind === 'slider') && <OutsidePick unit={unit} ids={[o.id]} frame />}
+        {isGlazing(o) && <Spandrel o={o} patch={patch} />}
         {o.kind === 'door' && (
           <>
             <Row label="Hinge">
@@ -1143,6 +1145,30 @@ function MadeOf({ walls, dispatch }: { walls: Wall[]; dispatch: (a: Action) => v
         <label className="check" title="A stepped band under the wall's cap, as on a classical parapet">
           <input type="checkbox" checked={solid.every((w) => w.cornice)} onChange={(e) => dispatch({ type: 'low-wall', ids: solid.map((w) => w.id), cornice: e.target.checked })} /> Cornice under the cap
         </label>
+      )}
+    </>
+  )
+}
+
+/** A glass wall's spandrel (Opening.spandrelM): a solid band at the foot of its glass on every floor, and what it is made of. */
+function Spandrel({ o, patch }: { o: Opening; patch: (p: Partial<Omit<Opening, 'id'>>) => void }) {
+  return (
+    <>
+      <Row label="Solid band">
+        <span title="An opaque panel at the foot of the glass on every floor, as a curtain wall's spandrel over the slab (0 = glass to the floor)">
+          <LenInput valueM={o.spandrelM ?? 0} onCommit={(m) => patch({ spandrelM: m > 0.01 ? m : undefined })} />
+        </span>
+      </Row>
+      {(o.spandrelM ?? 0) > 0 && (
+        <Row label="Band of">
+          <select value={o.spandrel ?? 'dark'} aria-label="What the solid band is made of" onChange={(e) => patch({ spandrel: e.target.value as NonNullable<Opening['spandrel']> })}>
+            {SPANDREL_WORDS.map(([k, w]) => (
+              <option key={k} value={k}>
+                {w}
+              </option>
+            ))}
+          </select>
+        </Row>
       )}
     </>
   )

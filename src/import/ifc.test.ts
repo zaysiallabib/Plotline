@@ -157,6 +157,18 @@ describe('ifc import', () => {
     })
   }
 
+  const office = `${BENCH}/fantasy_office_building_1/arc.ifc`
+  const house = `${BENCH}/samuel_macalister_sample_house/arc.ifc`
+  it.skipIf(!present(office) || !present(house))("a curtain wall's opaque panels are its spandrel (session 31 outside2): the office's galvanised panels a metal band on each storey; a house's clear glazing none", async () => {
+    const glazing = async (f: string) => (await load(f)).storeys.flatMap((s) => s.unit.walls.flatMap((w) => w.openings.filter((o) => o.kind === 'window' && o.sillM < 0.1 && o.heightM >= 1.5)))
+    const o = await glazing(office)
+    expect(o.length).toBeGreaterThan(0)
+    expect(o.every((x) => x.spandrel === 'metal' && x.spandrelM! > 0.5 && x.spandrelM! < 1)).toBe(true)
+    const h = await glazing(house)
+    expect(h.length).toBeGreaterThan(0)
+    expect(h.some((x) => x.spandrelM)).toBe(false)
+  }, 60000)
+
   const duplex = `${BENCH}/duplex/arc.ifc`
   it.skipIf(!present(duplex))('duplex: four storeys, two of them real floors with rooms', async () => {
     const r = await load(duplex)

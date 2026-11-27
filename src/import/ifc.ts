@@ -710,6 +710,9 @@ function readModel(W: WebIfc, api: Api, model: number, fileName: string, t0: num
   }
   /** a curtain wall's parts (panels, frames), each its own footprint: its straight runs (curtainRuns) */
   const parts = new Map<number, Map<number, Body>>()
+  /** a curtain wall's panels (IfcPlate, CURTAIN_PANEL) seen solid in every one of their pieces, and those with a see-through piece: its spandrels (glassFront) */
+  const solidPanels = new Set<number>()
+  const clearPanels = new Set<number>()
   const partOf = (owner: number, id: number): Body => {
     const m = parts.get(owner) ?? parts.set(owner, new Map()).get(owner)!
     return m.get(id) ?? m.set(id, { pts: [], minY: Infinity, maxY: -Infinity }).get(id)!
@@ -809,6 +812,7 @@ function readModel(W: WebIfc, api: Api, model: number, fileName: string, t0: num
         }
       }
       if (wantBody && isA(owner, W.IFCCURTAINWALL)) {
+        if (owner !== mesh.expressID && (tn === 'IfcPlate' || predefinedOf(mesh.expressID) === 'CURTAIN_PANEL')) (g.color.w < 0.99 ? clearPanels : solidPanels).add(mesh.expressID)
         if (owner !== mesh.expressID) takeBody(partOf(owner, mesh.expressID), wm.P, wm.N, wm.I, false)
         // a glass front with a body of its own (a balcony's glazing wrapped round it, Nordic housing): its upright faces are its parts
         else
@@ -1049,7 +1053,7 @@ function readModel(W: WebIfc, api: Api, model: number, fileName: string, t0: num
     on: { s: Storey; bottom: number; top: number }[]
     name: string
     /** a window's frame (FRAMES_SLOT option), a glass front's mullion spacing */
-    holes: { seg: number; kind: OpeningKind; u0: number; u1: number; y0: number; y1: number; frame?: string; bayM?: number }[]
+    holes: { seg: number; kind: OpeningKind; u0: number; u1: number; y0: number; y1: number; frame?: string; bayM?: number; spandrelM?: number; spandrel?: 'dark' | 'metal' }[]
     /** its outside finish (an outer wall's, materials.ts); `outer`: an outer wall's (IsExternal, or every wall when the file does not say) */
     finish?: string
     outer?: boolean
@@ -1243,7 +1247,7 @@ function readModel(W: WebIfc, api: Api, model: number, fileName: string, t0: num
         if (y1 - y0 < 0.1) continue
         const sillM = h.kind === 'window' ? y0 : 0
         const L = segLen(chain.pts, h.seg)
-        const o: Opening = { id: newId(), kind: h.kind, offsetM: Math.max(0, Math.min(L - (h.u1 - h.u0), h.u0)), widthM: h.u1 - h.u0, heightM: y1 - sillM, sillM, ...(h.bayM ? { bayM: h.bayM } : {}) }
+        const o: Opening = { id: newId(), kind: h.kind, offsetM: Math.max(0, Math.min(L - (h.u1 - h.u0), h.u0)), widthM: h.u1 - h.u0, heightM: y1 - sillM, sillM, ...(h.bayM ? { bayM: h.bayM } : {}), ...(h.spandrelM ? { spandrelM: h.spandrelM, spandrel: h.spandrel } : {}) }
         if (h.frame) frameOfOpening.set(o.id, h.frame)
         draft.openings.push([h.seg, o])
       }
@@ -1274,7 +1278,26 @@ function readModel(W: WebIfc, api: Api, model: number, fileName: string, t0: num
    * its line, the middle of their gaps — between 0.4 and 4 m, else the glazing's own (≤ 1.4 m bays) — and the frame its
    * members' materials name (FRAMES_SLOT).
    */
-  function glassFront(wall: number, pts: Pt[]): { bayM?: number; frame?: string } {
+  function glassFront(wall: number, pts: Pt[]): { bayM?: number; frame?: string; spandrelM?: number; spandrel?: 'dark' | 'metal' } {
+    return { ...mullions(wall, pts), ...spandrels(wall) }
+  }
+  /**
+   * A glass front's spandrel (session 31 outside2: ifcmap left them glass): its panels solid in every piece (no see-through
+   * one), their height's middle value between 0.2 and 2 m the band on each storey; metal when their materials say so, else
+   * dark glass. ponytail: the band is drawn at each storey's foot, wherever the file's panels sit (over or under the slab).
+   */
+  function spandrels(wall: number): { spandrelM?: number; spandrel?: 'dark' | 'metal' } {
+    const hs = [...(parts.get(wall)?.entries() ?? [])]
+      .filter(([p]) => solidPanels.has(p) && !clearPanels.has(p))
+      .map(([p, b]) => [p, b.maxY - b.minY] as const)
+      .filter(([, h]) => h >= 0.2 && h <= 2)
+      .sort((a, b) => a[1] - b[1])
+    if (!hs.length) return {}
+    const [p, h] = hs[Math.floor(hs.length / 2)]
+    const metal = materialsOf(p).mats.some((m) => /metal|alu|steel|zinc|copper|panel/i.test(m.name))
+    return { spandrelM: Math.round(h * 100) / 100, spandrel: metal ? 'metal' : 'dark' }
+  }
+  function mullions(wall: number, pts: Pt[]): { bayM?: number; frame?: string } {
     const a = pts[0], b = pts[pts.length - 1]
     const L = Math.hypot(b.x - a.x, b.y - a.y)
     const members = [...(parts.get(wall)?.entries() ?? [])].filter(([p, body]) => p >= 0 && isA(p, W.IFCMEMBER) && (predefinedOf(p) === 'MULLION' || body.maxY - body.minY > 1))

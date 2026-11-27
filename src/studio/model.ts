@@ -51,6 +51,12 @@ export const RAIL_COLOR_WORDS: Record<RailColor, string> = {
   oak: 'Light oak',
   weathered: 'Weathered timber',
 }
+/** What a glass wall's solid band is (Opening.spandrel), in plain words: the Studio's and the 3D card's list */
+export const SPANDREL_WORDS: [NonNullable<Opening['spandrel']>, string][] = [
+  ['dark', 'Dark glass'],
+  ['metal', 'Metal'],
+  ['outside', 'The outside walls'],
+]
 /** a zone line's plan width (a graph edge, never a wall in 3D) */
 export const ZONE_LINE_M = 0.05
 /** up to this a wall is a kerb (core: ≤ ~0.2) */

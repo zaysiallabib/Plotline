@@ -16,13 +16,14 @@ import { arriveBy, isStair, isStairRoom } from '../furnish/stairs'
 import { EDGES_SLOT, FRAMES_SLOT, OUTSIDE_SLOT, faceWallId, frameKey, outerRuns, outsideOf, roomKey, wallKey } from '../furnish/finishes'
 import { placementLabel, placementSize } from '../furnish/kit'
 import { onOwnChange, ownVersion, refreshOwnOptions, withOwnOptions } from '../furnish/own'
+import { isGlazing } from '../furnish/presets'
 import { deletePiece, layoutFor, movePiece, pieceQuad, refurnish, resizeAxes, resizePiece, surfaceOf, type Move } from '../studio/furniture'
 import { buyer, flushOutbox, selectionPayload, sendEvent, setBuyerName } from '../lib/events'
 import { learnCarried } from '../lib/library'
 import { configured as sharingConfigured, fetchSharedUnit } from '../lib/supabase'
 import { LinkOff, NoPreview, NotFound, Offline, Skeleton, Slate } from '../lib/pages'
 import { pageTitle } from '../lib/route'
-import { LOW_KINDS, RAIL_COLOR_WORDS, WALL_TYPES, findOpening, initialState, isUnit, normalizeUnit, reducer, wallTypeOf, type Action, type StudioState } from '../studio/model'
+import { LOW_KINDS, RAIL_COLOR_WORDS, SPANDREL_WORDS, WALL_TYPES, findOpening, initialState, isUnit, normalizeUnit, reducer, wallTypeOf, type Action, type StudioState } from '../studio/model'
 import { preloadModels } from '../three/furniture'
 import { PlotlineScene, type ArrangeEvent, type OpeningEvent, type PickHit, type SceneMode } from '../three/PlotlineScene'
 import type { TowerHit } from '../three/building'
@@ -520,7 +521,7 @@ function OpeningPanel(p: {
   refused: boolean
   canUndo: boolean
   onKind: (k: OpeningKind) => void
-  onSize: (patch: Partial<Pick<Opening, 'widthM' | 'heightM' | 'sillM'>>) => void
+  onSize: (patch: Partial<Pick<Opening, 'widthM' | 'heightM' | 'sillM' | 'spandrelM' | 'spandrel'>>) => void
   onWall: (patch: { lengthM?: number; heightM?: number }) => void
   /** what the low wall is made of (model LOW_KINDS), a solid one's cornice, a railing's colour */
   onLowKind: (patch: { kind?: (typeof LOW_KINDS)[number][0]; cornice?: boolean; color?: RailColor }) => void
@@ -595,6 +596,23 @@ function OpeningPanel(p: {
             <FtIn label="Height" m={o.heightM} onSet={(heightM) => p.onSize({ heightM })} />
             <FtIn label="Sill" m={o.sillM} onSet={(sillM) => p.onSize({ sillM })} />
           </div>
+          {isGlazing(o) && (
+            <div className="arrange-row">
+              <FtIn label="Solid band" m={o.spandrelM ?? 0} onSet={(m) => p.onSize({ spandrelM: m > 0.01 ? m : undefined })} />
+              {(o.spandrelM ?? 0) > 0 && (
+                <label className="ftin">
+                  Band of
+                  <select value={o.spandrel ?? 'dark'} onChange={(e) => p.onSize({ spandrel: e.target.value as NonNullable<Opening['spandrel']> })}>
+                    {SPANDREL_WORDS.map(([k, w]) => (
+                      <option key={k} value={k}>
+                        {w}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              )}
+            </div>
+          )}
           {p.frame && (
             <label className="ftin">
               Frame

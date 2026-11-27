@@ -9,7 +9,7 @@ import type { MaterialRef, Opening, Wall } from '../core'
 import type { ObjectKind } from '../furnish/kit'
 import { GLAZING_MIN_H, isGlazing } from '../furnish/presets'
 import type { CasingPlan } from './details'
-import { materialFor } from './materials'
+import { EXTERIOR_PLASTER, materialFor } from './materials'
 
 /** Rewrites UVs so each face maps its own plane in metres (positions must already be in metres). Any geometry with normals. */
 export function meterUVs(g: THREE.BufferGeometry): THREE.BufferGeometry {
@@ -26,6 +26,14 @@ export function meterUVs(g: THREE.BufferGeometry): THREE.BufferGeometry {
   uv.needsUpdate = true
   return g
 }
+
+/** a curtain wall's spandrel panels (Opening.spandrel): back-painted dark glass, or anthracite metal; 'outside' is the walls' finish (its caller's) */
+export const SPANDREL: Record<'dark' | 'metal', MaterialRef> = {
+  dark: { kind: 'color', color: '#1e2427', roughness: 0.12, metalness: 0.2 },
+  metal: { kind: 'color', color: '#3a4045', roughness: 0.45, metalness: 0.3 },
+}
+/** A glass wall's opaque band (Opening.spandrelM), at most all but 0.3 m of it: 0 for any other opening or none set. */
+export const spandrelOf = (o: Opening): number => (isGlazing(o) && o.spandrelM && o.spandrelM > 0 ? Math.min(o.spandrelM, o.heightM - 0.3) : 0)
 
 /** Lower than this, a wall's passage is only a gap (a gate in a boundary wall): no lintel, no casing — as the Studio keeps the wall low (model.ts fullHeightIfOpenings). */
 export const LOW_WALL_M = 2
@@ -433,13 +441,27 @@ function buildGlazing(g: THREE.Group, o: Opening, T2: number): void {
   const D = Math.min(0.12, 2 * T2 - 0.02) / 2
   const n = Math.max(1, o.bayM ? Math.round((o.widthM - 2 * F) / o.bayM) : Math.ceil((o.widthM - 2 * F) / 1.4))
   const bay = (o.widthM - 2 * F) / n
+  // a spandrel (Opening.spandrelM): a transom over the band, opaque panels under it between the mullions, glass above
+  const band = spandrelOf(o)
+  const g0 = band ? s + band + F / 2 : s + F
   const alu = [slab(u0, u0 + F, s, top, -D, D), slab(u1 - F, u1, s, top, -D, D), slab(u0 + F, u1 - F, top - F, top, -D, D), slab(u0 + F, u1 - F, s, s + F, -D, D)]
+  if (band) alu.push(slab(u0 + F, u1 - F, s + band - F / 2, s + band + F / 2, -D, D))
   const panes: THREE.BufferGeometry[] = []
+  const panels: THREE.BufferGeometry[] = []
   for (let i = 0; i < n; i++) {
     const a = u0 + F + i * bay
     if (i) alu.push(slab(a - F / 2, a + F / 2, s + F, top - F, -D, D))
-    panes.push(slab(a + (i ? F / 2 : 0), a + bay - (i < n - 1 ? F / 2 : 0), s + F, top - F, -0.003, 0.003))
+    const [p0, p1] = [a + (i ? F / 2 : 0), a + bay - (i < n - 1 ? F / 2 : 0)]
+    panes.push(slab(p0, p1, g0, top - F, -0.003, 0.003))
+    if (band) panels.push(slab(p0, p1, s + F, s + band - F / 2, -0.012, 0.012))
   }
   g.add(part(g, 'frame', 'Glazing frame', 'window-frame', merged(alu, MULLION, true)))
   g.add(part(g, 'glass', 'Glass', 'window-glass', merged(panes, GLAZING_GLASS)))
+  if (panels.length) {
+    // in the outside finish: its caller dresses it (userData.spandrel: PlotlineScene.applyMaterials); until then the plaster
+    const out = o.spandrel === 'outside'
+    const mesh = merged(panels, out ? EXTERIOR_PLASTER : SPANDREL[o.spandrel === 'metal' ? 'metal' : 'dark'], true)
+    if (out) mesh.userData.spandrel = true
+    g.add(part(g, 'band', 'Spandrel panel', 'window-frame', mesh))
+  }
 }
