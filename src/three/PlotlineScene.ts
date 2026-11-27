@@ -22,11 +22,12 @@ import { LineSegmentsGeometry } from 'three/addons/lines/LineSegmentsGeometry.js
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js'
 import { XRControls } from './xr'
 import { Building, onStorey, type TowerHit } from './building'
-import { LITE_MAX_TRIANGLES, loadShell } from './shell'
+import { LITE_MAX_TRIANGLES, dressShell, loadShell, type Dress } from './shell'
 import * as core from '../core'
 import type { Configuration, FinishSlot, FurniturePlacement, Id, MaterialRef, Pillar, Pt, Room, Shell, Unit, Wall } from '../core'
 import { faceWallId, outerRuns, outsideOf, roomKey, wallKey, type Outside } from '../furnish/finishes'
-import { floorIn, stemIn, towerOf } from '../data/building'
+import { floorIn, roofIn, stemIn, towerOf } from '../data/building'
+import { coveringOf } from '../data/building/roof'
 import { kitAsset, lightOf, type ObjectKind } from '../furnish/kit'
 import { LANDING_M, isStair, stairHole, stairSpot, treadBelow } from '../furnish/stairs'
 import { buildProcedural, lean, lite } from '../furnish/procedural'
@@ -1184,6 +1185,7 @@ export class PlotlineScene {
     this.wake()
     this.applyMaterials()
     this.rebatch('static')
+    this.dressShell()
     this.retower() // (a floor on its way builds its tower with it)
   }
 
@@ -1419,6 +1421,7 @@ export class PlotlineScene {
     if (!b) return
     b.adopt(was)
     this.wake()
+    this.dressShell() // (the roof's covering, on the outside shape too)
     b.onChange = this.wake
     this.building = b
     this.scene.add(b)
@@ -2089,9 +2092,23 @@ export class PlotlineScene {
     const g = await loadShell(s, this.shellClip).catch((e: unknown) => (console.warn('[plotline] outside shape', e), null))
     if (!g || token !== this.buildToken || this.disposed) return
     this.shell = g
+    this.dressShell()
     g.visible = !this.holding // a stair's floor: shown with it (arrive)
     this.scene.add(g)
     this.wake()
+  }
+
+  /**
+   * The outside shape's dressed surfaces (three/shell.ts dressShell): the building's own outside finish, frames and roof
+   * covering follow what staff chose for the building (Finishes, the roof); the others keep what their file's names said.
+   */
+  private dressShell(): void {
+    if (!this.shell || !this.unit) return
+    const t = towerOf(this.unit)
+    const roof = t ? roofIn(t) : undefined
+    const choose = (d: Dress): MaterialRef | null =>
+      !d.main ? null : d.slot === 'out' ? this.outside.wall(null, null) : d.slot === 'frame' ? this.outside.frame(null, null) : roof?.covering ? coveringOf(roof).material : null
+    dressShell(this.shell, choose, this.shellClip)
   }
 
   private buildWall(wall: Wall, unit: Unit): void {

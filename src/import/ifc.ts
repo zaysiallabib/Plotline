@@ -15,7 +15,7 @@ import type { Configuration, Id, LowWallKind, Opening, OpeningKind, Pillar, Pt, 
 import { PARTITION_M, WALL_HEIGHT_M, ZONE_LINE_M, emptyUnit, guessKind, studioIssues } from '../studio/model'
 import { FRAMES_SLOT, OUTSIDE_SLOT, ROOF_COVERINGS, frameKey, outerRuns, outsideKey } from '../furnish/finishes'
 import type { Roof, RoofKind } from '../data/building/roof'
-import { classOf, coveringOption, frameOption, outerOf, outsideOption, plain, railKind } from './materials'
+import { classOf, coveringOption, frameOption, outerOf, outsideOption, plain, railKind, toneGlass } from './materials'
 import { dressName, writeGlb, type GlbGroup } from './glb'
 import { settleImport } from './plan2d'
 import { unzipSync } from 'three/examples/jsm/libs/fflate.module.js'
@@ -735,7 +735,10 @@ function readModel(W: WebIfc, api: Api, model: number, fileName: string, t0: num
         }
       const of = roofIds.has(id) ? id : aggregateParent.get(id)
       if (of !== undefined && roofIds.has(of)) roofArea.set(of, (roofArea.get(of) ?? 0) + flat + sloped)
-      const o = roofCovering(id, sloped > flat) ?? (aggregateParent.has(id) && roofIds.has(aggregateParent.get(id)!) ? roofCovering(aggregateParent.get(id)!, sloped > flat) : null)
+      // (the shape wears the covering its names say even when it is the other kind's: a zinc roof of 5° is zinc)
+      const up = aggregateParent.has(id) && roofIds.has(aggregateParent.get(id)!) ? aggregateParent.get(id)! : null
+      const pitched = sloped > flat
+      const o = roofCovering(id, pitched) ?? (up !== null ? roofCovering(up, pitched) : null) ?? roofCovering(id, !pitched) ?? (up !== null ? roofCovering(up, !pitched) : null)
       if (o) look = { slot: 'roof', option: o }
     } else if (shell && win) {
       const o = windowFrame(id)
@@ -764,6 +767,8 @@ function readModel(W: WebIfc, api: Api, model: number, fileName: string, t0: num
       }
       const c = g.color
       if (win) (windows.n++, (windows.clear ||= c.w < 0.99))
+      // (see-through: the file's glass toned to Plotline's own, materials.ts toneGlass)
+      if (c.w < 0.99) [c.x, c.y, c.z, c.w] = toneGlass([c.x, c.y, c.z, c.w])
       // (a window's glass keeps its own colour: only its frame is dressed)
       const dress = look && c.w >= 0.99 ? look : null
       if (dress) {

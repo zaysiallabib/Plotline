@@ -195,10 +195,11 @@ export function fallbackColor(textureId: string): string {
  * `outside`: the Building view's tower variant: none of the walked flat's lamps (noSpots) and the city's night light. On Lite,
  * whose shader has no lamp at all, the tower's and the flat's own plain ones are one program, the night light switched on
  * for the tower's only (one program, not two). `outer`: a walked flat's outer face in the building's outside finish
- * (furnish/finishes.ts outsideOf): the city's night light, as the plaster outside always had.
+ * (furnish/finishes.ts outsideOf): the city's night light, as the plaster outside always had. `own`: a caller that changes the
+ * material after (the outside shape's Dollhouse cut, three/shell.ts) keeps a copy of its own under that name.
  */
-export function materialFor(ref: MaterialRef, edge = false, daylit = false, outside = false, outer = false): THREE.MeshStandardMaterial {
-  const key = JSON.stringify(ref) + (edge ? '|edge' : '') + (daylit ? '|day' : '') + (outside ? '|out' : '') + (outer ? '|outer' : '')
+export function materialFor(ref: MaterialRef, edge = false, daylit = false, outside = false, outer = false, own = ''): THREE.MeshStandardMaterial {
+  const key = JSON.stringify(ref) + (edge ? '|edge' : '') + (daylit ? '|day' : '') + (outside ? '|out' : '') + (outer ? '|outer' : '') + (own ? `|${own}` : '')
   const cached = matCache.get(key)
   if (cached) return cached
   let m: THREE.MeshStandardMaterial

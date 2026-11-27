@@ -73,7 +73,7 @@ export interface ReadOptions {
   siblings?: Map<string, Blob>
   /** the person's corrections of what a DXF / SVG layer holds */
   layerRoles?: LayerRoles
-  /** a DXF read in the unit the person picked (metres per file unit), not the file's own or the guessed one */
+  /** a DXF or a 3D model read in the unit the person picked (metres per file unit), not the file's own or the guessed one */
   unitScale?: number
   /** an IFC's material names as the person mapped them (the Studio's Materials list): plain name → option id */
   materials?: Record<string, string>
@@ -129,6 +129,6 @@ export async function importFile(file: File, opts: ReadOptions = {}): Promise<Im
     case 'svg':
       return (await import('./svg')).importSvg(new TextDecoder().decode(bytes), file.name, opts.layerRoles)
     case 'mesh':
-      return (await import('./mesh')).importMesh(bytes, file.name, opts.siblings)
+      return (await import('./mesh')).importMesh(bytes, file.name, opts.siblings, opts.unitScale)
   }
 }

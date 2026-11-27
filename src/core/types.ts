@@ -311,6 +311,11 @@ export interface Shell {
    * in the flats' window openings, with the rooms behind it and their lights at night (three/building.ts). Absent: as drawn.
    */
   glass?: 'opaque'
+  /**
+   * A whole building's model dropped on a drawing (a 3D model, no storeys: import/mesh.ts): its lowest point is the street —
+   * on each floor its drawing stands on, it stands that floor's height lower (data/building/projects.ts projectTower).
+   */
+  street?: true
 }
 
 /**

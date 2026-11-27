@@ -1,6 +1,6 @@
 /** The word table on material names as the 48 measured IFCs write them (Docs/review/outside/TABLES.md). */
 import { describe, expect, test } from 'vitest'
-import { classOf, coveringOption, frameOption, outerOf, outsideOption, railKind } from './materials'
+import { classOf, coveringOption, frameOption, outerOf, outsideOption, railKind, toneGlass } from './materials'
 
 describe('material names → the outside finish (session 31 ifcmap)', () => {
   test.each([
@@ -97,5 +97,15 @@ describe('roofs, railings, frames', () => {
     expect(frameOption(['Lasi - kirkas nopea', 'Puu - mänty rae vaakasuora'])).toBe('fo_frame_timber')
     expect(frameOption(['Aluminium. Color NCS 7500-N'])).toBe('fo_frame_anthracite')
     expect(frameOption(['Window Frame', 'Glass'])).toBeNull()
+  })
+})
+
+describe('glass', () => {
+  test("a file's see-through colour is toned to Plotline's glass: a saturated blue goes grey-green, 18–40 % opaque", () => {
+    const [r, , b, a] = toneGlass([0, 0, 1, 0.25])
+    expect(b - r).toBeLessThan(0.25) // was 1: no longer a blue panel
+    expect(a).toBe(0.25)
+    expect(toneGlass([0.6, 0.6, 0.6, 0.05])[3]).toBe(0.18)
+    expect(toneGlass([0.6, 0.6, 0.6, 0.9])[3]).toBe(0.4)
   })
 })

@@ -4,12 +4,16 @@
  * unit's floor datum sits at world Y = 0. Materials as they came, front faces only, shadows both ways, the scene's own
  * environment; drawn a hair behind everything else (polygonOffset 1 / 1) so the unit's own exterior walls, which lie in
  * the same planes, win instead of z-fighting. One parsed model is kept (the last id); the scene gets a clone of it.
+ * Its dressed surfaces (an IFC's outer walls, roof and frames, named for the option their materials say: import/glb.ts
+ * dressName) wear Plotline's own pictures (dressShell).
  */
 import * as THREE from 'three'
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js'
-import type { Shell } from '../core'
+import type { MaterialRef, Shell } from '../core'
+import { FRAMES_SLOT, OUTSIDE_SLOT, ROOF_COVERINGS } from '../furnish/finishes'
 import { WINDOW, parseDress } from '../import/glb'
 import { getShell } from '../studio/shells'
+import { materialFor } from './materials'
 
 /** more triangles than this and the lite tier leaves the shape out */
 export const LITE_MAX_TRIANGLES = 500_000
@@ -73,6 +77,34 @@ export function solidWindowsOut(g: THREE.Object3D): number {
   g.traverse((o) => {
     const m = o as THREE.Mesh
     if (m.isMesh && [m.material].flat().some((x) => x.name === WINDOW || parseDress(x.name)?.slot === 'frame')) (m.visible = false), n++
+  })
+  return n
+}
+
+/** a dressed surface's option among Plotline's own (the outside finishes, frames, roof coverings) */
+const OPTIONS = new Map([...OUTSIDE_SLOT.options, ...FRAMES_SLOT.options, ...ROOF_COVERINGS.flat, ...ROOF_COVERINGS.pitched].map((o) => [o.id, o.material]))
+export type Dress = NonNullable<ReturnType<typeof parseDress>>
+
+/**
+ * The shape's dressed surfaces in Plotline's own materials (three/materials.ts, the tower's outside variant, a copy of its own
+ * so the Dollhouse cut `clip` stays its own): `choose` first — the building's choice for a surface that is its own (`main`:
+ * the outside finish, the frames, the roof's covering as staff set them) — else the option its file's names said. A surface
+ * with neither keeps the file's colour. Again after each change of the building's outside (PlotlineScene). Returns how many.
+ */
+export function dressShell(g: THREE.Object3D, choose: (d: Dress) => MaterialRef | null = () => null, clip?: THREE.Plane): number {
+  let n = 0
+  g.traverse((o) => {
+    const m = o as THREE.Mesh
+    if (!m.isMesh || Array.isArray(m.material)) return
+    const file = (m.userData.fileMaterial ??= m.material) as THREE.Material
+    const d = parseDress(file.name)
+    if (!d) return
+    const ref = choose(d) ?? OPTIONS.get(d.option)
+    if (!ref) return void (m.material = file)
+    const mat = materialFor(ref, true, false, true, false, 'shell')
+    mat.clippingPlanes = clip ? [clip] : null
+    m.material = mat
+    n++
   })
   return n
 }

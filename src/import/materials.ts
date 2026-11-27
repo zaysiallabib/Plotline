@@ -175,6 +175,17 @@ export function railKind(names: string[]): LowWallKind | null {
   return null
 }
 
+/**
+ * A see-through colour of an architect's file (r g b a, 0–1) toned to Plotline's own glass (three/openings.ts GLAZING_GLASS,
+ * #2f4644): 85 % of the way to its tint, 18–40 % opaque — a file's saturated blue (Kleine Wohnung's 0 / 0 / 255) or violet
+ * (Gaia's veranda) reads as glass, not as a painted panel; a hint of its own hue stays (a bronze stays warmer).
+ */
+export function toneGlass([r, g, b, a]: [number, number, number, number]): [number, number, number, number] {
+  const k = 0.85
+  const [tr, tg, tb] = [0x2f / 255, 0x46 / 255, 0x44 / 255]
+  return [r + (tr - r) * k, g + (tg - g) * k, b + (tb - b) * k, Math.min(0.4, Math.max(0.18, a))]
+}
+
 /** A window's or a curtain wall's frame (finishes.ts FRAMES_SLOT) from its material / style names; null: not told. */
 export function frameOption(names: string[]): string | null {
   const s = names.map(plain).join(' | ')

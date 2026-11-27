@@ -12,6 +12,7 @@
  */
 import type { ImportResult, ImportedShell } from './types'
 import { findSibling } from './bundle'
+import { toneGlass } from './materials'
 
 /** metres per file unit, and why */
 export interface UnitGuess {
@@ -109,7 +110,7 @@ export function missingBuffers(gltf: { buffers?: { uri?: string }[] }, has: (uri
  * `siblings`: the other files of the drop (bundle.ts), by their path from this file's folder — a .gltf's .bin and
  * textures, an .obj's .mtl, the pictures an .fbx / .glb / .dae / .3ds points to.
  */
-export async function importMesh(bytes: ArrayBuffer, name: string, siblings: Map<string, Blob> = new Map()): Promise<ImportResult> {
+export async function importMesh(bytes: ArrayBuffer, name: string, siblings: Map<string, Blob> = new Map(), unitScale?: number): Promise<ImportResult> {
   const THREE = await import('three')
   const notes: string[] = []
   const e = ext(name)
@@ -260,6 +261,26 @@ export async function importMesh(bytes: ArrayBuffer, name: string, siblings: Map
         if (slots[k] && !(slots[k]!.image && slots[k]!.image!.width)) (slots[k] = null), (mat.needsUpdate = true), lost++
     }
   })
+  // a material fully see-through with nothing to cut it (the Macky Auditorium's Collada: transparency 1 read as clear) is drawn
+  // solid; a see-through colour is toned to Plotline's glass (a saturated blue pane reads as glass)
+  let clearing = 0
+  let toned = 0
+  object.traverse((o) => {
+    const m = o as InstanceType<typeof THREE.Mesh>
+    if (!m.isMesh) return
+    for (const mat of (Array.isArray(m.material) ? m.material : [m.material]) as (InstanceType<typeof THREE.Material> & { color?: InstanceType<typeof THREE.Color>; map?: unknown; alphaMap?: unknown })[]) {
+      if (!mat.transparent || mat.alphaMap) continue
+      if (mat.opacity < 0.02) (mat.opacity = 1), (mat.transparent = false), (mat.needsUpdate = true), clearing++
+      else if (mat.opacity < 0.95 && mat.color && !mat.map) {
+        const [r, g, b, a] = toneGlass([mat.color.r, mat.color.g, mat.color.b, mat.opacity])
+        mat.color.setRGB(r, g, b)
+        mat.opacity = a
+        toned++
+      }
+    }
+  })
+  if (clearing) notes.push(`${clearing} material${clearing === 1 ? '' : 's'} came fully see-through (nothing would show): drawn solid`), (passThrough = false)
+  if (toned) notes.push(`${toned} glass material${toned === 1 ? '' : 's'} toned to Plotline's glass`), (passThrough = false)
   const missing = [...files.missing].filter((f) => !/\.(bin|mtl)$/i.test(f))
   if (missing.length) notes.push(`${missing.length} picture${missing.length === 1 ? '' : 's'} the file points to ${missing.length === 1 ? 'was' : 'were'} not in the drop (${missing.slice(0, 4).join(', ')}${missing.length > 4 ? ', …' : ''}): drop the whole folder or a .zip of it to keep ${missing.length === 1 ? 'it' : 'them'}`)
   else if (lost) notes.push(`${lost} picture${lost === 1 ? '' : 's'} could not be read and ${lost === 1 ? 'was' : 'were'} left out`)
@@ -268,7 +289,8 @@ export async function importMesh(bytes: ArrayBuffer, name: string, siblings: Map
   const raw = new THREE.Box3().setFromObject(object)
   if (raw.isEmpty()) throw new Error(`${name} holds no geometry`)
   const rawBox: Box = { min: raw.min.toArray() as Box['min'], max: raw.max.toArray() as Box['max'] }
-  if (scale === null) {
+  if (unitScale) (scale = unitScale), notes.push(`Read at ${unitScale} m per unit, as you set it`)
+  else if (scale === null) {
     const g = guessUnit(Math.max(...raw.getSize(new THREE.Vector3()).toArray()))
     scale = g.scale
     notes.push(g.note)
