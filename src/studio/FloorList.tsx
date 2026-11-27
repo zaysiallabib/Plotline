@@ -112,6 +112,7 @@ const KEPT_GROUPS: [SheetKind, string][] = [
   ['site', 'Site'],
   ['elevation', 'Elevations'],
   ['section', 'Sections'],
+  ['roof', 'Roof plans'],
   ['schedule', 'Schedules'],
   ['interior', 'Interior elevations'],
   ['detail', 'Details'],

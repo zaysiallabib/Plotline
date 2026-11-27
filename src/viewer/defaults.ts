@@ -27,12 +27,14 @@ export function titleOf(u: Unit, rooms: Room[], known?: Flat[]): string {
   return flats.length > 1 || rooms.some((r) => r.kind === 'other' && isCommonCore(r)) ? 'Floor plan A' : 'Untitled unit'
 }
 
+/** as auto-trace counts a flat with no printed area: the closed rooms' total, sqft (shafts out; a lawn, drive or deck is no floor area) */
+export const roomsSqft = (rooms: Room[]): number => Math.round(sqmToSqft(rooms.filter((r) => r.kind !== 'shaft' && !isOutdoor(r.kind)).reduce((t, r) => t + r.areaSqm, 0)))
+
 export function withDefaults(u: Unit, rooms: Room[]): Unit {
   return {
     ...u,
     name: titleOf(u, rooms),
-    // as auto-trace does without a printed area: the closed rooms' total (shafts out; a lawn, drive or deck is no floor area)
-    areaSqft: u.areaSqft || Math.round(sqmToSqft(rooms.filter((r) => r.kind !== 'shaft' && !isOutdoor(r.kind)).reduce((t, r) => t + r.areaSqm, 0))),
+    areaSqft: u.areaSqft || roomsSqft(rooms),
     // no slots of its own: the catalog by room kind (furnish/finishes.ts); the staff's own options at the end of theirs
     finishSlots: withOwnOptions(finishSlotsFor(u, rooms)),
   }

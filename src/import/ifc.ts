@@ -21,6 +21,18 @@ import { finishesOn, settleImport } from './plan2d'
 import { unzipSync } from 'three/examples/jsm/libs/fflate.module.js'
 
 type WebIfc = typeof import('web-ifc')
+
+/**
+ * A wall type's or a material's name as a person says it (qa4fix): its own words — not the family ("Basic Wall:"), the
+ * element number (":7102787") nor an office's code in front ("SIA_41_", "SIA_PA_", "CHEK_"); underscores between parts as
+ * dots. "Basic Wall:SIA_41_Crépi 10 _ Is 140 _ Colle 10:7102787" → "Crépi 10 · Is 140 · Colle 10"; "SIA_PA_Crépi beige,
+ * texturé" → "Crépi beige, texturé"; a plain name stays.
+ */
+export function nameWords(name: string): string {
+  const parts = name.split(':').map((s) => s.trim()).filter((s) => s && !/^\d+$/.test(s))
+  const type = parts.length > 1 ? parts.slice(1).join(' ') : (parts[0] ?? '')
+  return type.replace(/^(?:[A-Z0-9]{1,6}_)+/, '').replace(/\s*_\s*/g, ' · ').trim() || name
+}
 type Api = InstanceType<WebIfc['IfcAPI']>
 
 /** corners closer than this are one corner */
@@ -221,16 +233,9 @@ function readModel(W: WebIfc, api: Api, model: number, fileName: string, t0: num
     return s
   }
 
-  // header
+  // header (what wrote it is no news to the person who dropped it, qa4fix)
   const schema = api.GetModelSchema(model)
-  let tool = ''
-  try {
-    const h = api.GetHeaderLine(model, W.FILE_NAME)
-    tool = [val(h?.arguments?.[5]), val(h?.arguments?.[4])].filter((s) => typeof s === 'string' && s.trim()).join(' / ')
-  } catch {
-    /* no header line */
-  }
-  notes.push(`Schema ${schema}${tool ? `, written by ${tool}` : ''}.`)
+  notes.push(`Schema ${schema}.`)
 
   // units
   let scale = 1
@@ -1267,7 +1272,7 @@ function readModel(W: WebIfc, api: Api, model: number, fileName: string, t0: num
       u0 = Math.min(u0, u), u1 = Math.max(u1, u)
     }
     if (u1 - u0 > L + 0.02 || u1 - u0 < 0.1) {
-      dropped.push(`${kind} ${(u1 - u0).toFixed(2)} m wide on the ${L.toFixed(2)} m wall "${chain.name}"`)
+      dropped.push(`${kind} ${(u1 - u0).toFixed(2)} m wide on the ${L.toFixed(2)} m wall "${nameWords(chain.name)}"`)
       return false
     }
     chain.holes.push({ seg, kind, u0, u1, y0: ob.minY, y1: ob.maxY, ...(frame ? { frame } : {}) })
@@ -1574,7 +1579,8 @@ function readModel(W: WebIfc, api: Api, model: number, fileName: string, t0: num
   }
   const roof = roofSetting([...roofIds].map((r) => ({ kind: predefinedOf(r), area: roofArea.get(r) ?? 0 })), roofFaces, mains.roof)
 
-  notes.push(`${storeys.length} storey${storeys.length === 1 ? '' : 's'}: ${storeys.map((s) => `${s.name} at ${fmt(s.z - baseY)} m`).join(', ')}.`)
+  // (each storey's own line follows, with its floor's height: listed once, qa4fix)
+  notes.push(storeys.length === 1 ? 'One storey:' : `${storeys.length} storeys, the lowest first:`)
   notes.push(...counts)
   // (said once, not per floor nor per room: the Issues list holds them as one row on a big floor)
   if (nameless.length) notes.push(`${nameless.length === storeys.length ? 'No floor' : nameless.join(', ')} ${nameless.length === storeys.length ? 'of the file names its rooms' : nameless.length === 1 ? 'names no rooms' : 'name no rooms'} (no IfcSpace): the rooms stay "Space N" — Issues → "rooms with no name" names them by floor and number in one click.`)
@@ -1604,7 +1610,7 @@ function readModel(W: WebIfc, api: Api, model: number, fileName: string, t0: num
   if (known.length) {
     const by = new Map<string, string[]>()
     for (const m of known) by.set(m.finish!, [...(by.get(m.finish!) ?? []), m.name])
-    notes.push(`The outside as the file's materials name it: ${[...by].map(([f, ns]) => `${label(f)} (${ns.slice(0, 2).map((n) => `"${n}"`).join(', ')}${ns.length > 2 ? ', …' : ''})`).join('; ')}${mains.out ? ` — the building's own: ${label(mains.out)}` : ''}${mains.frame ? `; window frames ${label(mains.frame)}` : ''}. Finishes → click an outer wall to change it.`)
+    notes.push(`The outside as the file's materials name it: ${[...by].map(([f, ns]) => `${label(f)} (${ns.slice(0, 2).map((n) => `"${nameWords(n)}"`).join(', ')}${ns.length > 2 ? ', …' : ''})`).join('; ')}${mains.out ? ` — the building's own: ${label(mains.out)}` : ''}${mains.frame ? `; window frames ${label(mains.frame)}` : ''}. Finishes → click an outer wall to change it.`)
   } else if (mains.frame) notes.push(`Window frames as the file names them: ${label(mains.frame)}.`)
   const unknown = materials.filter((m) => !m.finish && classOf(m.name) === null)
   if (unknown.length) notes.push(`${unknown.length} material${unknown.length === 1 ? '' : 's'} not known (${unknown.length === 1 ? 'it keeps' : 'they keep'} the plaster): ${unknown.slice(0, 4).map((m) => `"${m.name}"`).join(', ')}${unknown.length > 4 ? ', …' : ''} — Materials, below: say what each is, and it is kept for the next file.`)

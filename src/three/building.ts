@@ -219,8 +219,9 @@ export interface FlatRef {
 export interface TowerHit {
   k: number
   flat: FlatRef | null
-  /** the wall it is on (a wall, a parapet, a window's): its drawing's id and its run (finishes.ts outerRuns) — Finishes' outside card */
-  wall?: { drawing: Id; run: Id }
+  /** the wall it is on (a wall, a parapet, a window's): its drawing's id and its run (finishes.ts outerRuns) — Finishes' outside card;
+   *  the wall itself and the stem it stands in — a balcony edge's Made of card (qa4fix) */
+  wall?: { drawing: Id; run: Id; id?: Id; stem?: string }
 }
 
 /** Axis-aligned box, plan x/z and height y ranges (any order), non-indexed so it merges with wallGeometry. */
@@ -864,8 +865,8 @@ export class Building extends THREE.Group {
 
   /**
    * Round the walked flat (walk, Dollhouse): the floors render.ts towerLevel picks for the tier, the sun's shadow from them as
-   * TIERS.towerShadows says, no lifts; the other flats' rooms behind their glass, their furniture once the Building view has
-   * been opened (the walk starts as fast as before). The Building view: all of it, casting as built (highlight cuts).
+   * TIERS.towerShadows says, no lifts; the other flats' rooms behind their glass, never their furniture (made once the Building
+   * view has been opened, shown only there: placeInside). The Building view: all of it, casting as built (highlight cuts).
    */
   frame(mode: 'walk' | 'orbit' | 'building', tier: Quality): void {
     // the same view again, settled (Enter or a Rooms jump places him: PlotlineScene.setMode): nothing changes — its batches
@@ -1409,9 +1410,13 @@ export class Building extends THREE.Group {
     this.batchAround()
   }
 
-  /** Every flat's furniture shown as the tier says (furnishes; on Low the picked floor too), unless a cut hides its floor. */
+  /**
+   * Every flat's furniture shown as the tier says (furnishes; on Low the picked floor too), unless a cut hides its floor — in
+   * the Building view only: back in Walk or the Dollhouse it is put away (qa4fix: 0.42 M triangles, 8 draws and twice the
+   * frame time stayed on Type A after a visit); kept made, so the Building view shows it again at once.
+   */
   private placeInside(): void {
-    for (const f of this.flats) if (f.things) f.things.visible = !f.things.userData.cut && this.shows(f.k) && furnishes(this.tier, f.k, this.furnishedFloors, this.picked)
+    for (const f of this.flats) if (f.things) f.things.visible = !this.around && !f.things.userData.cut && this.shows(f.k) && furnishes(this.tier, f.k, this.furnishedFloors, this.picked)
   }
 
   /** Flat f's lamps (flatLamps): the picked flat's while the Lights are on, a common level's at night, the others the night pattern. */
@@ -1525,6 +1530,35 @@ export class Building extends THREE.Group {
     return this.picked
   }
 
+  /**
+   * Finishes' "This wall" (qa4fix): the outer face of wall run `run` of drawing `drawing` on every floor it stands on — each
+   * wall's face a rectangle 2 cm proud of it, as line segments (scene frame, x y z per point, two points a segment) for the
+   * scene to outline until the card closes.
+   */
+  runFaces(drawing: Id, run: Id): number[] {
+    const out: number[] = []
+    const top = topFloor(this.t)
+    for (const [k, y] of this.levels.filter(([k]) => k <= top)) // (the roof's parapet: not a storey of it)
+      for (const s of this.onFloor(k)) {
+        const u = this.t.FLATS[s].unit
+        if (u.id !== drawing) continue
+        const runs = outerRuns(u)
+        const rooms = this.roomsOf(s)
+        const d = this.shift(s)
+        for (const w of u.walls) {
+          if ((runs.get(w.id) ?? w.id) !== run) continue
+          const f = core.wallFrame(w, u.vertices)
+          const n = { x: -f.dir.y, y: f.dir.x } // (outerSide's side)
+          const off = (outerSide(w, u, (p) => !!core.roomAt(p, rooms, u)) || 1) * (w.thicknessM / 2 + 0.02)
+          const [ax, az] = [f.origin.x + n.x * off + d.x, f.origin.y + n.y * off + d.y]
+          const [bx, bz] = [ax + f.dir.x * f.lengthM, az + f.dir.y * f.lengthM]
+          const top = y + Math.min(w.heightM, this.wallsOf(k))
+          out.push(ax, y, az, bx, y, bz, bx, y, bz, bx, top, bz, bx, top, bz, ax, top, az, ax, top, az, ax, y, az)
+        }
+      }
+    return out
+  }
+
   /** Picking floor k hides what stands above it: a basement, or the ground floor he traced (the built-in towers: never). */
   cuts(k: number): boolean {
     return k < 0 || (k === 0 && Object.values(this.t.LEVELS ?? {}).includes(0))
@@ -1568,14 +1602,14 @@ export class Building extends THREE.Group {
 
   /** The wall of what stands on floor k nearest scene point p, if p is on it (its face, 15 cm slack): `{ wall }`, else nothing. */
   private wallNear(p: THREE.Vector3, k: number): Pick<TowerHit, 'wall'> {
-    let best: { d: number; drawing: Id; run: Id } | null = null
+    let best: { d: number; drawing: Id; run: Id; id: Id; stem: string } | null = null
     for (const s of this.onFloor(k)) {
       const u = this.t.FLATS[s].unit
       const sh = this.shift(s)
       const n = core.nearestWall({ x: p.x - sh.x, y: p.z - sh.y }, u)
-      if (n && n.distanceM <= n.wall.thicknessM / 2 + 0.15 && (!best || n.distanceM < best.d)) best = { d: n.distanceM, drawing: u.id, run: outerRuns(u).get(n.wall.id) ?? n.wall.id }
+      if (n && n.distanceM <= n.wall.thicknessM / 2 + 0.15 && (!best || n.distanceM < best.d)) best = { d: n.distanceM, drawing: u.id, run: outerRuns(u).get(n.wall.id) ?? n.wall.id, id: n.wall.id, stem: s }
     }
-    return best ? { wall: { drawing: best.drawing, run: best.run } } : {}
+    return best ? { wall: { drawing: best.drawing, run: best.run, id: best.id, stem: best.stem } } : {}
   }
 
   /**

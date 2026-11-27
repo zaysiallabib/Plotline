@@ -6,7 +6,7 @@ import { existsSync, readFileSync, statSync } from 'node:fs'
 import { deflateRawSync } from 'node:zlib'
 import { describe, expect, it } from 'vitest'
 import { deriveRooms, validate, wallFrame } from '../core'
-import { curtainRuns, importIfc, sharedEdges } from './ifc'
+import { curtainRuns, importIfc, sharedEdges, nameWords } from './ifc'
 import { parseDress, readGlbJson, WINDOW } from './glb'
 
 const CERT = 'E:/dev/ALTERNATIVE FORMAT TEST/Certification-datasets-main'
@@ -33,6 +33,17 @@ function zipOf(name: string, data: Buffer): ArrayBuffer {
   const all = Buffer.concat([local, central, eocd])
   return all.buffer.slice(all.byteOffset, all.byteOffset + all.byteLength)
 }
+
+describe('What was read names a wall as a person says it (qa4fix)', () => {
+  it('the type’s own words: no family, no element number, no code in front', () => {
+    expect(nameWords('Basic Wall:SIA_41_Crépi 10 _ Is 140 _ Colle 10:7102787')).toBe('Crépi 10 · Is 140 · Colle 10')
+    expect(nameWords('Basic Wall:Crépi beige:12')).toBe('Crépi beige')
+    expect(nameWords('SIA_PA_Crépi beige, texturé')).toBe('Crépi beige, texturé') // a material: the office's code off
+    expect(nameWords('SIA_1125_GO_Blocs silico-calcaire')).toBe('Blocs silico-calcaire')
+    expect(nameWords('Wand-Int-ERDG-4')).toBe('Wand-Int-ERDG-4') // a plain name stays
+    expect(nameWords('7102787')).toBe('7102787') // nothing else to say
+  })
+})
 
 describe('two rooms of one open plan', () => {
   it("their common boundary is where their outlines run together, on the first one's line; 10 cm apart is no boundary", () => {

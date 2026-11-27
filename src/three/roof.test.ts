@@ -283,7 +283,10 @@ describe('a project’s roof: the set’s gable, with the person’s setting ove
     }
     expect(await top(p)).toBeCloseTo(8.89, 2) // the ridge as printed
     expect(await top({ ...p, roof: { kind: 'gable', covering: 'rc_clay', overhangM: 0.45 } })).toBeCloseTo(8.89, 2) // (the pitch still the set's)
-    expect(await top({ ...p, roof: { kind: 'flat' } })).toBeLessThan(7) // flat after all: no ridge
+    // flat after all: no ridge — the roof of the same building with no rooftop drawing (its stair's head room on the slab: a
+    // rooftop still a picture is none yet, qa4fix)
+    expect(await top({ ...p, roof: { kind: 'flat' } })).toBeCloseTo(await top({ ...p, levels: [], roof: { kind: 'flat' } }), 3)
+
   })
 })
 

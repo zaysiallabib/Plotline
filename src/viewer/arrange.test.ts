@@ -4,7 +4,7 @@ import type { FinishSlot, FurniturePlacement, Opening, Unit, Wall } from '../cor
 import { bottomOf, library, liftPiece, movePiece, pieceQuad, placePiece, resizePiece } from '../studio/furniture'
 import { placementLabel } from '../furnish/kit'
 import { initialState, reducer, type StudioState } from '../studio/model'
-import { DRAFT_KEY, PREVIEW_KEY, STAFF_KEY, TV_STANDS, baseOf, dragTo, draftState, dropHeld, finishesKey, floorAnswer, forkHere, holdAt, isShareLink, isStaff, keepsFinishes, layoutKey, makeDraft, pickUp, pushStep, readFinishes, readLayout, saveLayout, saveOpenings, setFloorAnswer, surfaceOf, turnHeld, undoStep, wallDrag, type Held, type Steps } from './arrange'
+import { DRAFT_KEY, PREVIEW_KEY, STAFF_KEY, TV_STANDS, baseOf, dragTo, draftState, dropHeld, finishesKey, floorAnswer, forkHere, holdAt, isShareLink, isStaff, keepsFinishes, layoutKey, madeOfOnTower, makeDraft, outsideAnswer, outsideChanges, outsideOnEveryFloor, pickUp, pushStep, readFinishes, readLayout, saveLayout, saveOpenings, setFloorAnswer, setOutsideAnswer, surfaceOf, turnHeld, undoStep, wallDrag, withOutside, type Held, type Steps } from './arrange'
 import { PROJECTS_KEY, makeProject, newProject, parseProjects, setSlot, slotsOf } from '../data/building/projects'
 import { pinsKey } from './storage'
 import { findOpening } from '../studio/model'
@@ -650,6 +650,58 @@ describe('one floor or all (founder 2026-11-20): a floor whose drawing is on oth
     const after = { ...a, walls: a.walls.map((w) => ({ ...w, openings: [] })) }
     expect(saveOpenings(a, after, s)).toBe('ok')
     expect(parseProjects(s.getItem(PROJECTS_KEY))[0].units.a.walls[0].openings).toEqual([])
+  })
+
+  it('an outside piece placed, moved or deleted on one floor goes to every floor with the drawing when he says All (qa4fix); the inside never follows', async () => {
+    const s = memStore()
+    tower(s)
+    const { projectTower } = await import('../data/building/projects')
+    const t = projectTower(parseProjects(s.getItem(PROJECTS_KEY))[0])
+    const a = box('a')
+    const rooms = deriveRooms(a)
+    // floor 3 has its own sofa moved: kept through it all
+    s.setItem(layoutKey('a:3'), JSON.stringify([piece('sofa', 'sofa_3seat', 'l', 6, 2)]))
+    const before = [piece('sofa', 'sofa_3seat', 'l', 4, 2)]
+    const ac = { ...piece('ac', 'exterior_aircon_unit', 'l', 3, -0.4, 180), outside: true as const }
+    const placed = [...before, ac]
+    expect(outsideChanges(before, placed)).toEqual([ac])
+    expect(outsideChanges(before, [{ ...before[0], x: 5 }])).toEqual([]) // a sofa moved: this floor's own, never asked
+    expect(outsideOnEveryFloor(a, rooms, outsideChanges(before, placed), t, 1, s)).toEqual([2, 3, 4])
+    const on = (k: number) => (readLayout(`a:${k}`, s) ?? []).filter((p) => !p.removed)
+    for (const k of [2, 3, 4]) expect(on(k).find((p) => p.id === 'ac'), `floor ${k}`).toEqual(ac)
+    expect(on(3).find((p) => p.id === 'sofa')!.x).toBe(6)
+    // moved on floor 1, then deleted: the same on the others
+    const moved = { ...ac, x: 7 }
+    outsideOnEveryFloor(a, rooms, outsideChanges(placed, [before[0], moved]), t, 1, s)
+    expect(on(4).find((p) => p.id === 'ac')!.x).toBe(7)
+    outsideOnEveryFloor(a, rooms, outsideChanges([before[0], moved], [before[0], { ...moved, removed: true }]), t, 1, s)
+    for (const k of [2, 3, 4]) expect(on(k).some((p) => p.id === 'ac'), `floor ${k}`).toBe(false)
+    // an undone add (the piece gone from the layout) is a delete too; a delete of one never on a floor adds nothing there
+    expect(outsideChanges(placed, before)).toEqual([{ ...ac, removed: true }])
+    expect(withOutside(before, [{ ...ac, removed: true }])).toEqual(before)
+    // the answer is kept for the visit, per drawing
+    expect(outsideAnswer('a', s)).toBeUndefined()
+    setOutsideAnswer('a', 'all', s)
+    expect([outsideAnswer('a', s), outsideAnswer('b', s)]).toEqual(['all', undefined])
+  })
+
+  it('a balcony edge clicked on the tower: Made of goes into the drawing — every floor with it — or, This floor only, into a copy for that floor (qa4fix)', () => {
+    const s = memStore()
+    const low = (u: Unit): Unit => ({ ...u, walls: u.walls.map((w) => (w.id === 'w2' ? { ...w, heightM: 1.0 } : w)) }) // its balcony's front
+    const p = [1, 2, 3, 4].reduce((q, k) => setSlot(q, k, low(box('a'))), newProject('p', 'Tower', { basements: 0, floors: 4, rooftop: false }))
+    s.setItem(PROJECTS_KEY, JSON.stringify([p]))
+    makeDraft(low(box('a')), s) // the Studio has it open: it must not write the old one back
+    const kind = (id: string) => parseProjects(s.getItem(PROJECTS_KEY))[0].units[id].walls.find((w) => w.id === 'w2')!.lowKind
+    expect(madeOfOnTower('a', 2, 'w2', { kind: 'glass' }, false, s)).toMatchObject({ stem: 'a' })
+    expect(kind('a')).toBe('glass')
+    expect(JSON.parse(s.getItem(DRAFT_KEY)!).unit.walls.find((w: Wall) => w.id === 'w2').lowKind).toBe('glass')
+    expect(madeOfOnTower('a', 2, 'w0', { kind: 'glass' }, false, s)).toBeNull() // a storey-high wall takes no Made of
+    // "This floor only" on floor 3: a copy for floor 3 made of metal; the others stay glass
+    const r = madeOfOnTower('a', 3, 'w2', { kind: 'railing' }, true, s)!
+    expect(r.stem).not.toBe('a')
+    expect([kind('a'), kind(r.stem)]).toEqual(['glass', 'railing'])
+    expect(slotsOf(parseProjects(s.getItem(PROJECTS_KEY))[0]).find((x) => x.label === 'Floor 3')!.unitIds).toEqual([r.stem])
+    expect(madeOfOnTower('nobody', 1, 'w2', { kind: 'glass' }, false, s)).toBeNull()
   })
 
   it('the Studio draft open as a project drawing under another id (traced again: Auto-trace) is still this drawing: no "built-in unit" question (qa4)', () => {

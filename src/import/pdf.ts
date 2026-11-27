@@ -219,10 +219,42 @@ interface Shape {
   at: Pt
 }
 
-/** What is on a page for sheets.ts: its box, texts and lines, in the page frame (turned as shown) — and how many pictures it holds. */
-export async function readSheetPage(doc: PdfDoc, pageNo: number): Promise<SheetPage & { pictures: number }> {
+/**
+ * What is on a page for sheets.ts: its box, texts and lines, in the page frame (turned as shown) — and how many pictures it
+ * holds; `scale`: how one of its views (frame, the scale its title prints) has its scale, as importPdf finds it (scaleFound).
+ */
+export async function readSheetPage(doc: PdfDoc, pageNo: number): Promise<SheetPage & { pictures: number; scale: (frame?: Box, printed?: number) => ScaleFound }> {
   const r = await readPage(doc, pageNo)
-  return { box: r.box, texts: r.words, segs: r.segs, arcs: r.arcs, pictures: r.pictures }
+  return { box: r.box, texts: r.words, segs: r.segs, arcs: r.arcs, pictures: r.pictures, scale: (frame, printed) => scaleFound(viewOf(r, frame, printed).note) }
+}
+
+/**
+ * How importPdf's scale note found the drawing's scale: 'found' printed (under the drawing or on the sheet) or from three
+ * printed dimensions that agree; 'guessed' from the printed room sizes against the drawing's box (on a brochure page always
+ * wrong: a whole floor read 5–15 m across — session 31 qa4fix); 'none' (its lines are not read at all).
+ */
+export type ScaleFound = 'found' | 'guessed' | 'none'
+export const scaleFound = (note: string): ScaleFound => (!/^Scale: /.test(note) ? 'none' : /guessed/.test(note) ? 'guessed' : 'found')
+
+/**
+ * Whether a set's plan page (session 31 qa4fix) is drawn from its lines when the project is built: they make a plan
+ * (readsAsPlan) at a scale found — at a size guessed from its room sizes (Pearl's Level-01 parking: a 4.7 × 5.5 m box of 63
+ * slivers under a 2 145 sft tower) it is a picture to trace like the typical floors, unless the person chose Read its lines.
+ */
+export const drawnFromLines = (r: ImportResult, chosen = false): boolean => readsAsPlan(r) && (chosen || r.notes.some((n) => scaleFound(n) === 'found'))
+
+/** one view of a page (its frame; all of it with none): its lines, arcs and texts, the sheet's symbols left out, and its scale */
+function viewOf(read: Awaited<ReturnType<typeof readPage>>, frame?: Box, printed?: number) {
+  const ok = (p: Pt) => !frame || (p.x >= frame.x0 && p.x <= frame.x1 && p.y >= frame.y0 && p.y <= frame.y1)
+  const inFrame = read.segs.filter((g) => ok({ x: (g.a.x + g.b.x) / 2, y: (g.a.y + g.b.y) / 2 }))
+  const arcsInFrame = read.arcs.filter((a) => ok(a.c))
+  const texts = read.texts.filter((t) => ok(t.at))
+  // the sheet's symbols (markers, bubbles, arrows, break lines) are no part of the building
+  const symbols = sheetSymbols(inFrame, arcsInFrame, texts, PT)
+  const segs = inFrame.filter((_, i) => !symbols.segs.has(i))
+  const arcs = arcsInFrame.filter((_, i) => !symbols.arcs.has(i))
+  const { scale, note } = !segs.length ? { scale: 1, note: '' } : printed ? { scale: printed * PT, note: `Scale: as printed under the drawing, 1 : ${+printed.toFixed(1)}.` } : sheetScale(segs, texts, (ptPerM) => ` — 1 : ${(1 / (ptPerM * PT)).toFixed(0)} on the sheet`, PT)
+  return { ok, segs, arcs, texts, symbols, scale, note }
 }
 
 /**
@@ -246,14 +278,7 @@ export async function importPdf(src: ArrayBuffer | PdfDoc, name: string, pageNo 
   const doc = src instanceof ArrayBuffer ? await openPdf(src) : src
   const read = await readPage(doc, pageNo).finally(() => src instanceof ArrayBuffer && doc.loadingTask.destroy())
   const { pictures, pages } = read
-  const ok = (p: Pt) => !frame || (p.x >= frame.x0 && p.x <= frame.x1 && p.y >= frame.y0 && p.y <= frame.y1)
-  const inFrame = read.segs.filter((g) => ok({ x: (g.a.x + g.b.x) / 2, y: (g.a.y + g.b.y) / 2 }))
-  const arcsInFrame = read.arcs.filter((a) => ok(a.c))
-  const texts = read.texts.filter((t) => ok(t.at))
-  // the sheet's symbols (markers, bubbles, arrows, break lines) are no part of the building
-  const symbols = sheetSymbols(inFrame, arcsInFrame, texts, PT)
-  const segs = inFrame.filter((_, i) => !symbols.segs.has(i))
-  const arcs = arcsInFrame.filter((_, i) => !symbols.arcs.has(i))
+  const { ok, segs, arcs, texts, symbols, scale, note } = viewOf(read, frame, printed)
   const fills: Fills = new Map()
   for (const s of read.shapes) {
     if (!ok(s.at)) continue
@@ -263,7 +288,6 @@ export async function importPdf(src: ArrayBuffer | PdfDoc, name: string, pageNo 
   }
   if (!segs.length) throw new Error('This PDF is a picture, not a drawing — use the picture itself')
   const notes: string[] = [`PDF: ${pages} page(s); page ${pageNo}${frame ? ' (one of its drawings)' : ''} read: ${segs.length} lines, ${texts.length} texts${pictures ? `, ${pictures} picture(s) ignored` : ''}.`]
-  const { scale, note } = printed ? { scale: printed * PT, note: `Scale: as printed under the drawing, 1 : ${+printed.toFixed(1)}.` } : sheetScale(segs, texts, (ptPerM) => ` — 1 : ${(1 / (ptPerM * PT)).toFixed(0)} on the sheet`, PT)
   notes.push(note)
   if (symbols.segs.size) notes.push(`${symbols.segs.size} lines of the sheet's symbols (markers and bubbles, arrows, break lines) left out of the walls.`)
   if (/not set/.test(note)) {

@@ -61,14 +61,14 @@ import { CONVERTED_PICTURE, toPlanPicture } from '../import/picture'
 import type { PdfDoc } from '../import/pdf'
 import type { Box } from '../import/sheets'
 import { IMPORT_ACCEPT, expandZips, filesOfDrop, importFile, importFormatOf, lockedFormatOf, mainFile, siblingsOf, type DropFile, type ImportResult, type ImportedStorey, type LayerRole, type LayerRoles } from '../import'
-import { PROJECTS_KEY, drawingName, keepApartments, keepReview, newProject, planOf as planOfProject, projectWith, parseProjects, projectTower, readProjects, saveProjects, setSlot, slotLabel, slotsOf, slotsText, stackFloors, syncUnit, type DrawingSource, type Project, type ProjectPlan, type Slot } from '../data/building/projects'
+import { PROJECTS_KEY, drawingName, keepApartments, keepReview, newProject, planOf as planOfProject, projectWith, parseProjects, projectTower, readProjects, saveProjects, setSlot, slotLabel, slotsOf, slotsText, slotsWith, stackFloors, syncUnit, type DrawingSource, type Project, type ProjectPlan, type Slot } from '../data/building/projects'
 import { buildingOf, finishesKey, keptFor, layoutKey, outsideRecord, putKept, readFinishes, saveFinishes, splitKept } from '../data/building/apartments'
 import { OUTSIDE_SLOT, outerRuns, outsideKey } from '../furnish/finishes'
 import { plain } from '../import/materials'
 import { floorIn, roleIn, stemIn, towerOf } from '../data/building'
 import { HARD, snapMove, snapPoint, type Snap } from './snap'
 import { STAFF_KEY, baseOf, planOf, readLayout, saveLayout } from '../viewer/arrange'
-import { titleOf } from '../viewer/defaults'
+import { roomsSqft, titleOf } from '../viewer/defaults'
 import { configured as sharingConfigured } from '../lib/supabase'
 import { publishLink, WrongKey } from '../lib/publish'
 import { myOrg, session, useSession } from '../lib/auth'
@@ -739,6 +739,13 @@ export default function StudioApp() {
     }
   }
   const project = (active && projects.find((p) => p.id === active.id)) || null
+  // the top bar (qa4fix): a project drawing's floors in place of the Floor box, its rooms added up while no area is typed
+  const drawingFloors = useMemo(() => {
+    const id = active?.drawing ?? unit.id
+    const fl = project?.units[id] ? slotsText(slotsWith(project, id)) : ''
+    return fl === 'G' ? 'Ground' : fl
+  }, [project, active, unit.id])
+  const roomsArea = useMemo(() => roomsSqft(rooms), [rooms])
   const [listOpen, setListOpen] = useState(() => !!active)
   /** `ps` with the Studio's unit as it is now wherever it stands, and as the open project drawing (its Check these list
    *  with it: keepReview); null: nothing changed */
@@ -1304,6 +1311,8 @@ export default function StudioApp() {
         reads.push(doc ? await pdf.importPdf(doc, files[r.file].name, r.page, r.frame, r.view.scale).catch(() => null) : (r.read ?? null))
       }
       const sure = (x: ImportResult | null): x is ImportResult => !!x && !!x.storeys[0]?.unit.walls.length && !x.notes.some((n) => /^Scale: [^.]*guessed|^Scale not set/.test(n))
+      // a PDF page's lines make its drawing when they make a plan at a scale found; else a picture to trace (its row's Read its lines)
+      const lined = (r: SetChoice, x: ImportResult) => pdf.drawnFromLines(x, !!r.lines)
       const rank = (r: SetChoice) => Math.min(...r.slots.map((s) => (s === 'R' ? 1e3 : s)))
       // (flats joined side by side on one floor are not stacked: nothing says where they stand)
       const joined = (r: SetChoice) => !!r.with || plans.some((m) => m.with === r.key)
@@ -1325,7 +1334,7 @@ export default function StudioApp() {
         if (group.length > 1) {
           // flats of the same floors, nothing saying where each stands: side by side, 2 m apart, each named by its page
           // ("TYPE-A") — their own lines when every one makes a plan, else one picture of them all to trace
-          const drawn = group.every(({ m, read }) => read && (m.read ? read.storeys[0]?.unit.walls.length : pdf.readsAsPlan(read)))
+          const drawn = group.every(({ m, read }) => read && (m.read ? read.storeys[0]?.unit.walls.length : lined(m, read)))
           let u: Unit = { ...emptyUnit() }
           if (drawn) {
             let x = 0
@@ -1371,7 +1380,7 @@ export default function StudioApp() {
         let u: Unit
         let offset: Pt = { x: 0, y: 0 }
         // (a DXF / SVG plan is its own lines whatever it makes: the file's lines are exact)
-        if (read && (r.read ? read.storeys[0]?.unit.walls.length : pdf.readsAsPlan(read))) (u = read.storeys[0].unit), (offset = at?.offset ?? offset)
+        if (read && (r.read ? read.storeys[0]?.unit.walls.length : lined(r, read))) (u = read.storeys[0].unit), (offset = at?.offset ?? offset)
         else {
           // its lines make no plan: the drawing's picture, to trace — scaled when the sheet's scale is known (printed 1 : n, or
           // its dimensions agree), lined up on the floors it stacks on (its picture's pixel for the building frame's origin)
@@ -2972,6 +2981,8 @@ export default function StudioApp() {
         errors={errors}
         quiet={empty}
         untitled={untitled}
+        floors={drawingFloors}
+        roomsSqft={roomsArea}
         onPreview={preview}
         building={listOpen}
         onBuilding={() => {

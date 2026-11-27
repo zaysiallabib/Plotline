@@ -112,6 +112,19 @@ describe('the sheet number', () => {
   })
 })
 
+describe('a roof plan of slopes is the roof, kept — never a floor (qa4fix)', () => {
+  test('ROOF PLAN with its slopes and ridge: kind roof, kept; a rooftop with its stair and tanks: a floor', () => {
+    const slopes = readSheet(page([T('ROOF PLAN', 400, 60, 14), T('4/12', 300, 400, 8), T('SLOPE', 300, 390, 8), T('BULBED RIDGE CAP', 500, 500, 8), T('HALF ROUND GUTTER', 600, 300, 8)], drawing(100, 100, 900, 700)))
+    expect(slopes.views).toHaveLength(1)
+    expect(slopes.views[0].kind).toBe('roof')
+    const top = readSheet(page([T('Roof Level Plan', 400, 60, 14), T('STAIR', 300, 400, 8), T('MACHINE ROOM', 500, 500, 8), T('SLOPE', 600, 300, 8), T('4/12', 600, 320, 8)], drawing(100, 100, 900, 700)))
+    expect(top.views[0]).toMatchObject({ kind: 'plan', level: { at: ['R'] } })
+    // built: the roof kept with the project, no floor for it
+    const c = setChoices([{ kind: 'plan', level: { at: [0] } }, { kind: 'roof', level: { at: ['R'] } }])
+    expect(c.map((x) => [x.tick, x.slots])).toEqual([[true, [0]], [true, []]])
+  })
+})
+
 describe('a page', () => {
   test('one title: one view, its kind, floor and scale; framed inside the border and the title block', () => {
     const border = [...rect(20, 10, 1204, 782), seg(1100, 10, 1100, 782)] // the sheet's frame and its title block's rule
