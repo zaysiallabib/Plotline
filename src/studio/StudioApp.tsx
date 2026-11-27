@@ -61,14 +61,14 @@ import { CONVERTED_PICTURE, toPlanPicture } from '../import/picture'
 import type { PdfDoc } from '../import/pdf'
 import type { Box } from '../import/sheets'
 import { IMPORT_ACCEPT, expandZips, filesOfDrop, importFile, importFormatOf, lockedFormatOf, mainFile, siblingsOf, type DropFile, type ImportResult, type ImportedStorey, type LayerRole, type LayerRoles } from '../import'
-import { PROJECTS_KEY, drawingName, keepApartments, keepReview, newProject, planOf as planOfProject, projectWith, parseProjects, projectTower, readProjects, saveProjects, setSlot, slotLabel, slotsOf, slotsText, stackFloors, syncUnit, type DrawingSource, type Project, type ProjectPlan, type Slot } from '../data/building/projects'
+import { PROJECTS_KEY, drawingName, keepApartments, keepReview, newProject, planOf as planOfProject, projectWith, parseProjects, projectTower, readProjects, saveProjects, setSlot, slotLabel, slotsOf, slotsText, slotsWith, stackFloors, syncUnit, type DrawingSource, type Project, type ProjectPlan, type Slot } from '../data/building/projects'
 import { buildingOf, finishesKey, keptFor, layoutKey, outsideRecord, putKept, readFinishes, saveFinishes, splitKept } from '../data/building/apartments'
 import { OUTSIDE_SLOT, outerRuns, outsideKey } from '../furnish/finishes'
 import { plain } from '../import/materials'
 import { floorIn, roleIn, stemIn, towerOf } from '../data/building'
 import { HARD, snapMove, snapPoint, type Snap } from './snap'
 import { STAFF_KEY, baseOf, planOf, readLayout, saveLayout } from '../viewer/arrange'
-import { titleOf } from '../viewer/defaults'
+import { roomsSqft, titleOf } from '../viewer/defaults'
 import { configured as sharingConfigured } from '../lib/supabase'
 import { publishLink, WrongKey } from '../lib/publish'
 import { myOrg, session, useSession } from '../lib/auth'
@@ -739,6 +739,13 @@ export default function StudioApp() {
     }
   }
   const project = (active && projects.find((p) => p.id === active.id)) || null
+  // the top bar (qa4fix): a project drawing's floors in place of the Floor box, its rooms added up while no area is typed
+  const drawingFloors = useMemo(() => {
+    const id = active?.drawing ?? unit.id
+    const fl = project?.units[id] ? slotsText(slotsWith(project, id)) : ''
+    return fl === 'G' ? 'Ground' : fl
+  }, [project, active, unit.id])
+  const roomsArea = useMemo(() => roomsSqft(rooms), [rooms])
   const [listOpen, setListOpen] = useState(() => !!active)
   /** `ps` with the Studio's unit as it is now wherever it stands, and as the open project drawing (its Check these list
    *  with it: keepReview); null: nothing changed */
@@ -2974,6 +2981,8 @@ export default function StudioApp() {
         errors={errors}
         quiet={empty}
         untitled={untitled}
+        floors={drawingFloors}
+        roomsSqft={roomsArea}
         onPreview={preview}
         building={listOpen}
         onBuilding={() => {

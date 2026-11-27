@@ -161,6 +161,8 @@
 .meta-num input { width: 44px; padding: 0 var(--s-1); text-align: center; }
 .meta-num.area input { width: 60px; }
 .meta-num .unit { font-size: var(--fs-sm); color: var(--muted); }
+.meta-num.on-floors { cursor: default; }
+.meta-num.on-floors .value { padding: 0 var(--s-1); max-width: 180px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .topbar .cloud-status { flex: none; margin-left: var(--s-2); font-size: var(--fs-sm); color: var(--muted); white-space: nowrap; }
 .topbar .cloud-status:is(.offline, .stale, .gone, .refused) { color: var(--danger); }
 .topbar button.icon { width: var(--control); padding: 0; border-color: transparent; color: var(--ink-2); }

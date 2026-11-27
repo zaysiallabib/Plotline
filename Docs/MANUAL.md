@@ -881,7 +881,10 @@ drawing.
   the drawing's fields: **Unit name**, **Project**, **Floor** (numbers only), **Area** (sft). They look like plain words
   until the mouse is over one. An empty name box shows in grey the name Preview 3D will use ("Type A", **Floor plan A**
   for a whole floor, else "Untitled unit"); Export, Export as DXF and Share link name the file and the buyer's link the same
-  way (floor-plan-a.dxf). Narrower than about 1000 px, Project and Area step aside.
+  way (floor-plan-a.dxf). Narrower than about 1000 px, Project and Area step aside. **A project's drawing** shows the
+  floors it stands on instead of the Floor box — **FLOORS 1, 2, 4, 6, 8** (or FLOOR Ground, FLOOR Roof) — changed in the
+  floor list on the right. **Area** shows the area the sheet prints when it was read or typed, else the drawing's rooms
+  added up (what the 3D counts) — a set's floor and an architect's file (IFC) too; type over it to keep the printed one.
 - After the fields, when signed in: where your work stands online (**Saving…**, **Saved · just now**, …; "Accounts"
   below).
 - **Right:** **↶ Undo** / **↷ Redo**, **Auto-trace** (once a plan picture is in), **Preview 3D** (the blue button: your

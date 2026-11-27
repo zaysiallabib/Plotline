@@ -28,6 +28,10 @@ interface Props {
   quiet: boolean
   /** the name Preview 3D gives this drawing while none is typed ("Floor plan A" for a whole floor): the name box's grey words */
   untitled: string
+  /** a project's drawing: the floors it stands on ("1, 2, 4, 6, 8"), shown in place of the Floor box (the floor list sets them); empty: none */
+  floors: string
+  /** its rooms added up (sqft), as auto-trace and the 3D count a drawing with no printed area: the Area box shows it while none is typed */
+  roomsSqft: number
   onPreview: () => void
   building: boolean
   onBuilding: () => void
@@ -98,13 +102,20 @@ export default function TopBar(p: Props) {
       <div className="tb-fields">
         <input className="meta name" placeholder={p.untitled} aria-label="Unit name" title="Unit name" value={unit.name} onChange={onMeta('name')} />
         <input className="meta project" placeholder="Project" aria-label="Project" title="Project" value={unit.projectName} onChange={onMeta('projectName')} />
-        <label className="meta-num" title="The floor this drawing is on (numbers only)">
-          <span className="label">Floor</span>
-          <input type="number" placeholder="–" value={unit.floor ?? ''} onChange={onMeta('floor')} />
-        </label>
-        <label className="meta-num area" title="The flat's area as the sheet prints it (sqft)">
+        {p.floors ? (
+          <span className="meta-num on-floors" title="The floors this drawing stands on in the project — change them in the floor list on the right">
+            <span className="label">{/,|–/.test(p.floors) ? 'Floors' : 'Floor'}</span>
+            <span className="value">{p.floors}</span>
+          </span>
+        ) : (
+          <label className="meta-num" title="The floor this drawing is on (numbers only)">
+            <span className="label">Floor</span>
+            <input type="number" placeholder="–" value={unit.floor ?? ''} onChange={onMeta('floor')} />
+          </label>
+        )}
+        <label className="meta-num area" title={unit.areaSqft ? "The flat's area as the sheet prints it (sqft)" : 'Its rooms added up (sqft), as the 3D counts it — type the area the sheet prints to keep that instead'}>
           <span className="label">Area</span>
-          <input type="number" placeholder="–" value={unit.areaSqft || ''} onChange={onMeta('areaSqft')} />
+          <input type="number" placeholder="–" value={unit.areaSqft || p.roomsSqft || ''} onChange={onMeta('areaSqft')} />
           <span className="unit">sft</span>
         </label>
         <CloudBar {...p.cloud} open={account} onClose={() => setAccount(false)} onCard={() => setAccount('projects')} />
