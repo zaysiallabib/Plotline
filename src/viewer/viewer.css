@@ -163,6 +163,7 @@ html:has(.viewer), body:has(.viewer) { overscroll-behavior: none; }
 .buyer-name input,
 .popover textarea,
 .ftin input,
+.ftin select,
 .sun-date,
 .changes-key input {
   height: var(--control);
@@ -175,7 +176,7 @@ html:has(.viewer), body:has(.viewer) { overscroll-behavior: none; }
   outline: none;
   transition: border-color var(--dur-fast) var(--ease);
 }
-.buyer-name input:focus, .popover textarea:focus, .ftin input:focus, .sun-date:focus, .changes-key input:focus { border-color: var(--accent); }
+.buyer-name input:focus, .popover textarea:focus, .ftin input:focus, .ftin select:focus, .sun-date:focus, .changes-key input:focus { border-color: var(--accent); }
 
 /* ── the start screen: marble, the flat's name in the serif, the one blue button ─────────────────────────────────── */
 .load {

@@ -94,6 +94,14 @@ export function keepConfig(raw: unknown, slots: FinishSlot[], keys?: FinishKeys)
   return cfg
 }
 
+/** A building's outside record from a link (its JSON's `outside`): only its own kinds of key, short strings (furnish/finishes.ts outsideOf ignores an option it does not offer). */
+export function keepOutside(raw: unknown): Configuration {
+  const out: Configuration = {}
+  for (const [key, opt] of Object.entries(raw && typeof raw === 'object' && !Array.isArray(raw) ? raw : {}))
+    if (/^(s_outside|s_frames|out:.+|frame:.+)$/.test(key) && key.length <= 200 && typeof opt === 'string' && opt.length <= 80) out[key] = opt
+  return out
+}
+
 /**
  * The finishes a page opens with (founder 2026-11-21: "they'll see the changes … as they were last selected, not starting
  * from the basic colour every time"): the address's `?c=` when it carries one (a buyer's link, a shared choice), else

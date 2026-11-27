@@ -8,14 +8,14 @@
 import { useEffect, useMemo, useReducer, useRef, useState, useSyncExternalStore } from 'react'
 import * as THREE from 'three'
 import * as core from '../core'
-import type { Configuration, FinishSlot, FurniturePlacement, Id, Opening, OpeningKind, Pt, Room, Unit, Wall } from '../core'
+import type { Configuration, FinishOption, FinishSlot, FurniturePlacement, Id, Opening, OpeningKind, Pt, Room, Unit, Wall } from '../core'
 import { coverOf, floorIn, levelName, projectUnit, roleIn, stairOnFloor, stairsDown, stairTo, stemIn, streetOf, topFloor, towerOf, type Tower } from '../data/building'
-import { keptAt, placesIn } from '../data/building/apartments'
+import { buildingOf, keptAt, outsideRecord, placesIn, readFinishes } from '../data/building/apartments'
 import { readProjects, sharedAt, slotsText } from '../data/building/projects'
 import { arriveBy, isStair, isStairRoom } from '../furnish/stairs'
-import { faceWallId, roomKey, wallKey } from '../furnish/finishes'
+import { FRAMES_SLOT, OUTSIDE_SLOT, faceWallId, frameKey, outerRuns, outsideOf, roomKey, wallKey } from '../furnish/finishes'
 import { placementLabel, placementSize } from '../furnish/kit'
-import { onOwnChange, ownVersion, refreshOwnOptions } from '../furnish/own'
+import { onOwnChange, ownVersion, refreshOwnOptions, withOwnOptions } from '../furnish/own'
 import { deletePiece, layoutFor, movePiece, pieceQuad, refurnish, resizeAxes, resizePiece, surfaceOf, type Move } from '../studio/furniture'
 import { buyer, flushOutbox, selectionPayload, sendEvent, setBuyerName } from '../lib/events'
 import { learnCarried } from '../lib/library'
@@ -38,7 +38,7 @@ import { arrivalFace, coreRooms, entrySpawn, listedRooms, roomView, stairView, y
 import SunPill, { WindChips } from './SunPill'
 import { withDefaults } from './defaults'
 import { chosen, KEYS, local, lower, NAME, probeDevice, QUALITIES, read, recommend, tab, write, type Quality } from './quality'
-import { encodeConfig, finishKeys, keepConfig, shareUrl, stairUrl, startFinishes } from './share'
+import { encodeConfig, finishKeys, keepConfig, keepOutside, shareUrl, stairUrl, startFinishes } from './share'
 import { appendPin, readPins, removePin, type Pin } from './storage'
 import { LibraryPanel } from '../studio/LibraryPanel'
 import { copyPicture } from '../studio/pictures'
@@ -158,6 +158,8 @@ interface Shown {
   /** what it opens with: its record, else the drawing's (`baseFinishes`); a published link's own */
   finishes: Configuration
   baseFinishes: Configuration
+  /** its building's outside (furnish/finishes.ts outsideOf): as this browser keeps it (apartments.ts outsideRecord), a published link's own */
+  outside: Configuration
 }
 /**
  * A unit as the viewer shows it (the page's, or a floor reached by the stair): on its floor, what a Studio draft / auto-trace
@@ -166,7 +168,7 @@ interface Shown {
  * JSON's / the presets, all through layoutFor (a room added since gets its presets). A published link (`carried`: the
  * finishes it was made with) never reads this browser's records.
  */
-function prepare(raw: Unit | null, floor?: number, carried?: unknown): Shown | null {
+function prepare(raw: Unit | null, floor?: number, carried?: { finishes?: unknown; outside?: unknown }): Shown | null {
   const u = onFloor(raw, floor)
   if (!u) return null
   const rooms = core.deriveRooms(u)
@@ -175,7 +177,8 @@ function prepare(raw: Unit | null, floor?: number, carried?: unknown): Shown | n
   const unit = { ...withDefaults(u, rooms), furniture: k?.layout ? layoutFor({ ...u, furniture: k.layout }, rooms) : base }
   const keys = finishKeys(unit, rooms)
   const kept = (c: unknown) => keepConfig(c, unit.finishSlots, keys) // only what this plan offers
-  return { unit, base, key: k?.key ?? null, finishes: kept(k ? k.finishes : carried), baseFinishes: kept(k?.baseFinishes) }
+  const outside = k ? (readFinishes(outsideRecord(buildingOf(towerOf(u), u.id))) ?? {}) : keepOutside(carried?.outside)
+  return { unit, base, key: k?.key ?? null, finishes: kept(k ? k.finishes : carried?.finishes), baseFinishes: kept(k?.baseFinishes), outside }
 }
 /**
  * The load screen's list: the flats as they are; each tower's levels (ground, basements, rooftop) under its name, top
@@ -250,14 +253,14 @@ export default function ViewerApp() {
   // the database could not be asked (no network, not set up) — each gets its own page
   const [fetched, setFetched] = useState<Unit | null | undefined | 'offline'>(TOKEN ? undefined : null)
   /** the finishes the link was made with (the Studio's Share link: the drawing's as Preview 3D showed them) */
-  const carried = useRef<unknown>(undefined)
+  const carried = useRef<{ finishes?: unknown; outside?: unknown } | undefined>(undefined)
   useEffect(() => {
     if (TOKEN)
       fetchSharedUnit(TOKEN)
         .then(async (raw) => {
-          const r = raw as { library?: unknown; finishes?: unknown } | null
+          const r = raw as { library?: unknown; finishes?: unknown; outside?: unknown } | null
           await learnCarried(r?.library) // its own pieces and finishes first
-          carried.current = r?.finishes
+          carried.current = { finishes: r?.finishes, outside: r?.outside }
           return asUnit(raw)
         })
         .catch((e) => (console.warn('[plotline] share link', e), 'offline' as const))
@@ -527,6 +530,8 @@ function OpeningPanel(p: {
   onWall: (patch: { lengthM?: number; heightM?: number }) => void
   onDelete: () => void
   onUndo: () => void
+  /** a window, slider or glass wall (staff on the flat's own page): its frame's colour — the building's, or its own */
+  frame?: { options: FinishOption[]; own: string | null; building: string; onPick: (id: string | null) => void }
 }) {
   const o = p.opening
   const lw = p.wall
@@ -562,6 +567,19 @@ function OpeningPanel(p: {
             <FtIn label="Height" m={o.heightM} onSet={(heightM) => p.onSize({ heightM })} />
             <FtIn label="Sill" m={o.sillM} onSet={(sillM) => p.onSize({ sillM })} />
           </div>
+          {p.frame && (
+            <label className="ftin">
+              Frame
+              <select value={p.frame.own ?? ''} onChange={(e) => p.frame!.onPick(e.target.value || null)}>
+                <option value="">Same as the building ({p.frame.options.find((x) => x.id === p.frame!.building)?.label})</option>
+                {p.frame.options.map((x) => (
+                  <option key={x.id} value={x.id}>
+                    {x.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
         </>
       ) : (
         <div className="muted small">
@@ -640,6 +658,21 @@ function Viewer({ first }: { first: Shown }) {
   useEffect(() => {
     if (KEEP && apt) saveFinishes(apt, cfg, baseFinishes)
   }, [cfg]) // eslint-disable-line react-hooks/exhaustive-deps
+  // the building's outside (staff: Finishes → the outside card, Edit openings → a window's frame): one record for the whole
+  // building, kept the moment it changes; a buyer's link shows the one it was made with
+  const [outside, setOutsideRec] = useState<Configuration>(first.outside)
+  const outKey = KEEP ? outsideRecord(buildingOf(towerOf(given), given.id)) : null
+  useEffect(() => {
+    if (outKey) saveFinishes(outKey, outside)
+  }, [outside]) // eslint-disable-line react-hooks/exhaustive-deps
+  /** a choice for the outside: the building's slot id, one floor's or one wall's key, one window's frame; null: back to what it falls back to */
+  const chooseOutside = (key: string, optionId: Id | null) =>
+    setOutsideRec((c) => {
+      const next = { ...c }
+      if (optionId) next[key] = optionId
+      else delete next[key]
+      return next
+    })
   /** the floor / wall / ceiling clicked while the Finishes panel is open */
   const [surface, setSurface] = useState<Surface | null>(null)
   const [room, setRoom] = useState<Room | null>(null)
@@ -683,6 +716,18 @@ function Viewer({ first }: { first: Shown }) {
   // holds these very slots, so the panel, the materials and a buyer's choice all have it without building the flat again
   const ownV = useSyncExternalStore(onOwnChange, ownVersion)
   useMemo(() => refreshOwnOptions(unit.finishSlots), [unit.finishSlots, ownV])
+  /** the outside's two slots (what the walls are clad in, the window frames) with the staff's own options in them */
+  const outSlots = useMemo(() => withOwnOptions([OUTSIDE_SLOT, FRAMES_SLOT]), [ownV]) // eslint-disable-line react-hooks/exhaustive-deps
+  // the outside into the 3D: before the unit (setUnit builds the tower with it), then each change (the tower built again)
+  useEffect(() => scene?.setOutside(outsideOf(outside, outSlots)), [scene, outside, outSlots])
+  /** the floor the walked flat stands on in its tower: the outside card's "This floor" */
+  const outFloor = tower && stem ? floorIn(tower, stem, unit.floor) : unit.floor
+  /** an outside spot clicked (a wall of drawing `drawing`, its run, on floor k; a ground block: no wall) and its name for a person */
+  const outSpot = (k: number | undefined, wall?: { drawing: Id; run: Id }, what?: string): NonNullable<Surface['outside']> => ({
+    ...wall,
+    floor: k,
+    name: [k === undefined ? null : tower && k > 0 && k <= topFloor(tower) ? `Floor ${k}` : tower ? levelName(tower, k) : `Floor ${k}`, what ? `${what} wall` : wall ? 'Outside wall' : null].filter(Boolean).join(' · '),
+  })
   /** every slot resolved (selection or its default), plus the one-room / one-wall choices — what the engine and the share link get */
   const fullCfg = useMemo<Configuration>(
     () => ({ ...Object.fromEntries(unit.finishSlots.map((s) => [s.id, s.defaultOptionId])), ...cfg }),
@@ -787,13 +832,18 @@ function Viewer({ first }: { first: Shown }) {
       const r = finishesRef.current && hit.kind !== 'opening' && hit.kind !== 'furniture' ? rooms.find((x) => x.id === hit.roomId) : undefined
       const room = r && roomKey(r.id, hit.kind as FinishSlot['target'])
       const face = r && hit.kind === 'wall' ? wallKey(faceWallId(unit, r, hit.id), r.id) : undefined // a column: none, its room's walls
+      // staff: a wall's side outside (toward no room, a balcony, an outdoor zone) also opens the building's outside card
+      const out =
+        finishesRef.current && KEEP && hit.kind === 'wall' && (!r || r.kind === 'balcony' || core.isOutdoor(r.kind)) && unit.walls.some((w) => w.id === hit.id)
+          ? outSpot(outFloor, { drawing: unit.id, run: outerRuns(unit).get(hit.id) ?? hit.id }, r?.name)
+          : undefined
       // a pin or a finish uses the click: the walker stays where he is (a floor tap under a finger must not walk onto the pin)
       if (commentingRef.current) {
         const roomId = hit.roomId ?? core.roomAt({ x: hit.point.x, y: hit.point.z }, rooms, unit)?.id
         setDraft({ hit: { ...hit, roomId }, point: hit.point, label: tagOf(hit.label, rooms.find((r) => r.id === roomId)?.name) })
         return true
-      } else if (room && keys.has(room)) {
-        setSurface({ roomKey: room, wallKey: face && keys.has(face) ? face : undefined })
+      } else if ((room && keys.has(room)) || out) {
+        setSurface({ ...(room && keys.has(room) ? { roomKey: room, wallKey: face && keys.has(face) ? face : undefined } : {}), ...(out ? { outside: out } : {}) })
         return true
       } else if (modeRef.current === 'orbit' && (hit.kind === 'floor' || hit.kind === 'furniture') && stairRoomAt(hit.under ?? hit.point)) {
         // a stair room — its floor, or the stair itself (its well leaves little floor to click): at its door, looking at the flight
@@ -812,6 +862,11 @@ function Viewer({ first }: { first: Shown }) {
     s.onFlat((h) => {
       const f = h?.flat
       if (!h || going.current) return
+      // staff with Finishes open: the wall clicked (a ground block: its floor) for the building's outside card, not a trip
+      if (finishesRef.current && KEEP) {
+        const drawn = h.wall && Object.values(tower?.FLATS ?? {}).find((x) => x.unit.id === h.wall!.drawing)?.unit.name.split(' · ')[0]
+        return setSurface({ outside: outSpot(h.k, h.wall, drawn) })
+      }
       if (!f) return levelAt(h.k) ? walkLevel(h.k) : (setPicked(h.k), s.showFloor(h.k))
       if (f.stem !== stem || f.floor !== unit.floor) {
         if (!travel({ stem: f.stem, floor: f.floor, view: 'orbit' }, here())) location.assign(`/u/${f.stem}?floor=${f.floor}&view=dollhouse`)
@@ -1743,6 +1798,7 @@ function Viewer({ first }: { first: Shown }) {
                   slots={unit.finishSlots}
                   cfg={cfg}
                   keys={keys}
+                  outside={KEEP ? { rec: outside, slots: outSlots, onSelect: chooseOutside } : undefined}
                   surface={surface}
                   onSelect={choose}
                   onCloseSurface={() => setSurface(null)}
@@ -1765,6 +1821,11 @@ function Viewer({ first }: { first: Shown }) {
               wall={opWall}
               where={opF || opW ? rooms.filter((r) => r.wallIds.includes(opF?.wall.id ?? opW!.id)).map((r) => r.name).join(' ↔ ') || (opF ? 'On an outside wall' : 'Outside') : ''}
               refused={plan.current.dragBlocked}
+              frame={
+                KEEP && opF && (opF.opening.kind === 'window' || opF.opening.kind === 'slider')
+                  ? { options: outSlots[1].options, own: outside[frameKey(unit.id, opF.opening.id)] ?? null, building: outside[FRAMES_SLOT.id] ?? FRAMES_SLOT.defaultOptionId, onPick: (id) => chooseOutside(frameKey(unit.id, opF.opening.id), id) }
+                  : undefined
+              }
               canUndo={plan.current.history.past.length > 0}
               onKind={(kind) => opF && planCommit({ type: 'update-opening', id: opF.opening.id, patch: { kind } })}
               onSize={(patch) => opF && planCommit({ type: 'update-opening', id: opF.opening.id, patch })}
