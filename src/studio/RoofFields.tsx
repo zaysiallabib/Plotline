@@ -87,8 +87,8 @@ export function RoofFields({ roof, read, covering, onChange }: Props) {
           <label>
             <span className="label">Ridge</span>
             <select value={r.ridge ?? 'long'} onChange={(e) => set({ ridge: e.target.value === 'short' ? 'short' : undefined })}>
-              <option value="long">Along the long side</option>
-              <option value="short">Across the building</option>
+              <option value="long">Lengthwise</option>
+              <option value="short">Crosswise</option>
             </select>
           </label>
           <label title="How far the roof reaches past the walls, with a fascia board along its edge and a soffit under it">

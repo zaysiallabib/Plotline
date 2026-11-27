@@ -494,7 +494,7 @@ block is the roof.
   at the ends too), **Shed** (one slope, high along the back), **Mansard** (steep lower slopes all round, a low roof over
   them). Under a pitched roof there is no parapet, no stair head room, no water tanks and no roof garden.
 - A pitched roof: **Pitch °** (empty: 30°, or as steep as the drawing set's eave and ridge make it — "as drawn"),
-  **Ridge** (**Along the long side**, or **Across the building**), **Eaves m** (how far the roof reaches past the walls:
+  **Ridge** (**Lengthwise**, along the building's long side, or **Crosswise**), **Eaves m** (how far the roof reaches past the walls:
   the slopes run on at the same pitch, a white fascia board along the edge and a soffit under it).
 - A flat roof: **Coping** (**None**, **Plaster**, **Metal**, **Stone**): a cap along the top of the parapet.
 - **A cornice band under the roof**: a band round the building just under the roof line (on a flat roof, round the parapet's
