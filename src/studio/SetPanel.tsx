@@ -94,6 +94,7 @@ const KIND_WORDS: Record<SheetKind, string> = {
   plan: 'Plan',
   elevation: 'Elevation',
   section: 'Section',
+  roof: 'Roof plan',
   site: 'Site plan',
   schedule: 'Schedule',
   interior: 'Interior elevation',
@@ -105,6 +106,7 @@ const GROUP_WORDS: Record<SheetKind, string> = {
   plan: 'Plans — each ticked one becomes the drawing of its floors',
   elevation: 'Elevations — kept with the project',
   section: 'Sections — kept with the project',
+  roof: 'Roof plans (its slopes) — kept with the project, not a floor',
   site: 'Site — kept with the project',
   schedule: 'Schedules — kept with the project',
   interior: 'Interior elevations — kept with the project',
@@ -412,7 +414,7 @@ export default function SetPanel({ files, onRead, onOpenOne, onBuild, onClose, o
                 Page {storeys.page} says “{storeys.words}”: {storeys.basements ? `${storeys.basements} basement${storeys.basements > 1 ? 's' : ''}, ` : ''}the ground and {storeys.floors} floor{storeys.floors === 1 ? '' : 's'} over it — a typical floor with no numbers goes on every floor left up to {storeys.floors}.
               </p>
             )}
-            {k === 'plan' && firstOnGround && <p className="muted">This set has no ground-floor plan, so its 1st floor is the ground floor (as American and Chilean sets count). Type the floors to change it: G, 1, 2–8, B1, Roof.</p>}
+            {k === 'plan' && firstOnGround && <p className="muted">This set has no ground-floor plan, so its 1st floor stands on the ground. Type the floors to change it: G, 1, 2–8, B1, Roof.</p>}
             <ol>
               {of.map((c) => (
                 <li key={c.key} className={c.used ? 'on' : ''}>

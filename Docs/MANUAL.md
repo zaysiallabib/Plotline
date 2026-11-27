@@ -1336,7 +1336,9 @@ the straight runs of its panels, one glass wall per run; a "column" wider than a
 column and is left to the outside shape — the notes say how many of each. A whole big floor opens in Preview 3D too (the
 LTU building's 2nd floor, 285 rooms and 1 644 walls: about half a minute to Enter); on a floor that big the daylight inside
 is worked out on a coarser grid, so it is ready in a second instead of never. Afterwards the panel
-lists **What was read from the file** — its unit, what was guessed, what it lacked — until **Dismiss**. After a DXF or
+lists **What was read from the file** — its unit, what was guessed, what it lacked (an architect's model: its storeys once
+each, lowest first, with their floor heights; a wall named as people say it, "Crépi 10 · Is 140 · Colle 10", not the
+program's "Basic Wall:SIA_41_…:7102787") — until **Dismiss**. After a DXF or
 an SVG the list ends with its **layers**, each with what Plotline took it as ("Plotline decides: Walls"); a layer it
 could not place is named in the notes. Pick another meaning in a layer's box — **Walls**, **Kerbs**, **Zone lines**,
 **Doors**, **Windows**, **Columns**, **Room names**, **Dimensions** or **Leave out** — and the file is read again at once;
@@ -1413,8 +1415,8 @@ before.
 The list, grouped by kind — each row: a tick, the drawing's picture, its title as printed with "Page 7 · A1.3 · 1 : 48"
 under it, its kind, and its floors (a plan), side (an elevation) or mark (a section):
 - **Plans** — each ticked one becomes the drawing of its floors. The floors come from the title: G (ground), B1, 2, 2–8,
-  Roof. A set with no ground-floor plan counts its 1st floor as the ground floor (American and Chilean sets do; a line
-  under Plans says so). Of two plans for one floor the first is ticked; a reflected ceiling, electrical, plumbing or
+  Roof. A set with no ground-floor plan puts its 1st floor on the ground (a line under Plans says so: "This set has no
+  ground-floor plan, so its 1st floor stands on the ground"). Of two plans for one floor the first is ticked; a reflected ceiling, electrical, plumbing or
   foundation plan never is. A typical floor with no numbers goes on every floor left up to the highest one named — or up
   to the top floor the set itself names when a page says how tall the building is ("2B+G+12", "B+G+M+12", "G+9",
   "10 Storied", "Floors: 09": a line under Plans says which page said it; a storey count includes the ground, so
@@ -1423,9 +1425,13 @@ under it, its kind, and its floors (a plan), side (an elevation) or mark (a sect
   whose title names no floor is left out when the others name theirs; when none does, the first goes on the ground and
   you type the others' floors (a set whose words are drawn as lines).
 - **Elevations, Sections, Site, Schedules, Interior elevations** — ticked: kept with the project as pictures.
+- **Roof plans** — a ROOF PLAN that draws a house's slopes (its words say SLOPE, 4/12, RIDGE, GUTTER, HIP or GABLE, and
+  nothing one walks on — no stair, lift or tank): ticked, kept with the project like an elevation (under KEPT FROM THE
+  DRAWING SET → Roof plans), never a floor. A Dhaka rooftop plan (its stair, lift, water tank) stays the Rooftop floor.
+  Wrong? Set its kind to Plan and its floor to Roof.
 - **Details, Title pages and notes, Other pages** (a brochure's photos, its specifications) — left out unless ticked.
 
-**Change anything with one click:** the kind in its box (Plan, Elevation, Section, Site plan, Schedule, Interior elevation,
+**Change anything with one click:** the kind in its box (Plan, Elevation, Section, Roof plan, Site plan, Schedule, Interior elevation,
 Detail, Title & notes, Other), the floors in theirs (`G`, `B1`, `2-8`, `3, 5, 7`, `Roof` — red when it is not
 floors), the tick. What you change is remembered in this browser by the drawing's title: the next set from the same
 architect, printing the same titles, comes in as you set it ("as you set it" under the row). **Click a drawing's picture**

@@ -380,6 +380,13 @@ No set that built right before builds worse: every plan that changed was drawn 5
 on a guessed scale); every plan with a printed scale or agreeing dimensions (the farmhouse, Quinta Monroy, both twindo
 sets) keeps its lines.
 
+**A roof plan of slopes is the roof, not a floor (same lane).** A plan titled for the roof alone whose words speak of its
+slopes (two or more of SLOPE, a pitch like 4/12, RIDGE, HIP, GABLE, EAVES, GUTTER, SHINGLES, roof panels) and of nothing one
+walks on (no stair, lift, lobby, tank, O.H.W.T, machine room, garden, UP / DN) is read as kind **Roof plan** and kept with the
+project like an elevation (`sheets.ts ofSlopes`, a test). On the 11 sets only the farmhouse ROOF PLAN changes (plan on Roof →
+kept Roof plan: its Rooftop floor of a picture of slopes is gone); every Dhaka rooftop (Sanctuary, Majestic, Pearl, Noboneer)
+stays a floor (their words name the stair, lift and tanks, or none are text).
+
 ## Page by page
 
 ### Farmhouse drawing set (Amatect, US)
