@@ -4,6 +4,38 @@ Read this first in every new session. Repo: `E:\dev\Plotline` (never the OneDriv
 Branch: **`main`** (session 29 merged 2026-11-19 ~06:00, not deployed) — the ONLY branch in use since 2026-10-09 (GitHub `zaysiallabib/Plotline`); `feat/phase-0` and `claude/brave-ritchie-ypmrbd` are stale and hold nothing main lacks (see "Branches on GitHub" under SESSION 24). Agents work on worktree branches off main; the manager merges and pushes main.
 Live: https://plotline-flax.vercel.app — **SESSION 19 (the levels) IS LIVE — founder deployed 2026-10-05 (bundle index-8u31c1T8.js), still WITHOUT Supabase: his Vercel names are `SUPABASE_URL` / `SUPABASE_KEY`; commit dc26eb1 makes the build read them — he must redeploy once more (SESSION 20 below).** (Older note: 2026-10-05 00:20 the bundle was still index-ZXDvwqwq.js.) Session 18 is LIVE (founder deployed 2026-10-04 evening; bundle index-ZXDvwqwq.js) but WITHOUT the Supabase env vars — Share link / Change list are missing on live until he adds them in Vercel and redeploys (SESSION 19 PLAN, "DEPLOY STATE").** `npx vercel --prod --yes` is denied to sessions by the classifier — the founder deploys.
 
+## STATE NOW (2026-11-28, kept short — the long log is below)
+
+**Where the code is.** Branch `s31/redesign`, pushed. main is still the session 30 close (930121b). Tests 2 183 passed /
+0 failed, build green, final Firefox look 0 errors. No lanes running.
+
+**Run it.** `git checkout s31/redesign` → `npm run dev` → http://localhost:5173/studio. The database (Supabase, the
+`qhrtjf` project) is set up since 2026-11-28; sign in from the Studio's ⋯ menu. Every click is in `Docs/MANUAL.md`.
+
+**What this branch does that main does not** (one line each):
+- The Studio opens on one door, "Drop your drawings": a PDF set, DXF files, an IFC, or a plan picture. The project with
+  its floors is the frame from the first drop.
+- A drawing set is read page by page (plans, elevations, sections, schedules); plans become floors, stacked, with the
+  storey heights from the sections. Symbols and fixtures are not walls.
+- An architect's IFC arrives dressed in its own materials, railings, roof; the street on the real ground floor.
+- Outside look on any building: 19 wall finishes, frame colours, glass / railing / grille balcony fronts, gable / hip /
+  shed / mansard roofs with coverings, 16 outside pieces (chhajja, canopy, screens, AC, solar…). Finishes → click a wall.
+- The cofounder's DXF ideas (all eight) and tracer wins (ten) ported and measured; Auto-trace no longer hangs.
+- Walked as the founder on nine buildings × every action, phone and keyboard: all green (`Docs/review/anybuilding/MATRIX.md`).
+
+**What needs him.**
+1. Look, then merge `s31/redesign` to main and deploy (`npx vercel --prod --yes`).
+2. Real client drawing sets.
+3. Say "go" on the NEXT UPDATE below.
+
+**Known rough edges worth knowing:** his Chrome crash on /u/preview (click a wall → "Something broke here") did not
+reproduce in Firefox; the page now prints the error's words — send that line. Projects saved in a browser before
+2026-11-28 keep a black IFC roof until the file is re-opened. 22 GB of this session's screenshots sit in
+`E:/dev/plotline-shots/` (his to clear).
+
+**Rule from here (founder, 2026-11-28, "why aren't you using the handoff"):** this block stays under 40 lines and is
+rewritten at every close; the detailed log below is for Claude, never the place he has to read.
+
 ## ▶ START HERE — SESSION 31: THE REDESIGN — ON BRANCH `s31/redesign`, NOT main (founder, 2026-11-20 mid-session: "commit these new line of changes into a new branch not main"; main stays at 930121b, the session 30 close, until he merges). Lanes merge into `s31/redesign`.
 
 **CLOSE (2026-11-20, late — the founder's 10 hours): ALL TEN LANES + QA MERGED ON `s31/redesign` dc79729. main is still 930121b, NOT touched, NOT pushed, NOT deployed — the founder asked for a branch ("commit these new line of changes into a new branch not main").** Order: tokens d969baf → landing b43f022 → studio b997a65 → hud fa8e25e → cloud 1421a6c → gpu 607572e → production b1e2184 → formats 0ce543c → library 89de684 → mobile ba662d4. At ba662d4: `npx tsc -b` green, `npx vitest run` 1505 passed · 9 skipped · 1 todo (86 files), `npm run build` green. QA (an agent as the founder, both widths, the six front-page pictures retaken): merged dc79729 — 21 problems found as the founder (`E:/dev/plotline-shots/s31/qa/PROBLEMS.md`, a shot each), 7 fixed (the last gold on the Building bands / VR ring / Site legend, the phone note under the room name, no hint over the open sun card, no H under a finger, the start screen line), the six `public/landing/*.jpg` retaken on the marble look. Left, most important first: (1) **the TV cabinet loses its slatted doors after any Edit-furniture change** (undo / R) until G + Esc or a reload — not the batching (no batches with Furniture on); (2) moving the cabinet leaves the TV in mid-air; (3) the haze behind the room name reads as a white oval at night / over curtains; (4) a picked piece is a sky blue (#39a0ff), not the accent — his call; (5) the browser's grey confirm boxes (Openings on a built-in flat, ~15 in the Studio) are the one non-marble thing; (6) a whole-floor Auto-trace shows 88 numbered circles + 85 Check-these rows (tracer quality); (7) Preview 3D of a traced floor starts nose-to-curtain; (8) the .glb export is 106 MB. The agent's verdict: the front page and the restraint of the chrome are award-level; the 3D renders (flat walls, block neighbours, black tower windows) and the Studio's error-heavy first impression are what a jury would mark down — the next effort goes there.
