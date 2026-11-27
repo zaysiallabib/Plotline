@@ -1,7 +1,7 @@
 /**
  * A binary glTF (GLB) written by hand, so the shell needs no three.js here and the same code runs in Node (tests) and the
- * browser. One buffer, one mesh, one primitive per material colour (positions + normals + uint32 indices), the JSON chunk
- * and the BIN chunk padded to 4 bytes. World axes as the importer gives them (X right, Y up, Z toward the viewer).
+ * browser. One buffer, one mesh, one primitive per material colour (positions + normals + uint32 indices; a dressed group's
+ * texture coordinates in metres), the JSON chunk and the BIN chunk padded to 4 bytes. World axes as the importer gives them (X right, Y up, Z toward the viewer).
  */
 
 export interface GlbGroup {
@@ -12,6 +12,49 @@ export interface GlbGroup {
   indices: Uint32Array
   /** an IfcWindow's (its frame and its glass): its material named WINDOW, so the viewer can find it (three/shell.ts) */
   window?: boolean
+  /**
+   * What Plotline dresses it in (session 31 ifcmap: `dressName`), its material's name; it then carries texture coordinates in
+   * metres (dressUvs), so the viewer's picture sets tile on it as on its own walls (three/materials.ts).
+   */
+  dress?: string
+}
+
+/**
+ * A dressed group's material name: `plotline:<slot>:<option id>`, `:main` when it is the building's own (the commonest), so it
+ * follows the building's choice for that slot (three/shell.ts dressShell). Slots: `out` (an outside finish), `frame` (a
+ * window frame), `roof` (a roof covering).
+ */
+export const DRESS = 'plotline:'
+export const dressName = (slot: 'out' | 'frame' | 'roof', option: string, main: boolean): string => `${DRESS}${slot}:${option}${main ? ':main' : ''}`
+export const parseDress = (name: string): { slot: 'out' | 'frame' | 'roof'; option: string; main: boolean } | null => {
+  const m = /^plotline:(out|frame|roof):([^:]+)(:main)?$/.exec(name)
+  return m ? { slot: m[1] as 'out' | 'frame' | 'roof', option: m[2], main: !!m[3] } : null
+}
+
+/**
+ * Texture coordinates in metres for a dressed group, from each vertex's own normal: a flat roof or floor by its X / Z; any
+ * other face by its horizontal run along the face and its rise up it (a wall: across and up; a slope: along the eave and up
+ * the slope), so a brick course stays level and a tile row runs along the eave.
+ */
+export function dressUvs(P: Float32Array, N: Float32Array): Float32Array {
+  const uv = new Float32Array((P.length / 3) * 2)
+  for (let i = 0, j = 0; i < P.length; i += 3, j += 2) {
+    const [x, y, z] = [P[i], P[i + 1], P[i + 2]]
+    const [nx, ny, nz] = [N[i], N[i + 1], N[i + 2]]
+    const h = Math.hypot(nx, nz)
+    if (h < 0.02) {
+      uv[j] = x
+      uv[j + 1] = z
+      continue
+    }
+    const [tx, tz] = [-nz / h, nx / h] // along the face, level
+    // up the face: n × t has a positive rise on every face that is not a ceiling
+    const [bx, by, bz] = [ny * tz, nz * tx - nx * tz, -ny * tx]
+    const s = by < 0 ? -1 : 1
+    uv[j] = x * tx + z * tz
+    uv[j + 1] = s * (x * bx + y * by + z * bz)
+  }
+  return uv
 }
 
 /** the material name a window's parts carry in the GLB */
@@ -57,15 +100,16 @@ export function writeGlb(groups: GlbGroup[], name: string): GlbOut {
     const pos = accessors.push({ bufferView: view(g.positions, 34962), componentType: 5126, count: n, type: 'VEC3', min: pmin, max: pmax }) - 1
     const nor = accessors.push({ bufferView: view(g.normals, 34962), componentType: 5126, count: n, type: 'VEC3' }) - 1
     const idx = accessors.push({ bufferView: view(g.indices, 34963), componentType: 5125, count: g.indices.length, type: 'SCALAR' }) - 1
+    const uv = g.dress ? accessors.push({ bufferView: view(dressUvs(g.positions, g.normals), 34962), componentType: 5126, count: n, type: 'VEC2' }) - 1 : -1
     const [r, b_, bl, a] = g.color
     const mat =
       materials.push({
-        ...(g.window ? { name: WINDOW } : {}),
+        ...(g.dress ? { name: g.dress } : g.window ? { name: WINDOW } : {}),
         pbrMetallicRoughness: { baseColorFactor: [r, b_, bl, a], metallicFactor: 0, roughnessFactor: 0.8 },
         doubleSided: true,
         ...(a < 0.999 ? { alphaMode: 'BLEND' } : {}),
       }) - 1
-    primitives.push({ attributes: { POSITION: pos, NORMAL: nor }, indices: idx, material: mat, mode: 4 })
+    primitives.push({ attributes: { POSITION: pos, NORMAL: nor, ...(uv >= 0 ? { TEXCOORD_0: uv } : {}) }, indices: idx, material: mat, mode: 4 })
     triangles += g.indices.length / 3
   }
 

@@ -31,6 +31,8 @@ export interface Opening {
   widthM: number
   heightM: number
   sillM: number // 0 for doors/passages
+  /** a glass wall's mullion spacing (m) as the architect's file draws it (an IFC curtain wall's); absent: equal bays of at most 1.4 m */
+  bayM?: number
   /** door swing/hinge side hint (kind 'door' only; ignored on sliders); purely visual */
   hinge?: 'a' | 'b'
   swing?: 'in' | 'out'

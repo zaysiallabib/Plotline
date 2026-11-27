@@ -8,7 +8,7 @@
 import * as THREE from 'three'
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js'
 import type { Shell } from '../core'
-import { WINDOW } from '../import/glb'
+import { WINDOW, parseDress } from '../import/glb'
 import { getShell } from '../studio/shells'
 
 /** more triangles than this and the lite tier leaves the shape out */
@@ -72,7 +72,7 @@ export function solidWindowsOut(g: THREE.Object3D): number {
   let n = 0
   g.traverse((o) => {
     const m = o as THREE.Mesh
-    if (m.isMesh && [m.material].flat().some((x) => x.name === WINDOW)) (m.visible = false), n++
+    if (m.isMesh && [m.material].flat().some((x) => x.name === WINDOW || parseDress(x.name)?.slot === 'frame')) (m.visible = false), n++
   })
   return n
 }
