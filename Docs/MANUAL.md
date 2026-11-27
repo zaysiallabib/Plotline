@@ -872,7 +872,7 @@ had.
 - The Sheltech levels open with their plan picture already behind them.
 
 **W — Wall**
-- What to draw (keys 1–4): **Wall**, **Low wall** (boundary wall, parapet, railing; type its height — then pick it for **Made of**: glass, a railing, a grille, timber, a fence), **Kerb** (a 6-inch
+- What to draw (keys 1–4): **Wall**, **Low wall** (boundary wall, parapet, railing; type its height — then pick it for **Made of**: glass, a railing, a grille, timber, a fence; on the plan such a one shows a line down its middle), **Kerb** (a 6-inch
   edge, as round a planter), **Zone line** (invisible; only separates two areas, a lawn from a driveway).
 - Click corner after corner; click the first corner again to close the room. While drawing, type a number for the exact
   length (**Tab** switches to the angle); **Backspace** takes back the last piece; **Esc** stops; **T** switches thin
