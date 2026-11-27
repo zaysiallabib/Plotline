@@ -1155,9 +1155,7 @@ function Spandrel({ o, patch }: { o: Opening; patch: (p: Partial<Omit<Opening, '
   return (
     <>
       <Row label="Solid band">
-        <span title="An opaque panel at the foot of the glass on every floor, as a curtain wall's spandrel over the slab (0 = glass to the floor)">
-          <LenInput valueM={o.spandrelM ?? 0} onCommit={(m) => patch({ spandrelM: m > 0.01 ? m : undefined })} />
-        </span>
+        <LenInput valueM={o.spandrelM ?? 0} placeholder="0 = glass to the floor" onCommit={(m) => patch({ spandrelM: m > 0.01 ? m : undefined })} />
       </Row>
       {(o.spandrelM ?? 0) > 0 && (
         <Row label="Band of">
