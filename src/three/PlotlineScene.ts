@@ -38,6 +38,7 @@ import { buildFurniture, preloadModels, warmStandins } from './furniture'
 import { bottomOf } from '../studio/furniture'
 import { CONCRETE, EDGE_PLASTER, MORE_PICTURES, PAINT, PICTURES, SOLID_CUT, isBlank, litePlain, loading, materialFor, resolveFinish, samePictures, setMaxAnisotropy, zoneFinishRef } from './materials'
 import { PANES, WATER } from './openings'
+import { capGeometry, railParts } from './rails'
 import { Look, type LookKept, SITE_REACH_M, TIERS, forcedScale, lensFov, lightsOn, needsFrame, pixelRatioFor, skyLight, slowFrames, type LightsMode, type Quality, type Well } from './render'
 import { batch, HIDDEN, unbatch } from './batch'
 import { SEASON_TINT, WindFlow } from './wind'
@@ -2122,6 +2123,20 @@ export class PlotlineScene {
     // Reveals ride with the exterior face (front if both are rooms), not the depth-offset edge material: GTAO read
     // the offset depth as a groove along a slim reveal beside a window frame (the dashed outline on the study glass).
     const lift = this.lifts.get(wall.id)!
+    if (core.railOf(wall)) {
+      // a railing, a glass front, a fence (rails.ts): its own parts in their own materials, picked as the low wall it is
+      const rail = new THREE.Group()
+      rail.userData = { kind: 'wall', id: wall.id, front, back, label: 'Railing', objectKind: 'wall' }
+      for (const { m, geo } of railParts(wall, unit)) {
+        liftWall(geo, wall, unit, lift)
+        const mesh = new THREE.Mesh(geo, m instanceof THREE.Material ? m : materialFor(m))
+        mesh.castShadow = !mesh.material.transparent // (glass, a wire mesh: no solid shadow)
+        mesh.receiveShadow = true
+        rail.add(mesh)
+      }
+      this.staticGroup.add(rail)
+      return
+    }
     const built = liftedWall(wall, unit, lift, this.slabOver(wall)) // on its foot, its openings on the higher floor
     const geo = wallGeometry(built, unit, back === null && front !== null ? 1 : 0)
     if (geo) {
@@ -2155,6 +2170,15 @@ export class PlotlineScene {
           { roomId: front ?? back, target: 'wall', edge: true, ...face(front ?? back), ...(planter ? { ref: CONCRETE } : kerb) },
         ],
       })
+      // a solid low wall's cap (rails.ts), finished as its top — daylit and stood on its floor as the wall is (build)
+      const cap = capGeometry(wall, unit)
+      if (cap) {
+        const top = new THREE.Mesh(cap)
+        top.castShadow = top.receiveShadow = true
+        top.userData = { ...mesh.userData }
+        this.staticGroup.add(top)
+        this.surfaces.push({ mesh: top, sides: [{ roomId: front ?? back, target: 'wall', edge: true, ...face(front ?? back), ...(planter ? { ref: CONCRETE } : {}) }] })
+      }
     }
     wall.openings.forEach((o, i) => {
       // on the higher floor at its middle (its sill as drawn: a glass wall stays a glass wall), its head within the wall

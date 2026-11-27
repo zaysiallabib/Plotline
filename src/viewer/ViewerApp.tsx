@@ -23,7 +23,7 @@ import { learnCarried } from '../lib/library'
 import { configured as sharingConfigured, fetchSharedUnit } from '../lib/supabase'
 import { LinkOff, NoPreview, NotFound, Offline, Skeleton, Slate } from '../lib/pages'
 import { pageTitle } from '../lib/route'
-import { WALL_TYPES, findOpening, initialState, isUnit, normalizeUnit, reducer, wallTypeOf, type Action, type StudioState } from '../studio/model'
+import { LOW_KINDS, WALL_TYPES, findOpening, initialState, isUnit, normalizeUnit, reducer, wallTypeOf, type Action, type StudioState } from '../studio/model'
 import { preloadModels } from '../three/furniture'
 import { PlotlineScene, type ArrangeEvent, type OpeningEvent, type PickHit, type SceneMode } from '../three/PlotlineScene'
 import type { TowerHit } from '../three/building'
@@ -529,6 +529,8 @@ function OpeningPanel(p: {
   onKind: (k: OpeningKind) => void
   onSize: (patch: Partial<Pick<Opening, 'widthM' | 'heightM' | 'sillM'>>) => void
   onWall: (patch: { lengthM?: number; heightM?: number }) => void
+  /** what the low wall is made of (model LOW_KINDS), a solid one's cornice */
+  onLowKind: (patch: { kind?: (typeof LOW_KINDS)[number][0]; cornice?: boolean }) => void
   onDelete: () => void
   onUndo: () => void
   /** a window, slider or glass wall (staff on the flat's own page): its frame's colour — the building's, or its own */
@@ -537,18 +539,38 @@ function OpeningPanel(p: {
   const o = p.opening
   const lw = p.wall
   const finger = useFinger()
+  const rail = lw && core.railOf(lw.w)
   return (
     <aside className="glass arrange">
       {lw ? (
         <>
           <div className="arrange-name">
-            {WALL_TYPES[wallTypeOf(lw.w.heightM)].label} · {core.formatFeetInches(lw.lengthM)} long · {core.formatFeetInches(lw.w.heightM)} high
+            {rail ? LOW_KINDS.find(([k]) => k === rail)![1] : WALL_TYPES[wallTypeOf(lw.w.heightM)].label} · {core.formatFeetInches(lw.lengthM)} long · {core.formatFeetInches(lw.w.heightM)} high
           </div>
           <div className="small muted">{p.where}</div>
           <div className="arrange-row">
             <FtIn label="Length" m={lw.lengthM} onSet={(lengthM) => p.onWall({ lengthM })} />
             <FtIn label="Height" m={lw.w.heightM} onSet={(heightM) => p.onWall({ heightM })} />
           </div>
+          {core.takesLowKind(lw.w) && (
+            <div className="arrange-row made-of">
+              <label className="ftin">
+                Made of
+                <select value={lw.w.lowKind ?? 'solid'} onChange={(e) => p.onLowKind({ kind: e.target.value as (typeof LOW_KINDS)[number][0] })}>
+                  {LOW_KINDS.map(([k, label]) => (
+                    <option key={k} value={k}>
+                      {label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              {!lw.w.lowKind && (
+                <label className="ftin-check" title="A stepped band under the wall's cap, as on a classical parapet">
+                  <input type="checkbox" checked={!!lw.w.cornice} onChange={(e) => p.onLowKind({ cornice: e.target.checked })} /> Cornice
+                </label>
+              )}
+            </div>
+          )}
         </>
       ) : o ? (
         <>
@@ -1862,6 +1884,7 @@ function Viewer({ first }: { first: Shown }) {
               onWall={({ lengthM, heightM }) =>
                 opW && planCommit(lengthM !== undefined ? { type: 'set-wall-length', id: opW.id, lengthM } : { type: 'set-wall-type', ids: [opW.id], wall: wallTypeOf(heightM!), heightM })
               }
+              onLowKind={(patch) => opW && planCommit({ type: 'low-wall', ids: [opW.id], ...patch })}
               onDelete={() => {
                 if (!opF && !opW) return
                 setOpSel(null)

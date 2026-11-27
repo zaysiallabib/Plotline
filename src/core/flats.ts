@@ -16,7 +16,7 @@
 import { roomAt } from './geometry'
 import { flatTypeOf } from './graph'
 import { isOutdoor } from './index'
-import type { Id, Room, RoomKind, Unit } from './types'
+import type { Id, LowWallKind, Room, RoomKind, Unit, Wall } from './types'
 
 export interface Flat {
   /** its first room's id: stable while that room stays in it */
@@ -38,6 +38,12 @@ const SFT = /(\d[\d,]{2,6})\s*(?:sft|sq\.?\s*ft|s\.f\.t)/i
 /** In no flat by itself: the common core (a pin decides instead when there is one). */
 /** a wall lower than this (a planter edge, a kerb, a low parapet) is stepped over: it joins its two sides like a door (founder 2026-10-09) */
 export const LOW_WALL_M = 1.2
+/** a wall over a kerb and under this may be made of something other than plaster (Wall.lowKind): a parapet, a fence, a boundary wall */
+export const LOW_KIND_MAX_M = 2.4
+/** may wall w be made of something other than plaster (a kind: railOf)? over a kerb (0.2 m), under LOW_KIND_MAX_M */
+export const takesLowKind = (w: Pick<Wall, 'heightM'>): boolean => w.heightM > 0.2 && w.heightM < LOW_KIND_MAX_M
+/** What low wall w is made of when it is not solid plaster; null: solid (no kind, or too tall / a kerb for one). */
+export const railOf = (w: Pick<Wall, 'heightM' | 'lowKind'>): LowWallKind | null => (w.lowKind && takesLowKind(w) ? w.lowKind : null)
 
 export const isCore = (r: Pick<Room, 'kind' | 'name'>): boolean => CORE_KINDS.has(r.kind) || isOutdoor(r.kind) || (r.kind === 'other' && CORE_NAME.test(r.name))
 
