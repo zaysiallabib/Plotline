@@ -53,7 +53,7 @@ export async function publishLink(unit: Unit, finishes: Configuration | null, at
   if (!org) {
     key = localStorage.getItem(PUBLISH_KEY) ?? ''
     if (!key) {
-      key = (await askText('Type the staff key (printed when the online database was set up). Or Cancel, then Sign in at the top right to share as your company.', { placeholder: 'Staff key' }, 'Share'))?.trim() ?? ''
+      key = (await askText('Type the staff key (printed when the online database was set up). Or Cancel, then sign in to your company in the Studio (⋯ → Sign in) and share again.', { placeholder: 'Staff key' }, 'Share'))?.trim() ?? ''
       if (!key) return null
       localStorage.setItem(PUBLISH_KEY, key)
     }
