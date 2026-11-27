@@ -579,7 +579,8 @@ The same list in the 3D view (**Edit ▾ → Furniture → Add**) and in the Stu
   a concrete slab canopy, a porch roof on posts), **Sunshades** (the chhajja over a window), **Awnings** (fabric),
   **Screens and fins** (vertical fins, a louvre screen, a perforated jaali screen), a **roller shutter** (a scan) and an
   **AC outdoor unit** on its wall brackets (a scan), a **planter box on a balcony edge**
-  (with plants), a **fire escape** (a steel landing with a stair up to the floor above: put one on each floor and they
+  (with plants: pointed at a balcony's solid low wall it sits on its cap, astride it; at a railing, grille or glass front
+  it stands on the balcony floor just inside it), a **fire escape** (a steel landing with a stair up to the floor above: put one on each floor and they
   make the whole stair), a **name sign** (a blank brushed-steel plate), **solar panels**, a **chimney** and a **flagpole**.
   The last three and the porch roof stand on a floor: a rooftop's deck, a ground floor's paving or lawn. All but the two
   scans are built by Plotline and get more fins, slats, modules or balusters as they grow, never stretched ones; the
