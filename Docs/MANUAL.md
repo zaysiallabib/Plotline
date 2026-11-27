@@ -1073,6 +1073,12 @@ would take glows (its closed rooms and the open floor round them). Then:
 - **Cancel** in the box stops it.
 - The trace replaces the walls and names; the drawing keeps its own name, project, floor, true north, site and outside
   shape.
+- **Set the scale and trace again** (under the "Traced … · scale from …" line in Check these) shows when you ran
+  Auto-trace before setting the scale, so it guessed it (from the printed sizes, the printed area or the wall
+  thickness). Click it, click the two ends of a length you know on the picture, type the length, Enter: the plan is
+  traced again at that scale (point at a flat or **Whole floor** as before). Ctrl+Z brings the earlier trace back (twice when the message says walls were joined: the joining is its own step).
+- If you open another drawing while Auto-trace runs, it stops ("Auto-trace cancelled"): a trace never lands on a
+  drawing it was not started on, and only the last picture you dropped is the plan picture.
 
 **Flats in a drawing.** Once rooms are named, the Studio finds the flats by itself: rooms joined by a door, passage,
 sliding door, zone line or a wall lower than 1.2 m are one flat (a window joins nothing); lobbies, stairs, lifts, shafts,
@@ -1154,7 +1160,10 @@ read in pieces along one line ("DINING" + "AMILY" + "f LOUNGE"). Size tables bes
 numbered legends "01. LIVING …") give each room its size, and their words never count as rooms. Two names in one closed
 space: the larger printed room names it. A reading names a room only when its words are the sheet's room words (one
 letter off at most): a garbled reading leaves "Space N" with its row. Guessed names ("Toilet 3" from a drawn WC) are
-numbered west to east and never take a printed room's number.
+numbered west to east and never take a printed room's number. A misread name keeps its number ("KlTCHEN-02" names
+Kitchen-02, "T0ILET 2" Toilet 2); sizes printed in metres, centimetres or millimetres with the unit written once ("440 x
+320 cm", "4.4m x 3.2") are read in metres. A pale scan (light grey lines on white, no real black anywhere) is turned to
+full contrast before anything is read; a normal sheet is left as it is.
 
 **What it reads as walls:** solid black walls; hollow walls (two thin lines with paper between, when most of the sheet's
 walls are drawn so); grey bands between two thin lines; white or cream walls between coloured floors (a second pass when

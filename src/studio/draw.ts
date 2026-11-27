@@ -164,7 +164,7 @@ export interface DrawArgs {
   mark?: Pt | null
   /** Auto-trace pick mode: the flat a click at the pointer picks (plan px), tinted, its room names faint; `region`: the floor
    *  its flood reached (plan px rectangles), tinted with the rooms as one area, open or closed */
-  preview?: { polys: Pt[][]; names: { at: Pt; text: string }[]; region?: { x: number; y: number; w: number; h: number }[] } | null
+  preview?: { polys: Pt[][]; names: { at: Pt; text: string }[]; region?: { x: number; y: number; w: number; h: number }[]; regionAngle?: number } | null
   /** the drawing's flats: each tinted in its colour, its name once above it */
   flats?: Flat[]
   /** the room names' looks on screen (roomNames); absent = every name in its full look */
@@ -732,9 +732,19 @@ export function draw(a: DrawArgs): void {
       rooms.closePath()
     }
     const area = new Path2D(rooms)
+    // (on a turned sheet each rectangle is turned with it, `regionAngle` about its corner — from Maheer's Plotline 2.0)
+    const turn = a.preview.regionAngle ?? 0, cos = Math.cos(turn), sin = Math.sin(turn)
     for (const r of a.preview.region ?? []) {
-      const p = pxToScreen(frame, { x: r.x, y: r.y }), q = pxToScreen(frame, { x: r.x + r.w, y: r.y + r.h })
-      area.rect(p.x, p.y, q.x - p.x, q.y - p.y)
+      const p = pxToScreen(frame, { x: r.x, y: r.y }), w = r.w * zoom, h = r.h * zoom
+      if (!turn) {
+        area.rect(p.x, p.y, w, h)
+        continue
+      }
+      area.moveTo(p.x, p.y)
+      area.lineTo(p.x + w * cos, p.y + w * sin)
+      area.lineTo(p.x + w * cos - h * sin, p.y + w * sin + h * cos)
+      area.lineTo(p.x - h * sin, p.y + h * cos)
+      area.closePath()
     }
     ctx.fillStyle = fade(C.accent, 0.12)
     ctx.fill(area)

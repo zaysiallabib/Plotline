@@ -6,7 +6,6 @@
  * `/s/<token>` ← Supabase (a link the Studio's Share published).
  */
 import { useEffect, useMemo, useReducer, useRef, useState, useSyncExternalStore } from 'react'
-import * as THREE from 'three'
 import * as core from '../core'
 import type { Configuration, FinishOption, FinishSlot, FurniturePlacement, Id, Opening, OpeningKind, Pt, Room, Unit, Wall } from '../core'
 import { coverOf, floorIn, levelName, projectUnit, roleIn, roofIn, saveRoof, stairOnFloor, stairsDown, stairTo, stemIn, streetOf, topFloor, towerOf, type Tower } from '../data/building'
@@ -240,14 +239,8 @@ function resolveUnit(): Unit | null {
 
 const spawn = (scene: PlotlineScene, p: Pt, face: Pt, pitch = 0, hfov?: number): void => scene.spawnAt(p, yawFor(face), pitch, hfov)
 /** Plan-space eye position (rig + camera): the walker in walk mode, the orbit camera in dollhouse. */
-const eyeOf = (scene: PlotlineScene): Pt => {
-  const w = scene.camera.getWorldPosition(new THREE.Vector3())
-  return { x: w.x, y: w.z }
-}
-const headingOf = (scene: PlotlineScene): Pt => {
-  const d = scene.camera.getWorldDirection(new THREE.Vector3())
-  return { x: d.x, y: d.z }
-}
+const eyeOf = (scene: PlotlineScene): Pt => scene.viewEye()
+const headingOf = (scene: PlotlineScene): Pt => scene.viewHeading()
 
 export default function ViewerApp() {
   // a published link: undefined while it loads, null when the database has no such link (or it is off), 'offline' when

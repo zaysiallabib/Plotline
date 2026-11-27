@@ -26,6 +26,8 @@ import { edt } from './raster'
 import { arcInk, glazing, inkThreshold, sideContrast, wallHalfWidth } from './walls'
 import type { Gray, OpeningGuess, Px, WallSeg } from './types'
 
+const hyp = (p: Px, q: Px) => Math.hypot(p.x - q.x, p.y - q.y)
+
 /** An occupied stretch of a track: from u0 to u1 along it (px), a wall `thPx` thick. */
 export interface Interval {
   u0: number
@@ -814,6 +816,8 @@ export function classifyGap(
   double = true,
   /** a window's frame band (one pane line in a light band) is glazing too (TrackOpts.frameBands) */
   bands = false,
+  /** a faint door: arc ink at two weaker cuts [stronger, weaker] — both must find the same hinge and swing, leaf drawn */
+  faint?: [(x: number, y: number) => boolean, (x: number, y: number) => boolean],
 ): Pick<Gap, 'kind' | 'conf' | 'hingeAt' | 'swingTo'> {
   const gap = Math.hypot(b.x - a.x, b.y - a.y)
   const ux = (b.x - a.x) / gap, uy = (b.y - a.y) / gap
@@ -822,25 +826,31 @@ export function classifyGap(
   if (door) return door
   // glass colour along the gap, inside the wall's band
   if (glass) {
-    let n = 0, hit = 0
-    const r = Math.ceil(th / 2) + 1
-    for (let t = 0.1 * gap; t <= 0.9 * gap; t += 1) {
-      n++
-      for (let o = -r; o <= r; o++) {
+    // a pane may sit just inside the wall's face (up to 0.1 m off its centre), but ONE straight offset must carry the
+    // colour: blue scattered across the band is no pane (from Maheer's Plotline 2.0)
+    const r = Math.ceil(th / 2) + Math.max(1, Math.round(0.1 * pxPerM))
+    for (let o = -r; o <= r; o++) {
+      let n = 0, hit = 0
+      for (let t = 0.1 * gap; t <= 0.9 * gap; t += 1) {
+        n++
         const x = Math.round(a.x + ux * t + nx * o), y = Math.round(a.y + uy * t + ny * o)
-        if (x >= 0 && y >= 0 && x < W && y < H && glass[y * W + x]) {
-          hit++
-          break
-        }
+        if (x >= 0 && y >= 0 && x < W && y < H && glass[y * W + x]) hit++
       }
+      if (n && hit / n >= 0.6) return { kind: 'window', conf: 0.7 }
     }
-    if (n && hit / n >= 0.6) return { kind: 'window', conf: 0.7 }
   }
   // (s27: a glass band — a light frame band and its pane line drawn as one, the photo-render brochures' windows — counts
   // as the walls.ts and close.ts glazing rules count it — only where the picture is traced at its own size (the bands flag): on a
   // small one blown up first (Magnifico, Water Lily, Kanakchapa, La Reina) a thin wall's own fill blurs into such a band)
   const gz = glazing(a, ux, uy, gap, th, grayAt)
   if (gz.lines >= 2 || (bands && gz.band >= Math.max(3, 0.05 * pxPerM))) return { kind: 'window', conf: 0.6 }
+  // (from Maheer's Plotline 2.0) a faint door: the weaker cut finds a swing with its leaf drawn, the stronger one the
+  // same hinge and swing within 10 % of the gap — a closed fixture, rings or a part-arc never agree so
+  if (faint) {
+    const q = doorArcs(a, b, pxPerM, faint[1], double, true)
+    const p = q ? doorArcs(a, b, pxPerM, faint[0], double, false, q.hingeAt) : null
+    if (p && q && p.conf >= 0.75 && q.conf >= 0.9 && p.hingeAt && q.hingeAt && p.swingTo && q.swingTo && hyp(p.hingeAt, q.hingeAt) <= 0.1 * gap && hyp(p.swingTo, q.swingTo) <= 0.1 * gap) return { ...p, conf: Math.min(p.conf, q.conf) }
+  }
   return { kind: 'unknown', conf: 0 }
 }
 
@@ -851,7 +861,7 @@ export function classifyGap(
  * up to the span between their hinges (± 15 %): a DOUBLE door, one opening of the gap's width (main doors: equal leaves
  * or 0.9 + 0.5 m; the hand traces draw one door there).
  */
-function doorArcs(a: Px, b: Px, pxPerM: number, arcAt: (x: number, y: number) => boolean, double = true): Pick<Gap, 'kind' | 'conf' | 'hingeAt' | 'swingTo'> | null {
+function doorArcs(a: Px, b: Px, pxPerM: number, arcAt: (x: number, y: number) => boolean, double = true, requireLeaf = false, anchor?: Px): Pick<Gap, 'kind' | 'conf' | 'hingeAt' | 'swingTo'> | null {
   const gap = Math.hypot(b.x - a.x, b.y - a.y)
   const ux = (b.x - a.x) / gap, uy = (b.y - a.y) / gap
   const nx = -uy, ny = ux
@@ -902,7 +912,14 @@ function doorArcs(a: Px, b: Px, pxPerM: number, arcAt: (x: number, y: number) =>
       const hp = { x: jb.x + ux * sgn * o * gap, y: jb.y + uy * sgn * o * gap }
       for (const R of Rs(o)) {
         const q = quarter(hp, ux * sgn, uy * sgn, nx * side, ny * side, R)
-        if (q.score > 0) out.push({ ...q, hp, t: sgn > 0 ? o * gap : gap - o * gap, side })
+        // (requireLeaf: the leaf drawn from the hinge along the swing's radius, 11 of 12 probes)
+        let leaf = 0
+        if (requireLeaf && q.score > 0)
+          for (let i = 0; i < 12; i++) {
+            const t = q.r * (0.2 + (0.6 * i) / 11)
+            leaf += near(hp.x + nx * side * t, hp.y + ny * side * t)
+          }
+        if (q.score > 0 && (!requireLeaf || leaf >= 11)) out.push({ ...q, hp, t: sgn > 0 ? o * gap : gap - o * gap, side })
       }
     }
     return out
@@ -913,7 +930,7 @@ function doorArcs(a: Px, b: Px, pxPerM: number, arcAt: (x: number, y: number) =>
     let best: Leaf | null = null
     for (const side of [1, -1])
       for (const [jb, sgn] of [[a, 1], [b, -1]] as const)
-        for (const l of leaves(jb, sgn, side, os, (o) => [gap * (1 - o)])) if (!best || l.score > best.score) best = l
+        for (const l of leaves(jb, sgn, side, os, (o) => [gap * (1 - o)])) if ((!anchor || hyp(l.hp, anchor) <= 0.1 * gap) && (!best || l.score > best.score)) best = l
     if (best && best.score >= 0.7) return { kind: 'door', conf: best.score, hingeAt: best.hp, swingTo: swing(best.side, gap * 0.5) }
   }
   if (double && gap >= M.doubleMin * pxPerM && gap <= M.doubleMax * pxPerM) {
@@ -929,6 +946,7 @@ function doorArcs(a: Px, b: Px, pxPerM: number, arcAt: (x: number, y: number) =>
         for (const q of B) {
           const span = q.t - p.t
           if (span <= 0 || Math.abs(p.r + q.r - span) > 0.15 * span || Math.max(p.r, q.r) > 2.2 * Math.min(p.r, q.r)) continue
+          if (anchor && hyp((p.r >= q.r ? p : q).hp, anchor) > 0.1 * gap) continue
           const s = Math.min(p.score, q.score)
           if (!best || s > best.score) best = { score: s, L: p.r >= q.r ? p : q }
         }

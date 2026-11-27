@@ -35,8 +35,10 @@ import { colourPage, dashMask, edt, furnitureMask, hatchMask, lightWalls, lineIn
 import { calibrateScale, darkMaxOf, fitRooms, type RoomFit, type Side } from './rooms'
 import { classifyRoom, nameKey, normaliseName, parseArea, parseDims, trimName } from './text'
 import { trackThin } from './track'
-import { circle3, glazing, inkThreshold, segPieces, thicknessOf, traceWalls, wallHalfWidth } from './walls'
-import type { AutoTraceOpts, AutoTraceResult, AutoTraceStats, Gray, HintTrace, PrintedRoom, Px, ReviewItem, RoomHint, TableRow, TextItem, TextTrace, WallSeg, WallTrace } from './types'
+import { arcInk, circle3, glazing, inkThreshold, segPieces, thicknessOf, traceWalls, wallHalfWidth } from './walls'
+import { classifyGap } from './tracks'
+import { endDoors } from './doorEnds'
+import type { AutoTraceOpts, AutoTraceResult, AutoTraceStats, Gray, HintTrace, OpeningGuess, PrintedRoom, Px, ReviewItem, RoomHint, TableRow, TextItem, TextTrace, WallSeg, WallTrace } from './types'
 
 /** Tuning knobs (metres unless said otherwise). */
 export const KNOBS = {
@@ -1283,16 +1285,29 @@ function dilate(m: Uint8Array, w: number, h: number, r: number, borderIsSet = tr
  * drawings (solid dark ink at least 0.4 m across with a leafy texture — a column or a black fill is flat). A printed
  * SUNSHADE / PLANTER label marks its face (solveTraces). Blobs under 0.5 m² (a pot plant) are dropped.
  */
-export function planterMask(plan: Gray, wallInk: Uint8Array, pxPerM: number, green?: Uint8Array): Uint8Array {
+export function planterMask(plan: Gray, wallInk: Uint8Array, pxPerM: number, green?: Uint8Array, text?: TextTrace): Uint8Array {
   const { width: w, height: h, data } = plan
   const seed = new Uint8Array(w * h)
   const dt = edt(wallInk, w, h)
   const deep = 0.2 * pxPerM
+  // printed labels (and the white the text erase leaves) on a dark floor vary as much as leaves do: never foliage; a
+  // green patch behind its label still is (from Maheer's Plotline 2.0)
+  const print = new Uint8Array(w * h)
+  for (const it of text?.items ?? []) {
+    if (it.kind === 'other' && !FLAT_LABEL.test(normaliseName(it.text.split('\n')[0]).replace(/[^A-Z0-9]+/g, ' ').trim())) continue
+    const b = it.box, pad = deep + 2
+    for (let y = Math.max(0, Math.floor(b.y - pad)); y < Math.min(h, Math.ceil(b.y + b.h + pad)); y++) print.fill(1, y * w + Math.max(0, Math.floor(b.x - pad)), y * w + Math.min(w, Math.ceil(b.x + b.w + pad)))
+  }
   for (let y = 2; y < h - 2; y++)
     for (let x = 2; x < w - 2; x++) {
       const i = y * w + x
-      if (green?.[i]) seed[i] = 1
-      if (dt[i] < deep) continue
+      if (green?.[i]) {
+        // (a JPEG's pale-green halo round coloured text is single pixels: over a label only a green patch counts)
+        let support = 0
+        if (print[i]) for (let dy = -2; dy <= 2; dy++) for (let dx = -2; dx <= 2; dx++) support += green[i + dy * w + dx]
+        if (!print[i] || support >= 5) seed[i] = 1
+      }
+      if (print[i] || dt[i] < deep) continue
       // leafy: the 5×5 neighbourhood varies (foliage 50–120 mottled); a fill or a column is one grey
       let s = 0, s2 = 0
       for (let dy = -2; dy <= 2; dy++) for (let dx = -2; dx <= 2; dx++) (s += data[i + dy * w + dx]), (s2 += data[i + dy * w + dx] ** 2)
@@ -1583,7 +1598,8 @@ function floodFlat(d: Draft, at: Pt, blocked: (p: Pt) => boolean, capSqm: number
 /**
  * Faces of the flat. With a click: every closed face on the floor the flood from the click reaches (floodFlat), the
  * closed rooms mostly surrounded by it, and the planters at its edge; `touched` = every wall the flood met (the flat's
- * unclosed walls go into the draft too). Without a click: the largest region grown across partitions and doors.
+ * unclosed walls go into the draft too). Without a click: the region holding the most printed bedroom names, then the
+ * largest region grown across partitions and doors.
  */
 function pickFlat(
   d: Draft,
@@ -1658,15 +1674,18 @@ function pickFlat(
     const covered = onFloor.reduce((t, r) => t + r.areaSqm, 0)
     return { rooms, open: fl.sqm > covered + 2, touched: fl.touched, inFlood: fl.inFlood, region: fl.region }
   }
-  // no click: the largest closed region (grown the same way, without the entrance step)
-  let best = new Set<Room>(), bestA = 0
+  // no click: the closed region holding the most printed BED names (a newly closed unnamed core never becomes "the flat";
+  // a stamp or a numeral alone changes nothing on a common floor), then the largest (grown the same way, without the
+  // entrance step) — from Maheer's Plotline 2.0
+  let best = new Set<Room>(), bestA = 0, bestNames = -1
   const seen = new Set<Room>()
   for (const r of d.rooms) {
     if (seen.has(r) || !ok(r)) continue
     const g = grow([r], false)
     g.forEach((x) => seen.add(x))
     const A = [...g].reduce((t, x) => t + x.areaSqm, 0)
-    if (A > bestA) (bestA = A), (best = g)
+    const N = names.filter((n) => /\b(?:M\.?\s*)?BED(?:ROOM)?\b/.test(n.name) && [...g].some((x) => pointInPolygon(n.p, polys.get(x)!))).length
+    if (N > bestNames || (N === bestNames && A > bestA)) (bestNames = N), (bestA = A), (best = g)
   }
   return { rooms: best, open: false, touched: new Set() }
 }
@@ -1985,6 +2004,8 @@ export function dropForeignStubs(d: Draft, outlines: Pt[][]): Draft {
 const titleCase = (s: string) => s.toLowerCase().replace(/(^|[\s(/&-])([a-z])/g, (_, p, c) => p + c.toUpperCase())
 /** the building core's names — read loosely (the reader's L088Y / L0BBY is the lobby) */
 const CORE_NAME = /\b(L[O0][B8]{2}Y|LIFTS?|STAIRS?|HOISTWAY|CORE|STRETCHER|FIRE CORRIDOR)\b/
+/** a lift or a stair by its room name (no printed-size rows for them: pickTraces) */
+const liftOrStair = (name: string) => /\b(LIFTS?|STAIR(S|CASE)?|HOISTWAY)\b/.test(name.toUpperCase()) && !/\bLOBBY\b/.test(name.toUpperCase())
 /**
  * s25 (AUTOTRACE_100 §3 #13): the sheet says it is a ground floor / basement / rooftop — a printed PARKING / DRIVEWAY /
  * RAMP and no bedroom among the room names, or a lobby and no room name at all. Never guessed from how little was traced.
@@ -2065,6 +2086,69 @@ export function solveTraces(gray: Gray, inputs: SolveInputs, opts: AutoTraceOpts
 }
 
 /**
+ * The doors a faint scan hides (from Maheer's Plotline 2.0), after the rooms are fitted, at the final scale and full
+ * resolution: each undecided gap read again with four contrast cuts (a very faint swing kept at low confidence), and
+ * double-action doors swinging about a wall's tip (doorEnds.ts). `exclude`: pixels never arc ink (the planters).
+ */
+export function refineOpenings(trace: WallTrace, gray: Gray, k: number, glass?: Uint8Array, exclude?: Uint8Array): WallTrace {
+  if (trace.walls.length < 2 && !trace.openings.some((o) => o.kind === 'unknown')) return trace
+  const { width: W, height: H } = gray
+  const ink = [18, 12, 8, 6].map((delta) => {
+    const at = arcInk(gray, delta), memo = new Uint8Array(W * H)
+    return (x: number, y: number) => {
+      const xx = Math.round(x), yy = Math.round(y)
+      if (xx < 0 || yy < 0 || xx >= W || yy >= H) return false
+      const i = yy * W + xx
+      if (exclude?.[i]) return false
+      if (!memo[i]) memo[i] = at(xx, yy) ? 2 : 1
+      return memo[i] === 2
+    }
+  })
+  const at = (x: number, y: number) => gray.data[Math.max(0, Math.min(H - 1, Math.round(y))) * W + Math.max(0, Math.min(W - 1, Math.round(x)))]
+  const thickness = trace.walls.map((w) => w.thicknessPx).sort((a, b) => a - b)
+  const th = thickness[thickness.length >> 1] ?? PARTITION_M * k
+  const openings = trace.openings.map((o) => {
+    if (o.kind !== 'unknown' || d2(o.a, o.b) > 3 * k) return o
+    let result = classifyGap(o.a, o.b, o.thicknessPx ?? th, k, ink[0], at, glass, W, H, true, false, [ink[1], ink[2]])
+    if (result.kind === 'unknown') {
+      // a very faint scan: a whole swing alone with its leaf at both weak cuts, kept uncertain
+      const faint = classifyGap(o.a, o.b, o.thicknessPx ?? th, k, () => false, at, undefined, W, H, true, false, [ink[2], ink[3]])
+      if (faint.kind === 'door' && faint.conf >= 0.9) result = { ...faint, conf: 0.6 }
+    }
+    return result.kind === 'unknown' ? o : { ...o, ...result }
+  })
+  const ends = endDoors({ ...trace, openings }, k, [ink[1], ink[2]])
+  const same = (a: OpeningGuess, b: OpeningGuess) => {
+    const tol = Math.max(a.thicknessPx ?? 0, b.thicknessPx ?? 0) + 2
+    return (d2(a.a, b.a) < tol && d2(a.b, b.b) < tol) || (d2(a.a, b.b) < tol && d2(a.b, b.a) < tol)
+  }
+  return { ...trace, openings: [...openings.filter((o) => o.kind !== 'unknown' || !ends.some((e) => same(o, e))), ...ends] }
+}
+
+/**
+ * A bank of two or more small dimensioned rooms side by side, each printed with the same capacity ("8 PERSONS") and no
+ * flat's room name: lifts whose LIFT word was not read — the building's core, kept out of every flat (from Maheer's
+ * Plotline 2.0). Their capacity labels' centres, metres.
+ */
+export function capacityCores(unit: Pick<Unit, 'vertices' | 'walls'>, rooms: Room[], text: TextTrace, k: number): Pt[] {
+  const centre = (it: TextItem) => ({ x: (it.box.x + it.box.w / 2) / k, y: (it.box.y + it.box.h / 2) / k })
+  const candidates = rooms.flatMap((r) => {
+    if (r.areaSqm < 1 || r.areaSqm > 12) return []
+    const poly = roomPolygon(r, unit)
+    const items = text.items.filter((it) => pointInPolygon(centre(it), poly))
+    if (items.some((it) => it.kind === 'room' && it.roomKind && it.roomKind !== 'other' && !coreText(it))) return []
+    const capacity = items.find((it) => /\b(?:[4-9]|[12]\d|30)\s*(?:PERSONS?|PARSONS?|PASSENGERS?)\b/i.test(it.text))
+    if (!capacity) return []
+    const n = Number(capacity.text.match(/\d+/)![0])
+    if (r.areaSqm / n > 0.8 || !items.some((it) => it.dims && Math.max(it.dims.aM, it.dims.bM) <= 3.5)) return []
+    return [{ r, n, at: centre(capacity) }]
+  })
+  const pair = (a: (typeof candidates)[number], b: (typeof candidates)[number]) =>
+    b !== a && a.n === b.n && Math.min(a.r.areaSqm, b.r.areaSqm) >= 0.6 * Math.max(a.r.areaSqm, b.r.areaSqm) && a.r.wallIds.some((id) => b.r.wallIds.includes(id))
+  return candidates.filter((a) => candidates.some((b) => pair(a, b))).map((c) => c.at)
+}
+
+/**
  * Everything the click does not change, once per sheet (the Studio's pick mode runs it before the click): the text
  * erase, plant mask, walls, scale, fitted rooms, the whole sheet's graph and the masks the flood walks. `opts.pickPx` is
  * read only by the printed-area scale fallback — `scaleNeedsPick` says the scale came from the pick (`pick` re-prepares).
@@ -2095,7 +2179,7 @@ export function prepareTraces(gray: Gray, inputs: SolveInputs, opts: AutoTraceOp
   const furniture = inputs.walls ? undefined : union(union(furnitureMask(plan, k0, inkT), hatchMask(plan, k0, inkT)), dashMask(plan, k0, inkT))
   const ink = { ...masks0, glass: opts.rgb ? glassMask(opts.rgb, k0) : undefined }
   // founder rule 2: plant sections before any wall tracing (sized by the raster's own wall width, the 5" prior)
-  const plants = planterMask(plan, ink.wall, k0, inputs.green)
+  const plants = planterMask(plan, ink.wall, k0, inputs.green, text)
   const tracker = opts.tracker ?? KNOBS.tracker
   // tracks: the plant green comes out before tracing (founder rule 2), the glass colour is window evidence
   // (…and the furniture with it, whitened the same way)
@@ -2117,12 +2201,15 @@ export function prepareTraces(gray: Gray, inputs: SolveInputs, opts: AutoTraceOp
   }
   const origin0 = { x: 0, y: 0 }
   let draft: Draft
+  // a lift bank read only by its capacity prints (capacityCores, sheet px; filled with the core below)
+  const inferredCore: Px[] = []
   // the building core's labels (lobby, lifts, stair) and planter strips: part of the draft when reached, never a way
   // into the next flat
   const coreAt = (k: number) =>
     text.items
       .filter((it) => (it.kind === 'room' && it.green) || coreText(it))
       .map((it) => ({ x: (it.box.x + it.box.w / 2) / k, y: (it.box.y + it.box.h / 2) / k }))
+      .concat(inferredCore.map((p) => ({ x: p.x / k, y: p.y / k })))
   // names a flat has once (LIVING, KITCHEN, numbered BED 3 / TOILET 2): a second one belongs to the next flat
   const namesAt = (k: number) =>
     text.items
@@ -2207,8 +2294,9 @@ export function prepareTraces(gray: Gray, inputs: SolveInputs, opts: AutoTraceOp
       trace = { ...trace, walls: merged.walls, openings: merged.openings }
     }
   }
+  if (tracker === 'tracks') trace = refineOpenings(trace, plan, pxPerM, ink.glass, plants)
   // (on the sheet as drawn: the text pass erases thin ink inside label boxes, and an AOD's label box often covers its grille)
-  const thin = tracker === 'tracks' && trace.tracks ? closeThinFaces(gray, trace, pxPerM, text, fits, avoid, inputs.green, furniture) : null
+  const thin = tracker === 'tracks' && trace.tracks ? closeThinFaces(gray, trace, pxPerM, text, fits, avoid, inputs.green, furniture, ink.glass) : null
   // (a glass front faces.ts drew: a window floor to top, the child of a wall of its own — Level 1)
   if (thin) trace = { ...trace, walls: [...trace.walls, ...thin.walls.filter((w) => !w.glass)], openings: [...trace.openings, ...thin.walls.filter((w) => w.glass).map((w) => ({ a: w.a, b: w.b, kind: 'window' as const, conf: 0.5, thicknessPx: w.thicknessPx, glass: true }))] }
 
@@ -2224,7 +2312,7 @@ export function prepareTraces(gray: Gray, inputs: SolveInputs, opts: AutoTraceOp
       .map((it) => ({ at: { x: (it.box.x + it.box.w / 2) / pxPerM, y: (it.box.y + it.box.h / 2) / pxPerM }, name: labelName(it), kind: it.roomKind, dims: sizeOf(it), guess: it.sizeUnread && it.sizeGuess ? sizeOf({ ...it, dims: parseDims(it.sizeGuess) ?? undefined }) : undefined, green: !!it.green, only: !it.roomKind || coreText(it) || CORE_NAME.test(normaliseName(it.text.split('\n')[0])) }))
     const makeG = (base: Wall, from?: GWall): GWall =>
       from ? { ...from, ...base } : { ...base, conf: 0.5, guess: new Map(base.openings.map((o) => [o.id, { kind: o.kind, conf: 0.5, ...(o.kind === 'window' ? { glass: true } : {}) }])) }
-    const co = { gray: plan, k: pxPerM, th0: draft.th0, maxSqm: KNOBS.maxRoomSqm, tolM: KNOBS.closeTolM, rejectM: KNOBS.closeRejectM, wallHeightM: WALL_HEIGHT_M }
+    const co = { gray: plan, glass: ink.glass, k: pxPerM, th0: draft.th0, maxSqm: KNOBS.maxRoomSqm, tolM: KNOBS.closeTolM, rejectM: KNOBS.closeRejectM, wallHeightM: WALL_HEIGHT_M }
     // (…and a small space with no name cut off a named room that only matches its print with it: joined to it — close.ts)
     const j = joinLeftovers(draft.unit.vertices, draft.walls, labels, co)
     const r = closeRooms(j.vertices, j.walls, labels, co, makeG)
@@ -2257,46 +2345,55 @@ export function prepareTraces(gray: Gray, inputs: SolveInputs, opts: AutoTraceOp
   const isPlanter = (p: Pt) => inPlants(p) || greenFaces.some((f) => pointInPolygon(p, f))
   // a stair flight is the building's core: the flat never grows through it
   const inStair = (p: Pt) => (draft.stairs ?? []).some((s) => { const x = origin0.x + p.x * pxPerM, y = origin0.y + p.y * pxPerM; return x >= s.x0 && x <= s.x1 && y >= s.y0 && y <= s.y1 })
-  // the building's core (a closed face a LOBBY / LIFT / STAIR label sits in) is never the flat's floor: the flood does
-  // not walk through it into the next flat's foyer
-  const coreFaces = coreAt(pxPerM).flatMap((c) => draft.rooms.filter((r) => r.areaSqm <= KNOBS.maxRoomSqm && pointInPolygon(c, roomPolygon(r, draft.unit))).map((r) => roomPolygon(r, draft.unit)))
-  // …and where that face is not closed (a lobby whose double doors were not read), the floor within 1.2 m of its label:
-  // a lobby is a corridor ~2 m deep, so the flood cannot walk along it past its name
-  const corePts = coreAt(pxPerM)
-  // s27 flats 2 (founder: a flat ends at its entry door): the core's floor, flooded from each lobby / lift / stair label with
-  // every door and low wall shut, so it ends at the flats' entry doors — its share against the flats' room names and
-  // labels (each floor cell to the nearest: where a wall was not traced the lobby runs on into a flat, and the flat's
-  // names keep their side)
-  const toFloor = (it: TextItem): Pt => ({ x: (it.box.x + it.box.w / 2) / pxPerM, y: (it.box.y + it.box.h / 2) / pxPerM })
-  const flatPts = [...text.items.filter((it) => it.kind === 'room' && it.roomKind && !/^(shaft|other)$/.test(it.roomKind) && !it.green && !coreText(it)).map(toFloor), ...labelsAt(pxPerM)]
-  // …and a closed face up to 8 m² against a stair flight for 1 m or more, with no flat's room name in it, is the core too:
-  // the landing / lift lobby whose LOBBY was not read (Foysal Smart Garden: it came out Unit A's "Kitchen 1"); a room
-  // whose name was not read is bigger (Accept Aftabnagar's drawing room)
-  // (only a stair the sheet names: a STAIR / LIFT word on its flight or within 1 m of it)
-  const coreTexts = text.items.filter(coreText).map((it) => mid(it))
-  const namedStairs = (draft.stairs ?? []).filter((s) => coreTexts.some((q) => q.x >= s.x0 - pxPerM && q.x <= s.x1 + pxPerM && q.y >= s.y0 - pxPerM && q.y <= s.y1 + pxPerM))
-  for (const r of draft.rooms) {
-    const poly = roomPolygon(r, draft.unit)
-    if (r.areaSqm > 8 || flatPts.some((q) => pointInPolygon(q, poly))) continue
-    let along = 0
-    poly.forEach((a, i) => {
-      const b = poly[(i + 1) % poly.length], L = d2(a, b)
-      for (let t = 0.05; t < L; t += 0.1) {
-        const x = (a.x + ((b.x - a.x) * t) / L) * pxPerM, y = (a.y + ((b.y - a.y) * t) / L) * pxPerM, m = 0.4 * pxPerM
-        if (namedStairs.some((s) => x >= s.x0 - m && x <= s.x1 + m && y >= s.y0 - m && y <= s.y1 + m)) along += 0.1
-      }
-    })
-    if (along >= 1) coreFaces.push(poly)
+  // the building's core, built again when names read late (autoTrace's face pass) add a lobby / lift / stair — the walls
+  // stay as traced (from Maheer's Plotline 2.0)
+  const buildCore = () => {
+    inferredCore.splice(0, inferredCore.length, ...capacityCores(draft.unit, draft.rooms, text, pxPerM).map((p) => ({ x: p.x * pxPerM, y: p.y * pxPerM })))
+    // the building's core (a closed face a LOBBY / LIFT / STAIR label sits in) is never the flat's floor: the flood does
+    // not walk through it into the next flat's foyer
+    const coreFaces = coreAt(pxPerM).flatMap((c) => draft.rooms.filter((r) => r.areaSqm <= KNOBS.maxRoomSqm && pointInPolygon(c, roomPolygon(r, draft.unit))).map((r) => roomPolygon(r, draft.unit)))
+    // …and where that face is not closed (a lobby whose double doors were not read), the floor within 1.2 m of its label:
+    // a lobby is a corridor ~2 m deep, so the flood cannot walk along it past its name (a closed face ends at its own
+    // walls: the 1.2 m round its label crossed a thin partition into the bedroom beside it)
+    const corePts = coreAt(pxPerM).filter((p) => !coreFaces.some((poly) => pointInPolygon(p, poly)))
+    // s27 flats 2 (founder: a flat ends at its entry door): the core's floor, flooded from each lobby / lift / stair label with
+    // every door and low wall shut, so it ends at the flats' entry doors — its share against the flats' room names and
+    // labels (each floor cell to the nearest: where a wall was not traced the lobby runs on into a flat, and the flat's
+    // names keep their side)
+    const toFloor = (it: TextItem): Pt => ({ x: (it.box.x + it.box.w / 2) / pxPerM, y: (it.box.y + it.box.h / 2) / pxPerM })
+    const flatPts = [...text.items.filter((it) => it.kind === 'room' && it.roomKind && !/^(shaft|other)$/.test(it.roomKind) && !it.green && !coreText(it)).map(toFloor), ...labelsAt(pxPerM)]
+    // …and a closed face up to 8 m² against a stair flight for 1 m or more, with no flat's room name in it, is the core too:
+    // the landing / lift lobby whose LOBBY was not read (Foysal Smart Garden: it came out Unit A's "Kitchen 1"); a room
+    // whose name was not read is bigger (Accept Aftabnagar's drawing room)
+    // (only a stair the sheet names: a STAIR / LIFT word on its flight or within 1 m of it)
+    const coreTexts = text.items.filter(coreText).map((it) => mid(it))
+    const namedStairs = (draft.stairs ?? []).filter((s) => coreTexts.some((q) => q.x >= s.x0 - pxPerM && q.x <= s.x1 + pxPerM && q.y >= s.y0 - pxPerM && q.y <= s.y1 + pxPerM))
+    for (const r of draft.rooms) {
+      const poly = roomPolygon(r, draft.unit)
+      if (r.areaSqm > 8 || flatPts.some((q) => pointInPolygon(q, poly))) continue
+      let along = 0
+      poly.forEach((a, i) => {
+        const b = poly[(i + 1) % poly.length], L = d2(a, b)
+        for (let t = 0.05; t < L; t += 0.1) {
+          const x = (a.x + ((b.x - a.x) * t) / L) * pxPerM, y = (a.y + ((b.y - a.y) * t) / L) * pxPerM, m = 0.4 * pxPerM
+          if (namedStairs.some((s) => x >= s.x0 - m && x <= s.x1 + m && y >= s.y0 - m && y <= s.y1 + m)) along += 0.1
+        }
+      })
+      if (along >= 1) coreFaces.push(poly)
+    }
+    const coreFloors: ((p: Pt) => boolean)[] = []
+    const blk = (q: Pt) => inOutside(q) || isPlanter(q) || inStair(q)
+    for (const s of text.items.filter(coreText).map(toFloor)) {
+      if (blk(s) || coreFaces.some((poly) => pointInPolygon(s, poly)) || coreFloors.some((f) => f(s))) continue
+      const fl = floodFlat(draft, s, blk, 300, flatPts.map((q) => ({ p: q, name: '#RIVAL' })), true)
+      if (fl.sqm > 0) coreFloors.push(fl.inFlood)
+    }
+    return (p: Pt) => coreFaces.some((f) => pointInPolygon(p, f)) || corePts.some((c) => d2(c, p) < 1.2) || coreFloors.some((f) => f(p))
   }
-  const coreFloors: ((p: Pt) => boolean)[] = []
-  const blk = (q: Pt) => inOutside(q) || isPlanter(q) || inStair(q)
-  for (const s of text.items.filter(coreText).map(toFloor)) {
-    if (blk(s) || coreFloors.some((f) => f(s))) continue
-    const fl = floodFlat(draft, s, blk, 300, flatPts.map((q) => ({ p: q, name: '#RIVAL' })), true)
-    if (fl.sqm > 0) coreFloors.push(fl.inFlood)
-  }
-  const inCore = (p: Pt) => coreFaces.some((f) => pointInPolygon(p, f)) || corePts.some((c) => d2(c, p) < 1.2) || coreFloors.some((f) => f(p))
-  return { ms: performance.now() - t0, gray, inputs, opts, text, tracker, pxPerM, scaleFrom, scaleFew, scaleNeedsPick, trace, hints, fits, merged, thin, closed, draft, origin0, outside, coreAt, namesAt, stampsAt, labelsAt, flatLabels, inOutside, isPlanter, inStair, inCore }
+  let coreMask = buildCore()
+  const inCore = (p: Pt) => coreMask(p)
+  const refreshCore = () => void (coreMask = buildCore())
+  return { ms: performance.now() - t0, gray, inputs, opts, text, tracker, pxPerM, scaleFrom, scaleFew, scaleNeedsPick, trace, hints, fits, merged, thin, closed, draft, origin0, outside, inferredCore, refreshCore, coreAt, namesAt, stampsAt, labelsAt, flatLabels, inOutside, isPlanter, inStair, inCore }
 }
 export type Prepared = ReturnType<typeof prepareTraces>
 
@@ -2304,7 +2401,8 @@ export type Prepared = ReturnType<typeof prepareTraces>
  * One flat chosen on the sheet's whole draft (pre-shift metres; the draft is only read) from the spot `at`: the fitted
  * rooms around it (pickByRooms) + the floor the flood from it reaches, the thin-line faces against them, the walls beside
  * the flooded floor — never the core, nor a room another flat of the floor already holds (`taken`, Level 4: the floor's
- * flats are chosen one after another and never share a room). `at` null: the largest closed region (no click).
+ * flats are chosen one after another and never share a room). `at` null: the closed region with the most printed
+ * bedrooms, then the largest (no click).
  */
 interface Sel {
   at: Pt | null
@@ -2371,14 +2469,20 @@ function selectFlat(p: Prepared, pick: Pt | null, taken: Taken | null = null, ri
     // a face of the core, nor one beside it, nor one another flat holds
     const kept = new Set([...picked.touched, ...[...flat].flatMap((r) => r.wallIds)])
     const G0 = new Map(draft.walls.map((w) => [w.id, w]))
-    const core0 = text.items.filter(coreText).map((it) => ({ x: (it.box.x + it.box.w / 2) / pxPerM, y: (it.box.y + it.box.h / 2) / pxPerM }))
+    const glassEdges = new Set(draft.walls.filter((w) => [...(w.guess?.values() ?? [])].some((o) => o.glass)).map((w) => w.id))
+    const core0 = [...text.items.filter(coreText).map((it) => ({ x: (it.box.x + it.box.w / 2) / pxPerM, y: (it.box.y + it.box.h / 2) / pxPerM })), ...p.inferredCore.map((q) => ({ x: q.x / pxPerM, y: q.y / pxPerM }))]
     const coreWalls = new Set(draft.rooms.filter((r) => core0.some((p) => pointInPolygon(p, roomPolygon(r, draft.unit)))).flatMap((r) => r.wallIds))
     for (const r of draft.rooms) {
       if (r.areaSqm > 30 || r.wallIds.some((w) => coreWalls.has(w))) continue
       const miss = r.wallIds.filter((w) => !kept.has(w))
-      if (!miss.length || miss.length === r.wallIds.length || miss.some((w) => G0.get(w)!.heightM >= WALL_HEIGHT_M) || !r.wallIds.some((w) => G0.get(w)!.heightM >= WALL_HEIGHT_M)) continue
+      if (!miss.length || miss.length === r.wallIds.length || miss.some((w) => G0.get(w)!.heightM >= WALL_HEIGHT_M && !glassEdges.has(w)) || !r.wallIds.some((w) => G0.get(w)!.heightM >= WALL_HEIGHT_M)) continue
       const poly = roomPolygon(r, draft.unit)
       if (core0.some((p) => pointInPolygon(p, poly)) || (byRooms?.others ?? []).some((i) => pointInPolygon({ x: fits[i].at.x / pxPerM, y: fits[i].at.y / pxPerM }, poly)) || taken?.rooms.has(r)) continue
+      // a veranda behind drawn glass, off the flooded floor, is the flat's leaf now — left as kept walls only, another flat
+      // took it as a room it "surrounds" (from Maheer's Plotline 2.0)
+      const glassLeaf = miss.some((w) => glassEdges.has(w))
+      if (glassLeaf && !text.items.some((it) => it.kind === 'room' && it.roomKind === 'balcony' && pointInPolygon({ x: (it.box.x + it.box.w / 2) / pxPerM, y: (it.box.y + it.box.h / 2) / pxPerM }, poly))) continue
+      if (glassLeaf) flat.add(r)
       miss.forEach((w) => picked.touched.add(w))
     }
   }
@@ -2388,6 +2492,7 @@ function selectFlat(p: Prepared, pick: Pt | null, taken: Taken | null = null, ri
   const foreign: Pt[] = pick
     ? [
         ...text.items.filter(coreText).map((it) => ({ x: (it.box.x + it.box.w / 2) / pxPerM, y: (it.box.y + it.box.h / 2) / pxPerM })),
+        ...p.inferredCore.map((q) => ({ x: q.x / pxPerM, y: q.y / pxPerM })),
         ...(byRooms ? byRooms.others.map((i) => ({ x: fits[i].at.x / pxPerM, y: fits[i].at.y / pxPerM })) : []),
         ...stampsAt(pxPerM).sort((p, q) => d2(p, pick) - d2(q, pick)).slice(1),
         ...rivals,
@@ -2611,6 +2716,7 @@ export function pickTraces(p: Prepared, pickPx?: Px, whole = false, chosen?: Ret
   let draft = structuredClone(p.draft)
   const review: ReviewItem[] = []
   const pick = pickPx ? { x: (pickPx.x - origin0.x) / pxPerM, y: (pickPx.y - origin0.y) / pxPerM } : null
+  if (whole) for (const at of p.inferredCore) review.push({ id: newId(), at: { x: at.x / pxPerM, y: at.y / pxPerM }, kind: 'low-confidence', message: 'A lift read only by its printed capacity ("8 PERSONS") is kept out of the flats — check it is the building\'s lift.' })
   const { parts, sels } = chosen ?? selsOf(p, pick, whole)
   if (inputs.debug) Object.assign(inputs.debug, { inFlood: sels[0].inFlood, touched: sels[0].touched, outside, flatFits: sels.flatMap((s) => s.fits) })
   for (const s of sels) if (s.open) review.push({ id: newId(), at: s.at!, kind: 'unclosed', message: 'Part of the floor around the click has no closed room — an open plan, or walls the tracer could not close (see the wall ends marked). Draw the missing walls.' })
@@ -2620,9 +2726,9 @@ export function pickTraces(p: Prepared, pickPx?: Px, whole = false, chosen?: Ret
   // the whole floor holds the core between its flats too: a closed face holding a LOBBY / LIFT / STAIR label or a stair
   // flight, against a flat's room
   if (whole) {
-    const ws = new Set([...flat].flatMap((r) => r.wallIds))
     const corePts = [...coreAt(pxPerM), ...(p.draft.stairs ?? []).map((s) => ({ x: (s.x0 + s.x1) / 2 / pxPerM, y: (s.y0 + s.y1) / 2 / pxPerM }))]
-    for (const r of p.draft.rooms) if (r.areaSqm <= KNOBS.maxRoomSqm && !flat.has(r) && r.wallIds.some((w) => ws.has(w)) && corePts.some((q) => pointInPolygon(q, roomPolygon(r, p.draft.unit)))) flat.add(r)
+    // (every core face, even one no flat's wall touches: a lift beyond the lobby — from Maheer's Plotline 2.0)
+    for (const r of p.draft.rooms) if (r.areaSqm <= KNOBS.maxRoomSqm && !flat.has(r) && corePts.some((q) => pointInPolygon(q, roomPolygon(r, p.draft.unit)))) flat.add(r)
   }
   const foreign = whole ? [] : sels[0].foreign
   // the other flats of the floor: what lies in them is not this flat's (names, stamps)
@@ -2672,7 +2778,7 @@ export function pickTraces(p: Prepared, pickPx?: Px, whole = false, chosen?: Ret
     const m2 = (p: Px): Pt => ({ x: (p.x - originPx.x) / pxPerM, y: (p.y - originPx.y) / pxPerM })
     const sized = text.items.flatMap((it) => {
       const dm = it.kind === 'room' ? sizeOf(it) : undefined
-      return dm ? [{ at: m2({ x: it.box.x + it.box.w / 2, y: it.box.y + it.box.h / 2 }), dm }] : []
+      return dm ? [{ at: m2({ x: it.box.x + it.box.w / 2, y: it.box.y + it.box.h / 2 }), dm, openPlan: /\bOPEN\b/.test(normaliseName(it.text.split('\n')[0])) }] : []
     })
     const R = gated.length ? deriveRooms(u) : []
     const P = new Map(R.map((r) => [r, roomPolygon(r, u)]))
@@ -2685,7 +2791,13 @@ export function pickTraces(p: Prepared, pickPx?: Px, whole = false, chosen?: Ret
       if (L < 0.05) continue
       const mid = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 }, n = { x: -(b.y - a.y) / L, y: (b.x - a.x) / L }
       const faces = [...new Set([1, -1].map((o) => faceAt({ x: mid.x + n.x * o * 0.3, y: mid.y + n.y * o * 0.3 })).filter((r): r is Room => !!r))]
-      const check = (tol: number) => faces.flatMap((r) => sized.filter((s) => pointInPolygon(s.at, P.get(r)!)).map((s) => !printedSizeCheck(roomInnerPolygon(r, u), draft.th0, s.dm.aM, s.dm.bM, tol).off))
+      const check = (tol: number) =>
+        faces.flatMap((r) => {
+          const labels = text.items.filter((it) => it.kind === 'room' && pointInPolygon(m2({ x: it.box.x + it.box.w / 2, y: it.box.y + it.box.h / 2 }), P.get(r)!))
+          const shared = labels.length > 1 && labels.every((it) => CLOSE.openPlan.includes(it.roomKind ?? '')) && labels.some((it) => it.roomKind === 'living' || it.roomKind === 'dining')
+          // (an OPEN KITCHEN's printed size is its work zone inside the shared living room, not the room — from Maheer's Plotline 2.0)
+          return sized.filter((s) => pointInPolygon(s.at, P.get(r)!) && !(shared && s.openPlan)).map((s) => !printedSizeCheck(roomInnerPolygon(r, u), draft.th0, s.dm.aM, s.dm.bM, tol).off)
+        })
       const ok = check(KNOBS.closeTolM)
       if (!ok.length) continue
       if (ok.every(Boolean)) {
@@ -2791,7 +2903,9 @@ export function pickTraces(p: Prepared, pickPx?: Px, whole = false, chosen?: Ret
     const whole = h.green || h.source === 'green' || h.what === AOD_HINT
     if (whole) guessedBy.add(id)
     const what = h.source === 'colour' ? 'the fill colour of named rooms' : h.source === 'green' ? 'the green (planter) fill' : h.what === AOD_HINT ? 'its size and thin-line sides (an AOD / shaft, no door?)' : (h.what ?? 'a drawn fixture')
-    review.push({ id: newId(), at, kind: 'low-confidence', message: `Room type guessed from ${what}${row ? `, its name from the size table (the row of that size)` : ''}${whole ? '; its edges are traced as low walls' : ''} — check`, entityId: id })
+    // (s31 calm, beside the whole floor's core: a stair named from its drawn flight — 8 or more evenly spaced treads,
+    // findStairs — is sure: no row)
+    if (h.what !== 'stair treads') review.push({ id: newId(), at, kind: 'low-confidence', message: `Room type guessed from ${what}${row ? `, its name from the size table (the row of that size)` : ''}${whole ? '; its edges are traced as low walls' : ''} — check`, entityId: id })
   }
   const pending: Room[] = []
   // (s27: a guessed kind only where the room is big enough to be one — a 3 m² toilet sharing the bedrooms' floor colour
@@ -2801,7 +2915,11 @@ export function pickTraces(p: Prepared, pickPx?: Px, whole = false, chosen?: Ret
     // (two printed names in one space: the larger printed room names it — one room right instead of none; the room rows
     // say which name has no room of its own)
     const sqm = (it: TextItem) => { const d = sizeOf(it); return d ? d.aM * d.bM : 0 }
-    const items = (labelsIn.get(r.id) ?? []).sort((p, q) => sqm(q) - sqm(p) || q.conf - p.conf)
+    // (…but an OPEN KITCHEN in a living / dining room is its work zone: the living names the room — from Maheer's Plotline 2.0)
+    const shared = labelsIn.get(r.id) ?? []
+    const hasLiving = shared.some((it) => it.roomKind === 'living' || it.roomKind === 'dining')
+    const workArea = (it: TextItem) => hasLiving && it.roomKind === 'kitchen' && /\bOPEN\b/.test(normaliseName(it.text.split('\n')[0]))
+    const items = shared.sort((p, q) => Number(workArea(p)) - Number(workArea(q)) || sqm(q) - sqm(p) || q.conf - p.conf)
     const it0 = items[0]
     if (it0) {
       const it = namePieces(it0, items)
@@ -2933,9 +3051,11 @@ export function pickTraces(p: Prepared, pickPx?: Px, whole = false, chosen?: Ret
   }
 
   // ── printed sizes: the face along the sheet's axes vs the label's dims (core printedSizeCheck, the Studio's own rule)
+  // (s31 calm: not for a lift or a stair — a lift's print is its car, a stair's its flight; the shaft / stair hall
+  // drawn round them is bigger by design, and the whole floor now keeps every one of them)
   for (const r of named) {
     const dm = dimsOf.get(r.id)
-    if (!dm) continue
+    if (!dm || liftOrStair(r.name)) continue
     const { off, drawn: e, printed: pair } = printedSizeCheck(roomInnerPolygon(r, u), draft.th0, dm.aM, dm.bM, KNOBS.sizeTolM)
     if (off)
       review.push({ id: newId(), at: r.centroid, kind: 'size-mismatch', message: `${r.name}: drawn ${formatFeetInches(e.w)} × ${formatFeetInches(e.h)}, printed ${formatFeetInches(pair[0])} × ${formatFeetInches(pair[1])}`, entityId: r.id })
@@ -3083,16 +3203,17 @@ export function pickTraces(p: Prepared, pickPx?: Px, whole = false, chosen?: Ret
   const finals = sels.length > 1 ? deriveRooms(u) : []
   for (const l of u.roomLabels) {
     if (flatTypeOf(l) || l.kind === 'lobby' || CORE_NAME.test(l.name.toUpperCase())) continue
-    let i = sels.length === 1 ? 0 : sels.findIndex((s) => s.has({ x: l.x + shift.x, y: l.y + shift.y }))
-    // (the whole floor: a room the flats' faces and floors do not hold — closed by their kept walls — goes to the flat
-    // it lies against, within 0.3 m)
     // (s27 flats 2: a room on the core's floor — a lobby whose name was not read, lying against both flats — is in none,
-    // pinned so: its doors would join it to the one flat whose door was found — Foysal's lobby came out Unit A's "Kitchen 1")
-    if (i < 0 && sels.length > 1 && p.inCore({ x: l.x + shift.x, y: l.y + shift.y })) {
+    // pinned so: its doors would join it to the one flat whose door was found — Foysal's lobby came out Unit A's "Kitchen 1";
+    // the core wins even where a flat's flood leaked into it first — from Maheer's Plotline 2.0)
+    if (p.inCore({ x: l.x + shift.x, y: l.y + shift.y })) {
       l.flat = ''
       l.flatFrom = 'trace'
       continue
     }
+    let i = sels.length === 1 ? 0 : sels.findIndex((s) => s.has({ x: l.x + shift.x, y: l.y + shift.y }))
+    // (the whole floor: a room the flats' faces and floors do not hold — closed by their kept walls — goes to the flat
+    // it lies against, within 0.3 m)
     const f = i < 0 ? finals.find((r) => r.id === l.id) : undefined
     if (f) {
       const d = sels.map((s) => Math.min(...roomPolygon(f, u).map((v) => distToRooms(p.draft, s.rooms, { x: v.x + shift.x, y: v.y + shift.y }))))
@@ -3106,7 +3227,7 @@ export function pickTraces(p: Prepared, pickPx?: Px, whole = false, chosen?: Ret
     if (it.kind !== 'room' || !it.sizeUnread || it.dims) continue
     const at = toM({ x: it.box.x + it.box.w / 2, y: it.box.y + it.box.h / 2 })
     const r = named.find((x) => pointInPolygon(at, roomPolygon(x, u)))
-    if (!r) continue
+    if (!r || liftOrStair(r.name)) continue
     const fitted = fits.some((f) => f.guessed && f.label === it)
     const msg = fitted ? `${r.name}: printed size not read for sure — it looks like ${it.sizeGuess} (the walls fit that); type the size to confirm` : `${r.name}: its printed size could not be read${it.sizeGuess ? ` (perhaps ${it.sizeGuess})` : ''} — type it`
     review.push({ id: newId(), at, kind: 'other', message: msg, entityId: r.id })
@@ -3197,9 +3318,10 @@ const AOD_HINT = 'AOD (thin-line face)'
  * edges, railings, light-grey shaft walls) — low walls, never full height. Lines inside a fitted room or across a drawn
  * fixture are furniture; printed labels say which side is which room.
  */
-function closeThinFaces(sheet: Gray, trace: WallTrace, k: number, text: TextTrace, fits: RoomFit[], fixtures: { at: Px; r: number }[], green?: Uint8Array, furniture?: Uint8Array): ThinFaces {
-  const labels = text.items.filter((it) => it.kind === 'room').map((it) => ({ at: { x: it.box.x + it.box.w / 2, y: it.box.y + it.box.h / 2 }, name: normaliseName(it.text.split('\n')[0]) }))
-  return thinFaces(sheet, { k, walls: trace.walls, openings: trace.openings, labels, fits: fits.map((f) => f.rect), fixtures, green, furniture })
+function closeThinFaces(sheet: Gray, trace: WallTrace, k: number, text: TextTrace, fits: RoomFit[], fixtures: { at: Px; r: number }[], green?: Uint8Array, furniture?: Uint8Array, glass?: Uint8Array): ThinFaces {
+  const labels = text.items.filter((it) => it.kind === 'room').map((it) => ({ at: { x: it.box.x + it.box.w / 2, y: it.box.y + it.box.h / 2 }, name: normaliseName(it.text.split('\n')[0]), kind: it.roomKind }))
+  const fitsPx = fits.map((f) => ({ ...f.rect, kind: f.label.roomKind, at: f.at, openPlan: /\bOPEN\b/.test(normaliseName(f.label.text.split('\n')[0])) }))
+  return thinFaces(sheet, { k, walls: trace.walls, openings: trace.openings, labels, fits: fitsPx, fixtures, green, furniture, glass })
 }
 
 /**
@@ -3380,9 +3502,12 @@ async function prepareSquare(gray: Gray, opts: AutoTraceOpts) {
   try {
     const { draft, origin0, pxPerM: k } = traces
     const faces = draft.rooms.map((r) => roomPolygon(r, draft.unit).map((q) => ({ x: origin0.x + q.x * k, y: origin0.y + q.y * k })))
-    text.items.push(...(await (await import('./text')).readInFaces(gray, faces, text, k, opts.ocr)))
+    const late = await (await import('./text')).readInFaces(gray, faces, text, k, opts.ocr)
+    text.items.push(...late)
     // Level 4: a flat's printed area with no TYPE read beside it gets the block around it read (text.ts readTypes)
     text.items.push(...(await (await import('./text')).readTypes(gray, text, opts.ocr)))
+    // a lobby / lift / stair read only now joins the core — the traced walls stay as they are (from Maheer's Plotline 2.0)
+    if (late.length) traces.refreshCore()
   } catch {
     // (a face read failing never costs the draft)
   }
@@ -3407,11 +3532,13 @@ export function pickFloor(p: PreparedSolve): AutoTraceResult {
 }
 
 /** the hover (previewFlat) on a prepared sheet, a turned one's turned back onto the sheet */
-export function preview(p: PreparedSolve, px: Px): ReturnType<typeof previewFlat> {
+export function preview(p: PreparedSolve, px: Px): ReturnType<typeof previewFlat> & { regionAngle?: number } {
   const t = p.turn
   if (!t) return previewFlat(p.traces, px)
   const v = previewFlat(p.traces, t.fwd(px))
-  return { polys: v.polys.map((q) => q.map(t.back)), names: v.names.map((n) => ({ ...n, at: t.back(n.at) })), region: v.region.map((r) => boxBack(r, t)) }
+  // the flood's rectangles stay rectangles turned with the sheet (their corner + `regionAngle`), not the upright boxes
+  // round them that tinted past the flat (from Maheer's Plotline 2.0)
+  return { polys: v.polys.map((q) => q.map(t.back)), names: v.names.map((n) => ({ ...n, at: t.back(n.at) })), region: v.region.map((r) => ({ ...r, ...t.back(r) })), regionAngle: (t.deg * Math.PI) / 180 }
 }
 
 /**

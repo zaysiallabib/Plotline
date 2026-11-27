@@ -62,6 +62,8 @@ export interface Closed {
 export interface CloseOpts {
   /** the sheet (px), its scale; the draft's metres are its px / k */
   gray: Gray
+  /** Thin glazing colour after broad coloured fills are removed; positive evidence even on dark floor fills. */
+  glass?: Uint8Array
   k: number
   /** the sheet's axis (rad) */
   th0: number
@@ -421,6 +423,18 @@ export function closeRooms<W extends Wall>(vertices: Vertex[], walls: W[], label
   const drawn = (a: Pt, b: Pt): 'glass' | 'line' | 'none' => {
     const L = d2(a, b) * k
     const at = { x: a.x * k, y: a.y * k }, ux = (b.x - a.x) / (L / k), uy = (b.y - a.y) / (L / k)
+    if (o.glass && L >= 4) {
+      let hit = 0
+      const n = Math.ceil(L)
+      for (let i = 0; i < n; i++) {
+        const x = at.x + ux * L * (i + .5) / n, y = at.y + uy * L * (i + .5) / n
+        if ([-1, 0, 1].some((off) => {
+          const xx = Math.round(x - uy * off), yy = Math.round(y + ux * off)
+          return xx >= 0 && yy >= 0 && xx < W0 && yy < H0 && o.glass![yy * W0 + xx]
+        })) hit++
+      }
+      if (hit / n >= .9) return 'glass'
+    }
     const g = glazing(at, ux, uy, L, Math.max(4, 0.25 * k), grayAt)
     // (lines repeating beyond a wall's width — a tiled floor's grid, hatch — are texture: nothing drawn there)
     if (g.lines && glazing(at, ux, uy, L, 0.8 * k, grayAt).lines > g.lines + 1) return 'none'

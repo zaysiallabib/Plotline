@@ -6,7 +6,6 @@
  * written straight to the DOM from the camera each frame (like PinLayer): no React re-render per frame.
  */
 import { useEffect, useMemo, useRef, useState } from 'react'
-import * as THREE from 'three'
 import * as core from '../core'
 import type { Id, Room, RoomKind, Unit } from '../core'
 import type { PlotlineScene } from '../three/PlotlineScene'
@@ -95,7 +94,7 @@ export const conePath = (half: number, r: number): string => {
 }
 
 /** the camera's horizontal field of view, half of it, rad */
-const halfHfov = (cam: THREE.PerspectiveCamera) => Math.atan(Math.tan(THREE.MathUtils.degToRad(cam.fov / 2)) * cam.aspect)
+const halfHfov = (cam: { fov: number; aspect: number }) => Math.atan(Math.tan((cam.fov * Math.PI) / 360) * cam.aspect)
 
 interface Props {
   scene: PlotlineScene
@@ -124,16 +123,16 @@ export default function Minimap({ scene, unit, rooms, walking }: Props) {
 
   useEffect(() => {
     if (!shown || !walking) return
-    const p = new THREE.Vector3()
-    const d = new THREE.Vector3()
     let raf = 0
     let aspect = 0
+    let transform = ''
     let here: Id | null | undefined
     const tick = () => {
       const cam = scene.camera
-      cam.getWorldPosition(p)
-      cam.getWorldDirection(d)
-      me.current?.setAttribute('transform', `translate(${p.x.toFixed(3)} ${p.z.toFixed(3)}) rotate(${((Math.atan2(d.z, d.x) * 180) / Math.PI).toFixed(1)})`)
+      const p = scene.viewEye(), d = scene.viewHeading()
+      // (written only when it changes: standing still costs no DOM write — from Maheer's Plotline 2.0)
+      const next = `translate(${p.x.toFixed(3)} ${p.y.toFixed(3)}) rotate(${((Math.atan2(d.y, d.x) * 180) / Math.PI).toFixed(1)})`
+      if (next !== transform) me.current?.setAttribute('transform', (transform = next))
       if (cam.aspect !== aspect) cone.current?.setAttribute('d', conePath(halfHfov(cam), CONE_M))
       aspect = cam.aspect
       const id = scene.currentRoomId()

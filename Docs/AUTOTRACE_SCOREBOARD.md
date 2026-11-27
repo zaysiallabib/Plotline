@@ -491,3 +491,173 @@ corridors whose doors were not read, with fewer kitchens read than flats. Nooran
 flat split by a door not found. The next lane: count living / dining / master bed prints with the kitchens when the labels
 run out, and a lobby whose name was not read (BTI's) as core when it touches the stair.
 
+
+## Session 31 p2trace (2026-11-27): the cofounder's Auto-trace changes, taken in one at a time and measured in Firefox
+
+**In plain words.** Maheer's Plotline 2.0 changes to Auto-trace (the review is `Docs/review/p2-rest/`) were taken into ours
+one at a time, each with his tests and "from Maheer's Plotline 2.0" in its commit. After each one the founder's own path
+ran in Firefox on the same 33 sheets (the 30 above + the three with hand-traced flats): drop the sheet, **S** on its
+printed length, **Auto-trace**, **Whole floor**, Export. A change stays only if no sheet loses a room that was right, no
+hand-traced flat loses a matched door or window, and the Check these rows do not go up. Result: **rooms closed and named
+right 507 → 510 of 620 printed, lifts / stairs / lobbies right 29 → 41 of 93, Check these rows 1 504 → 1 497, the
+hand-traced flats' rooms and doors unchanged. On the merged tree, its final measure: 506 → 508 right, 28 → 43 lifts /
+stairs / lobbies, 1 504 → 1 499 rows, no room lost (below; one rule of the glass step narrowed to get there).**
+
+**How it was measured.** One Firefox, one Vite; each step's commit frozen as a copy of `src/` so a run measures exactly that
+commit. Every export is scored by ONE fixed scorer (`score30.ts` + `solveEval.ts` at `f269ff4`), so the new name rules
+cannot change the scoring. Right = a closed room with the printed name; core = a printed lift / stair / lobby; Check
+these = the count on the panel. Logs and exports `E:/dev/plotline-shots/s31/p2trace/<step>.log` + `<step>/`. The same
+code on the same sheet at the same scale gives the same rooms (re-run on 8 sheets: no room differs).
+
+**Step by step (33 sheets):**
+
+| step | what a person sees (his item numbers) | rooms right | lifts / stairs / lobbies | Check these | kept? |
+|---|---|---|---|---|---|
+| before | `f269ff4` | 507 | 29 | 1 504 | |
+| 1 core | after Whole floor a closed lift, stair or lobby stays in the drawing as the building's core, out of every flat; a lobby no longer swallows the bedroom across a thin wall; a lift bank read from its "8 PERSONS" prints (R15 R17 R14 T9) | 507 | **39** | 1 515 | yes: 10 lifts / stairs on 8 sheets, none lost |
+| calm (ours) | no printed-size question on a lift (its print is the car) or a stair (the flight), none on a stair found from its drawn treads | | | −20 such rows | yes |
+| 2 glass | living / dining / open kitchens behind coloured glass close; OPEN KITCHEN inside a living room no longer renames it; a glass veranda goes to its flat (R10 R11 R18 R6 R16) | 508 | 39 | 1 517 | yes: Magnifico's veranda (Water Lily: one VER right instead of the other); on the merged tree its reconnect narrowed to coloured glass, below |
+| 3 thickness step | a wall that steps thick → thin keeps its short thick piece (R5) | 508 (9 lost, 9 gained) | 38 | 1 528 | **no**, below |
+| 4 + 5 text | sizes in cm / mm (and our "4.4m x 3.2" read as 0.98 m, fixed); "KlTCHEN-02" keeps its number; UVING → LIVING; the second look inside an unnamed room reads only that room, names land where printed, sideways names read upright (T1–T8) | +0 | +1 (La Montana B's lift) | +1 | yes |
+| 6 dark floors | names printed on a dark floor are no longer planter green; with no click the region with the bedrooms is the flat (R12 R13) | no change on the sheets it touches | | | yes |
+| 7 doors | the door-swing test counts instead of sorting (R4, kept); its window ×2 / ×3 on enlarged sheets (R4, **dropped**); faint and double-action doors (R7 R8 R9, kept: Water Lily's lift, no door lost) | | | | see below |
+| 8 – 9, R1 | the picture made into pixels in the trace worker (W1 W2); a turned sheet's hover tint and edge pixels (R3 R21); a pale scan stretched to full contrast (R1) | no change (none of these sheets is turned or pale) | | | yes |
+| **all kept** | `b93f06a` | **510** | **41** | **1 497** | |
+
+Per sheet, before → all kept (rooms right · lifts / stairs / lobbies right · Check these · seconds from Auto-trace to
+"Point at a flat"; Sapphire's "after" from a second run — in the first its text reading never finished, which happened to
+the old tracer on Sapphire too):
+
+| sheet | printed | rooms right | lifts / stairs / lobbies | Check these | seconds |
+|---|---|---|---|---|---|
+| bti-amabilia-typea | 16 | 12 → 13 | 1/3 → 3/3 | 45 → 45 | 27 → 25 |
+| bti-magnifico-unita | 27 | 11 → 12 | 0/5 → 2/5 | 88 → 90 | 28 → 27 |
+| bti-cosmopolis-t4typea | 9 | 9 | 0/0 → 0/0 | 27 | 29 → 29 |
+| bti-silvi-5th7th | 29 | 21 | 2/4 → 2/4 | 77 → 74 | 22 → 20 |
+| bti-peak-typef-1397 | 11 | 9 | 2/2 → 2/2 | 16 → 14 | 18 → 20 |
+| bti-fernhill-2nd3rd | 16 | 15 | 3/3 → 3/3 | 37 → 35 | 36 → 33 |
+| bti-lamontana-t1typeb | 18 | 16 | 2/5 → 4/5 | 40 → 41 | 34 → 28 |
+| bti-lamontana-t1typea | 14 | 14 | 0/5 → 2/5 | 36 | 37 → 26 |
+| rangs-torukabbo-typea | 13 | 13 | 0/0 → 0/0 | 24 | 15 → 12 |
+| rangs-sanctuary-12th-roof | 17 | 13 | 1/4 → 1/4 | 27 | 21 → 17 |
+| rangs-whitelake-ab-fl3 | 24 | 24 | 2/10 → 2/10 | 55 | 24 → 22 |
+| rangs-ixora-ef | 22 | 20 | 0/0 → 0/0 | 55 | 24 → 22 |
+| sheltech-kanakchapa-l4-a | 14 | 11 | 0/0 → 0/0 | 37 | 61 → 57 |
+| sheltech-waterlily-typical | 35 | 27 | 0/4 → 2/4 | 117 → 116 | 27 → 20 |
+| sheltech-siddiques-typea | 14 | 10 | 2/3 → 3/3 | 35 → 38 | 9 |
+| assure-gladiolus-2nd6th | 15 | 14 | 1/3 → 1/3 | 42 → 40 | 25 → 22 |
+| assure-phera-1st | 16 | 14 | 1/3 → 1/3 | 35 → 33 | 26 → 23 |
+| assure-hermitage-typical | 20 | 19 | 0/5 → 0/5 | 80 → 79 | 35 → 32 |
+| cpdl-skymark-unitd | 15 | 15 | 0/0 → 0/0 | 25 | 22 → 18 |
+| cpdl-joljhiri-unita | 14 | 13 | 0/0 → 0/0 | 26 | 31 → 27 |
+| cpdl-lareina-amber | 19 | 11 | 0/0 → 0/0 | 58 → 52 | 17 → 15 |
+| finlay-chayaneer-typeb | 16 | 16 | 0/3 → 0/3 | 79 | 37 → 32 |
+| finlay-nirvana-typical | 31 | 31 | 0/4 → 0/4 | 39 | 20 → 18 |
+| finlay-palmspring-typea | 12 | 8 | 0/1 → 0/1 | 38 → 40 | 62 → 53 |
+| ena-azmaryvilla-typea | 14 | 14 | 0/0 → 0/0 | 32 → 33 | 18 → 15 |
+| ena-jahanlodge-typea | 9 | 6 | 0/0 → 0/0 | 20 | 19 → 16 |
+| accept-aftabnagar-typical | 12 | 7 | 1/3 → 1/3 | 41 | 43 → 36 |
+| eh-pearl-2145 | 18 | 13 | 2/3 → 2/3 | 29 → 28 | 56 → 53 |
+| eh-sapphire-unita | 15 | 11 | 1/5 → 2/5 | 38 → 43 | 75 → 61 |
+| mir-mrmemento-typeb | 17 | 7 → 8 | 1/4 | 25 → 28 | 57 → 47 |
+| btibd-img3 | 28 | 28 | 2/4 → 2/4 | 57 → 56 | 33 → 29 |
+| btibd-img2 | 32 | 30 | 3/4 → 3/4 | 70 → 69 | 33 → 28 |
+| sheltech-l2 | 38 | 25 | 2/3 → 2/3 | 54 → 52 | 14 → 12 |
+| **total (33 sheets both finished)** | 620 | 507 → 510 | 29/93 → 41/93 | 1504 → 1497 | |
+
+Rooms gained: Amabilia's two lifts / stair and S.Bed (was merged into S.Toi), Magnifico's two stretcher lifts and
+veranda, La Montana B's lift and stair, La Montana A's fire stair and lift, Water Lily's two lifts, Siddiques' staircase,
+Sapphire's passenger lift, Mir Memento's family living. Lost: none (Water Lily: one VER closed instead of the other).
+The hand-traced flats: rooms and doors / windows the same on all five; Type A's wall recall 60.8 → 64.6 %.
+
+**On the merged tree (with s31/redesign's frame, heights, roof, railings, facade and outside pieces) — the final
+measure.** The frame lane's project column makes the sheet a little smaller on screen, so the same S clicks land a pixel
+apart and the scale differs by up to 0.7 % on 21 of the 33 sheets (Magnifico 35.06 → 34.83 px/m, nearer its print).
+Measured against the redesign head with our old tracer at that same layout (`86a4d7c`, same scale on all 33 sheets):
+
+| | old tracer (`86a4d7c`) | this lane, final (`f856640`) |
+|---|---|---|
+| rooms closed and named right | 506 | **508** |
+| lifts / stairs / lobbies right | 28 / 93 | **43 / 93** |
+| Check these rows | 1 504 | **1 499** |
+| rooms lost | | **none** |
+| hand-traced flats: rooms · doors and windows | 88 / 116 · 113 / 161 | the same; Type A's wall recall 60.8 → 64.6 % |
+| seconds from Auto-trace to "Point at a flat", 33 sheets | 1 076 | 947 |
+
+Per sheet, old tracer → final, on the merged tree:
+
+| sheet | printed | rooms right | lifts / stairs / lobbies | Check these | seconds |
+|---|---|---|---|---|---|
+| bti-amabilia-typea | 16 | 12 → 13 | 1/3 → 3/3 | 45 → 45 | 29 → 28 |
+| bti-magnifico-unita | 27 | 12 | 0/5 → 2/5 | 93 → 95 | 34 → 29 |
+| bti-cosmopolis-t4typea | 9 | 9 | 0/0 → 0/0 | 27 | 33 → 29 |
+| bti-silvi-5th7th | 29 | 21 | 2/4 → 2/4 | 79 → 76 | 26 → 22 |
+| bti-peak-typef-1397 | 11 | 9 | 2/2 → 2/2 | 16 → 17 | 21 → 18 |
+| bti-fernhill-2nd3rd | 16 | 15 | 3/3 → 3/3 | 37 → 35 | 38 → 36 |
+| bti-lamontana-t1typeb | 18 | 16 | 2/5 → 4/5 | 42 → 45 | 37 → 30 |
+| bti-lamontana-t1typea | 14 | 12 | 0/5 → 2/5 | 33 | 31 → 27 |
+| rangs-torukabbo-typea | 13 | 13 | 0/0 → 0/0 | 24 | 18 → 13 |
+| rangs-sanctuary-12th-roof | 17 | 13 | 1/4 → 1/4 | 26 | 36 → 18 |
+| rangs-whitelake-ab-fl3 | 24 | 24 | 2/10 → 2/10 | 55 | 24 → 24 |
+| rangs-ixora-ef | 22 | 22 | 0/0 → 0/0 | 55 | 25 → 22 |
+| sheltech-kanakchapa-l4-a | 14 | 11 | 0/0 → 0/0 | 37 | 82 → 58 |
+| sheltech-waterlily-typical | 35 | 25 | 0/4 → 2/4 | 109 → 107 | 24 → 21 |
+| sheltech-siddiques-typea | 14 | 10 | 2/3 → 3/3 | 35 → 37 | 10 → 9 |
+| assure-gladiolus-2nd6th | 15 | 14 | 1/3 → 1/3 | 42 → 40 | 26 → 24 |
+| assure-phera-1st | 16 | 14 | 1/3 → 1/3 | 35 → 33 | 27 → 24 |
+| assure-hermitage-typical | 20 | 19 | 0/5 → 0/5 | 80 → 79 | 35 → 32 |
+| cpdl-skymark-unitd | 15 | 15 | 0/0 → 0/0 | 25 | 24 → 18 |
+| cpdl-joljhiri-unita | 14 | 13 | 0/0 → 0/0 | 26 | 32 → 28 |
+| cpdl-lareina-amber | 19 | 11 | 0/0 → 0/0 | 58 → 54 | 15 → 16 |
+| finlay-chayaneer-typeb | 16 | 16 | 0/3 → 0/3 | 79 | 35 → 35 |
+| finlay-nirvana-typical | 31 | 31 | 0/4 → 0/4 | 39 | 20 → 18 |
+| finlay-palmspring-typea | 12 | 8 | 0/1 → 0/1 | 39 | 63 → 57 |
+| ena-azmaryvilla-typea | 14 | 14 | 0/0 → 0/0 | 32 → 33 | 17 → 15 |
+| ena-jahanlodge-typea | 9 | 6 | 0/0 → 0/0 | 20 | 20 → 17 |
+| accept-aftabnagar-typical | 12 | 7 | 1/3 → 1/3 | 41 | 43 → 38 |
+| eh-pearl-2145 | 18 | 13 | 2/3 → 2/3 | 29 → 28 | 57 → 53 |
+| eh-sapphire-unita | 15 | 11 | 0/5 → 4/5 | 40 → 45 | 68 → 64 |
+| mir-mrmemento-typeb | 17 | 7 → 8 | 1/4 | 25 → 27 | 50 |
+| btibd-img3 | 28 | 28 | 2/4 → 2/4 | 57 → 56 | 30 → 29 |
+| btibd-img2 | 32 | 30 | 3/4 → 3/4 | 73 → 72 | 29 → 28 |
+| sheltech-l2 | 38 | 25 | 2/3 → 2/3 | 51 → 49 | 13 → 14 |
+| **total (33 sheets both finished)** | 620 | 506 → 508 | 28/93 → 43/93 | 1504 → 1499 | |
+Gained: lifts / stairs on Amabilia (2), Magnifico (2), La Montana B (2) and A (2), Water Lily (2), Siddiques (1),
+Sapphire (4); Amabilia's S.Bed (was merged into S.Toi); Mir Memento's family living.
+
+**Why the glass step was narrowed.** The first merged-tree run (glass step whole) lost BTI Magnifico's family lounge and
+Bath 1 and added 14 rows there (1 504 → 1 521 in all); run on Magnifico at the merged layout item by item, the loss came
+with step 2 (glass) — at the old layout the same step had lost nothing there. Each of its rules turned off alone, on
+Magnifico in Firefox at the merged layout: closing line on blue glazing colour (R10), thin blue panes from the colour mask
+(R11), the pane's one straight offset (R6), the open kitchen as a work zone (R18), the glass veranda to its flat (R16) —
+off, nothing changes; **the reconnect (R11: a line whose end lost its line at a T looks for another line) — off, both
+rooms back and 95 rows.** His two tests for it are blue panes on a dark floor, so it stays only for coloured-glass lines;
+grey lines prune as before. With that, Magnifico's veranda and Water Lily's second VER (which the reconnect had closed at
+the old layout) stay open.
+
+Time: whole-run totals move ±15 % between runs of the same code on this machine (old tracer 1 038 and 1 076 s, new 907,
+947 and 1 213 s); the turn-about run (old and new one after the other on each of 6 sheets) is equal within 1–3 s per sheet.
+
+**Auto-trace's text reading sometimes never finishes** (a bug for a next lane, not this one): the card stays at "Reading
+the plan (text)… 0 %" for over 7 minutes with a clean console, on the old tracer and the new alike — Eastern Housing
+Sapphire twice in a row (f269ff4 and b93f06a), Finlay Palm Spring once (79977d6), and once at "Reading the plan (graph)…"
+on CPDL La Reina (f269ff4); a fresh page then reads each in 15–90 s. Shots `ours-<sheet>-notready.png` in
+`E:/dev/plotline-shots/s31/p2trace/{final2,tb,merged}/`.
+
+**Dropped, with the numbers.**
+- **The short wall where a wall changes thickness (R5).** It split Sheltech Level 2's Toilet 2 from the lift (Sheltech B
+  13 → 15 rooms matched) and closed Jahan Lodge's living / dining / kitchen and three Mir Memento rooms, but lost BTI
+  Magnifico's two lifts, kitchen, kitchen veranda, family lounge and Bed 3, a veranda on Kanakchapa and on Gladiolus and
+  La Reina's Bed 3: 508 → 508 right, 9 rooms lost. Two narrower versions on the 9 sheets it moved: old OR new test (10
+  lost), new test only up to 1.2 m (12 lost, the Toilet 2 gain gone).
+- **The wider door-swing window on enlarged sheets (part of R4).** It lost Magnifico's family lounge and Bed 3 and Water
+  Lily's living room and added 20 rows on Magnifico; the 33-sheet run with it took 1 291 s against 907 s without. Without
+  it, on the five sheets it touches, no room is lost. The counted test itself (same answer, no sort) stays.
+
+**Also in this lane (not on the 33 sheets' path):** "Set the scale and trace again" under Check these when Auto-trace had
+to guess the scale (MANUAL §5, KEYS); opening another drawing while Auto-trace runs stops it; 3D on ground floors — the
+covered parking's slab is solid with its lights only under it, the face above a kerb by a raised lawn is drawn, a piece
+deleted in Edit furniture is not built (V7 V8 V10 V2 V3 V4; shots `E:/dev/plotline-shots/s31/p2trace/3d/`).
+
+**Not measured.** Memory (headless Firefox reports none); a real pale scan (none of the 1 098 pictures is one — his faded
+copy of a Sheltech crop is the test); a double-action door on a real sheet (none of the five hand-traced flats draws one).

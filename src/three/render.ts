@@ -26,7 +26,7 @@ import { setLeafGlow } from '../furnish/procedural'
 import { CELL_M } from './batch'
 import { buildContactShadows, buildStreet, haze, outdoorFill, setHaze, STREET_LIT, streetMaterial, streetNight, streetShape } from './context'
 import { dayMix, isCovered, LAMP_RANGE, lampBake, lampOut, nightOut, openToSky, setLampDirect, setLampShare, type BakedLamp } from './daylight'
-import { carriesRoof, junctionShade, roomCeiling, storeyTop, wallLift } from './details'
+import { carriesRoof, coverSlabGeometry, junctionShade, roomCeiling, storeyTop, wallLift } from './details'
 import { EXTERIOR_PLASTER, isBlank, materialFor } from './materials'
 import { meterUVs, PANES, setGlassSky } from './openings'
 import { balconyEdges } from './rails'
@@ -502,6 +502,27 @@ export function lampShares(fx: { roomId: Id; cd: number }[], rooms: Room[], link
 }
 /** Covered zones (coverLights): a batten every GRID m, the real downlights among them, their candela. */
 const GRID = 3.6
+/**
+ * Where the battens go: every GRID point of an outdoor zone whose whole 1.2 m batten (ends and middle, both edges) is
+ * under the slab above — a batten hanging past the slab's edge into the sky, or bridging a void, is none; a zone only
+ * partly covered still gets its covered points (from Maheer's Plotline 2.0).
+ */
+export function coverLightSpots(unit: Unit, rooms: Room[], cover: Pt[][]): { x: number; y: number; floor: number }[] {
+  const spots: { x: number; y: number; floor: number }[] = []
+  const under = (p: Pt) => cover.some((c) => core.pointInPolygon(p, c))
+  for (const r of rooms.filter((x) => core.isOutdoor(x.kind))) {
+    const poly = core.roomInnerPolygon(r, unit)
+    const xs = poly.map((p) => p.x), ys = poly.map((p) => p.y)
+    for (let i = Math.floor(Math.min(...xs) / GRID); i * GRID <= Math.max(...xs); i++)
+      for (let j = Math.floor(Math.min(...ys) / GRID); j * GRID <= Math.max(...ys); j++) {
+        const p = { x: (i + 0.5) * GRID, y: (j + 0.5) * GRID }
+        if (!core.pointInPolygon(p, poly)) continue
+        const fits = [-0.09, 0, 0.09].every((dy) => Array.from({ length: 15 }, (_, n) => -0.65 + (n * 1.3) / 14).every((dx) => under({ x: p.x + dx, y: p.y + dy })))
+        if (fits) spots.push({ ...p, floor: core.roomLevelAt(r, unit, p.x, p.y) })
+      }
+  }
+  return spots
+}
 const COVER_LIGHTS = 4
 const COVER_CD = 18
 /** a 4000 K LED batten's diffuser */
@@ -816,7 +837,8 @@ export class Look {
     // streak at the ceiling (founder, 2026-10-04). The boxes still close the wall tops, so no low sun gets in between.
     // an outdoor zone is open to the sky unless the slab above (`cover`, the floor above's footprint) hangs over it: that
     // slab is in the roof too, and from below it is the zone's soffit
-    const over = cover.map((poly) => new THREE.ShapeGeometry(new THREE.Shape(poly.map((p) => new THREE.Vector2(p.x, p.y)))).rotateX(Math.PI / 2).translate(0, -SLAB_M, 0))
+    // (a solid slab, its edge and both faces: the one-sided soffit it was vanished seen from the side — from Maheer's Plotline 2.0)
+    const over = cover.map((poly) => coverSlabGeometry(poly, SLAB_M))
     // (a room under the cover: the cover's own plane is its roof — two coplanar planes fought in stripes)
     const lifted = [...roomParts.filter((_, i) => !openToSky(rooms[i], cover) && !cover.some((c) => core.pointInPolygon(rooms[i].centroid, c))), ...over].map((g) => g.clone().translate(0, ROOF_LIFT, 0))
     const roofGeo = merged([...lifted, ...roofWalls])
@@ -897,17 +919,7 @@ export class Look {
    * COVER_LIGHTS, within the light budget beside the rooms' lamps. Always on, whatever the hour. Returns how many.
    */
   private coverLights(unit: Unit, rooms: Room[], cover: Pt[][]): number {
-    const spots: { x: number; y: number; floor: number }[] = []
-    for (const r of rooms.filter((x) => isCovered(x, cover))) {
-      const poly = core.roomInnerPolygon(r, unit)
-      const xs = poly.map((p) => p.x)
-      const ys = poly.map((p) => p.y)
-      for (let i = Math.floor(Math.min(...xs) / GRID); i * GRID <= Math.max(...xs); i++)
-        for (let j = Math.floor(Math.min(...ys) / GRID); j * GRID <= Math.max(...ys); j++) {
-          const p = { x: (i + 0.5) * GRID, y: (j + 0.5) * GRID }
-          if (core.pointInPolygon(p, poly) && cover.some((c) => core.pointInPolygon(p, c))) spots.push({ ...p, floor: core.roomLevelAt(r, unit, p.x, p.y) })
-        }
-    }
+    const spots = coverLightSpots(unit, rooms, cover)
     if (!spots.length) return 0
     const y = this.topY - 0.03
     const battens = mergeGeometries(spots.map((p) => new THREE.BoxGeometry(1.2, 0.04, 0.08).translate(p.x, y, p.y)))!
