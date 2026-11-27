@@ -135,10 +135,12 @@ describe('an IFC reads as it read before the speed-up', () => {
 })
 
 const PINNED: Record<string, [string, string]> = {
-  'duplex/arc.ifc': ['a7183dfdb236df40', 'a7183dfdb236df40'], // (s31 bigifc: its foundation's "names no rooms" note said once, the walls unchanged)
-  // (s31 bigifc: their German room names get their kinds — Schlafzimmer a bedroom, Bad a bath —; walls and names unchanged)
-  'fzk_house/arc.ifc': ['a424b5f5ee9ea62b', 'a424b5f5ee9ea62b'],
-  'city_house_munich/arc.ifc': ['bc267be7720262db', 'bc267be7720262db'],
+  // (s31 ifcmap: the street at the ground storey — duplex's Level 1, the city house's Erdgeschoss, the storeys under them
+  // basements —, the notes on materials, railings and the roof; the walls unchanged but FZK's two balcony railings, now low
+  // walls of their own)
+  'duplex/arc.ifc': ['84f3f216184aa720', '84f3f216184aa720'],
+  'fzk_house/arc.ifc': ['495eec9127f76b3d', '495eec9127f76b3d'],
+  'city_house_munich/arc.ifc': ['9b681c703af5bd4c', '9b681c703af5bd4c'],
   'fixtures/autotrace-bti-floor-2026-11-20.json': ['dae0408aebf3902c', 'b8df5c02ace179c7'],
   'fixtures/founder-autotrace-type-a-2026-10-06.json': ['f1dc554e237be1da', 'a05cc86392ce384b'],
   'fixtures/founder-banani-unit-a-2026-10-09.json': ['1d6f3042c3bf9c8f', '1d6f3042c3bf9c8f'],

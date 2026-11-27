@@ -16,7 +16,7 @@
  * The layer → meaning table (roleOf) is what the notes show staff.
  */
 import { FT, deriveRooms, flatTypeOf, newId, pointInPolygon, roomPolygon, validate } from '../core'
-import type { Opening, OpeningKind, Pillar, Pt, Room, RoomLabel, Unit, ValidationIssue, Vertex, Wall } from '../core'
+import type { LowWallKind, Opening, OpeningKind, Pillar, Pt, Room, RoomLabel, Unit, ValidationIssue, Vertex, Wall } from '../core'
 import { EXTERIOR_M, PARTITION_M, WALL_HEIGHT_M, ZONE_LINE_M, emptyUnit, guessKind, initialState, normalizeUnit, openingDefaults, reducer } from '../studio/model'
 import { parseArea, parseDims, parseSide } from '../trace/text'
 
@@ -137,6 +137,8 @@ export interface Plan2dResult {
   /** file x / y of the plan origin (the walls' top-left corner) */
   origin: Pt
   notes: string[]
+  /** Plotline's own export read from its centre lines: each wall's outside finish as its layer names it (an option id), by wall id */
+  outside?: Map<Id, string>
 }
 
 const WALL_MIN = 0.04
@@ -154,6 +156,9 @@ interface Piece {
   thick: number
   /** its height, m, when the file gives one (an extruded outline); a zone line's is 0 */
   h?: number
+  /** Plotline's own export (its centre line's layer, dxfWrite.ts axisLayer): what the low wall is made of, its outside finish */
+  low?: LowWallKind
+  out?: string
   dir: Pt
   n: Pt
   /** perpendicular coordinate of its line (p · n) and its extent along dir */
@@ -517,8 +522,12 @@ function roomPolygons(loops: Pt[][], wallLength: number): RoomMode | null {
 }
 
 const stripText = (s: string): string => s.replace(/\s+/g, ' ').trim()
-/** Plotline's own export: a wall's centre line, on a layer named for its thickness in tenths of a millimetre */
-const AXES = /^PLOTLINE_AXES_(\d+)$/i
+/**
+ * Plotline's own export: a wall's centre line, on a layer named for its thickness in tenths of a millimetre, then what a
+ * low wall is made of and the wall's outside finish when it has them (dxfWrite.ts axisLayer: PLOTLINE_AXES_2540_OUT_BRICK_RED)
+ */
+const AXES = /^PLOTLINE_AXES_(\d+)(?:_LOW_([A-Z]+))?(?:_OUT_([A-Z0-9_]+))?$/i
+const LOW_KINDS: LowWallKind[] = ['glass', 'railing', 'grille', 'timber', 'fence', 'chainlink']
 
 /**
  * Whether the centre lines of Plotline's own export still agree with the wall outlines (no wall moved, added or taken
@@ -614,7 +623,11 @@ export function buildPlan(d: Drawing, name: string): Plan2dResult {
   const axisLines = d.own ? d.segs.filter((g) => AXES.test(g.layer)) : []
   const axes =
     axisLines.length && axesAgree(axisLines, d.loops.filter((l) => role(l) === 'wall' || role(l) === 'kerb'), d.segs.filter((g) => g.inst !== undefined), s)
-      ? axisLines.map((g) => piece(P(g.a), P(g.b), Number(AXES.exec(g.layer)![1]) / 1e4, heightOf(g)))
+      ? axisLines.map((g) => {
+          const [, t, low, out] = AXES.exec(g.layer)!
+          const k = low?.toLowerCase() as LowWallKind | undefined
+          return { ...piece(P(g.a), P(g.b), Number(t) / 1e4, heightOf(g)), ...(k && LOW_KINDS.includes(k) ? { low: k } : {}), ...(out ? { out: `fo_out_${out.toLowerCase()}` } : {}) }
+        })
       : null
   if (axisLines.length) notes.push(axes ? `${axes.length} walls read from their centre lines, exactly as exported.` : 'Walls were changed in a CAD program since the export: read from their outlines.')
   // (a line on a text / room layer is geometry too: a plan drawn as room polygons)
@@ -886,7 +899,7 @@ export function buildPlan(d: Drawing, name: string): Plan2dResult {
         if (t1 - t0 < (o.exact ? 0.01 : MIN_GAP) || (openings.length && openings[openings.length - 1].offsetM + openings[openings.length - 1].widthM > t0 - w.t0)) continue
         openings.push({ id: newId(), kind: o.kind, offsetM: t0 - w.t0, widthM: t1 - t0, heightM: defaults.heightM, sillM: defaults.sillM, ...(o.kind === 'door' ? { hinge: o.hinge, swing: o.swing } : {}) })
       }
-      unit0.walls.push({ id: newId(), a: a.id, b: b.id, thicknessM: w.thick, heightM: w.h ?? usualH, openings })
+      unit0.walls.push({ id: newId(), a: a.id, b: b.id, thicknessM: w.thick, heightM: w.h ?? usualH, openings, ...(w.low ? { lowKind: w.low } : {}) })
     }
   }
   // the Studio's own load path (join walls, drop stubs, heal straight runs), then no wall end left touching another (nodeGraph)
@@ -967,7 +980,10 @@ export function buildPlan(d: Drawing, name: string): Plan2dResult {
   }
   notes.push(`${counts.lines} lines read → ${counts.walls} walls (${doorArcs} door arcs, ${blockOpenings} door / window blocks → ${counts.openings} openings), ${counts.columns} columns, ${counts.labels} labels, ${counts.closedRooms} closed rooms.`)
   if (outside) notes.push(`${outside} text(s) stood in no closed room and were left out.`)
-  return { unit, rooms, issues, counts, origin: { x: ox / s, y: -oy / s }, notes }
+  // (each wall's outside finish, as its centre line's layer names it, by where it stands: the join may split a wall)
+  const dressed = axes?.filter((p) => p.out) ?? []
+  const dressedOn = dressed.length ? finishesOn(unit, dressed.map((p) => ({ pts: [p.a, p.b], thicknessM: p.thick, finish: p.out }))) : undefined
+  return { unit, rooms, issues, counts, origin: { x: ox / s, y: -oy / s }, notes, ...(dressedOn?.size ? { outside: dressedOn } : {}) }
 }
 
 type Id = string
@@ -1432,4 +1448,40 @@ export function guessScale(box: { w: number; h: number }, sizeAreaSqm: number): 
   const usual = extent >= 5000 ? 0.001 : extent >= 500 ? 0.0254 : extent >= 150 ? 0.3048 : extent >= 15 ? 0.3048 : 1
   const pick = fits.find(([k]) => k === usual) ?? fits[0]
   return { scale: pick[0], words: `${pick[1]} (guessed from the extent)` }
+}
+
+/**
+ * Each wall of `unit` that lies on a wall draft with an outside finish (on its line within half its thickness + 5 cm, parallel,
+ * its middle within the draft's span), by id: the Studio's join splits and merges the drafts, so each final wall is matched
+ * back by where it stands. Zone lines and kerbs wear none.
+ */
+export function finishesOn(unit: Pick<Unit, 'vertices' | 'walls'>, drafts: { pts: Pt[]; thicknessM: number; finish?: string }[]): Map<Id, string> {
+  const segs = drafts.flatMap((d) =>
+    d.finish
+      ? d.pts.slice(1).map((b, i) => {
+          const a = d.pts[i], tol = d.thicknessM / 2 + 0.05
+          return { a, b, tol, f: d.finish!, x0: Math.min(a.x, b.x) - tol, x1: Math.max(a.x, b.x) + tol, y0: Math.min(a.y, b.y) - tol, y1: Math.max(a.y, b.y) + tol }
+        })
+      : [],
+  )
+  const vs = new Map(unit.vertices.map((v) => [v.id, v]))
+  const out = new Map<Id, string>()
+  for (const w of unit.walls) {
+    const [p, q] = [vs.get(w.a), vs.get(w.b)]
+    if (!p || !q || w.heightM <= 0.2) continue
+    const M = Math.hypot(q.x - p.x, q.y - p.y)
+    if (M < 1e-6) continue
+    const mid = { x: (p.x + q.x) / 2, y: (p.y + q.y) / 2 }
+    for (const { a, b, tol, f, x0, x1, y0, y1 } of segs) {
+      if (mid.x < x0 || mid.x > x1 || mid.y < y0 || mid.y > y1) continue
+      const L = Math.hypot(b.x - a.x, b.y - a.y)
+      if (L < 1e-6 || Math.abs(((b.x - a.x) * (q.y - p.y) - (b.y - a.y) * (q.x - p.x)) / (L * M)) > 0.05) continue
+      const d = { x: (b.x - a.x) / L, y: (b.y - a.y) / L }
+      const u = (mid.x - a.x) * d.x + (mid.y - a.y) * d.y
+      if (u < -tol || u > L + tol || Math.abs(-(mid.x - a.x) * d.y + (mid.y - a.y) * d.x) > tol) continue
+      out.set(w.id, f)
+      break
+    }
+  }
+  return out
 }

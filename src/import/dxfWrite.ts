@@ -7,7 +7,8 @@
  * (room names, printed sizes under them; a name's raised floor as the text's elevation), PLOTLINE_ZONES (the flush lines
  * between zones: parking bays, lawn edges), PLOTLINE_KERBS (walls of 20 cm or less, outlined like walls),
  * PLOTLINE_AXES_<thickness in tenths of a mm> (each wall's centre line, its height as the line's thickness: read to the
- * letter while it still agrees with the outlines — a curved ramp's chords, a short wall at a T, a door at a corner). Every wall
+ * letter while it still agrees with the outlines — a curved ramp's chords, a short wall at a T, a door at a corner; what a
+ * low wall is made of and the wall's outside finish ride in the layer's name, axisLayer: _LOW_GLASS, _OUT_BRICK_RED). Every wall
  * outline carries its height as its thickness (group 39, the extrusion CAD keeps), so a file saved by a CAD program reads
  * back to the same walls, heights, zone lines, openings and named rooms (dxfWrite.test.ts, the 20 built-in drawings).
  *
@@ -16,7 +17,7 @@
  * sealed with a fingerprint of the drawn entities. A file that comes back untouched opens exactly as it was exported;
  * one changed in CAD has lost the comments or broken the seal, and is read from its lines like any DXF (ownDrawingOf).
  */
-import type { Pt, Unit } from '../core'
+import type { Id, Pt, Unit, Wall } from '../core'
 import { sheetOf } from './sheet'
 
 /**
@@ -67,10 +68,19 @@ const LAYERS: [string, number][] = [
 const NAME_H = 0.2
 const NOTE_H = 0.14
 
-export function writeDxf(unit: Unit): string {
+/**
+ * A wall's centre-line layer (session 31 ifcmap): its thickness in tenths of a millimetre, then what a low wall is made of
+ * (core Wall.lowKind) and its outside finish (an outside option id without its fo_out_), so a CAD program's save keeps them:
+ * PLOTLINE_AXES_2540, PLOTLINE_AXES_500_LOW_GLASS, PLOTLINE_AXES_2540_OUT_BRICK_RED. Read back by plan2d.ts (AXES).
+ */
+export const axisLayer = (w: Pick<Wall, 'thicknessM' | 'lowKind'>, out?: string): string =>
+  `PLOTLINE_AXES_${Math.round(w.thicknessM * 1e4)}${w.lowKind ? `_LOW_${w.lowKind.toUpperCase()}` : ''}${out?.startsWith('fo_out_') ? `_OUT_${out.slice(7).toUpperCase()}` : ''}`
+
+/** `outside`: each wall's outside finish as the building's outside record resolves it (an option id), by wall id — kept in its centre line's layer. */
+export function writeDxf(unit: Unit, outside: Record<Id, string> = {}): string {
   const sheet = sheetOf(unit)
   const V = new Map(unit.vertices.map((v) => [v.id, v]))
-  const axes = unit.walls.filter((w) => w.heightM > 0 && V.has(w.a) && V.has(w.b)).map((w) => ({ w, layer: `PLOTLINE_AXES_${Math.round(w.thicknessM * 1e4)}` }))
+  const axes = unit.walls.filter((w) => w.heightM > 0 && V.has(w.a) && V.has(w.b)).map((w) => ({ w, layer: axisLayer(w, w.heightM > 0.2 ? outside[w.id] : undefined) }))
   const layers: [string, number][] = [...LAYERS, ...[...new Set(axes.map((x) => x.layer))].sort().map((l): [string, number] => [l, 8])]
   const out: (string | number)[] = []
   const g = (code: number, value: string | number) => out.push(code, typeof value === 'number' ? +value.toFixed(6) : value)

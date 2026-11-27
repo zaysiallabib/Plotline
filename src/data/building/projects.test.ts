@@ -279,3 +279,15 @@ describe("a set's floors stacked on what they share (session 31 levels: each dra
     expect(setSlot(p, 2, f).flats.f.offset).toEqual({ x: 1.5, y: -2 })
   })
 })
+
+describe("a 3D model dropped on a drawing stands on the street (session 31 ifcmap: Shell.street)", () => {
+  test('on the floor its drawing stands on it sits that floor lower; a shape of a storey of its own (an IFC) keeps its own', () => {
+    const shell = { id: 'glb', name: 'model', baseY: 0, offset: { x: 5, y: 4 } }
+    let p = newProject('p', 'Tower', { basements: 0, floors: 3, rooftop: false })
+    p = setSlot(p, 2, { ...box('a'), shell: { ...shell, street: true } })
+    p = setSlot(p, 3, { ...box('b'), shell: { ...shell, baseY: 1.5 } })
+    const t = projectTower(p)
+    expect(t.FLATS.a.unit.shell?.baseY).toBeCloseTo(2 * t.FLOOR_M)
+    expect(t.FLATS.b.unit.shell?.baseY).toBe(1.5)
+  })
+})

@@ -642,11 +642,14 @@ export function projectTower(p: Project): Tower {
   const ROOF_SHAPE = roofOf(p.roof, STOREYS && p.heights)
   // the building's outside shape on every drawing without its own, its floor datum at that drawing's floor height
   // ponytail: one baseY per drawing (its first floor); a drawing on floors 1–5 is placed by the Building view's own floor arithmetic
-  if (p.shell)
-    for (const stem of Object.keys(FLATS)) {
-      const k = LEVELS[stem] ?? FLOORS.find((f) => f.flats.includes(stem))?.floor ?? 1
-      if (!FLATS[stem].unit.shell) FLATS[stem] = { ...FLATS[stem], unit: { ...FLATS[stem].unit, shell: { ...p.shell, baseY: ELEVATIONS?.[k] ?? k * FLOOR_M } } }
-    }
+  // (a 3D model dropped on a drawing — Shell.street — stands on the street the same way, under that drawing's floor)
+  for (const stem of Object.keys(FLATS)) {
+    const own = FLATS[stem].unit.shell
+    const shell = own ? (own.street ? own : null) : p.shell
+    if (!shell) continue
+    const k = LEVELS[stem] ?? FLOORS.find((f) => f.flats.includes(stem))?.floor ?? 1
+    FLATS[stem] = { ...FLATS[stem], unit: { ...FLATS[stem].unit, shell: { ...shell, baseY: ELEVATIONS?.[k] ?? k * FLOOR_M } } }
+  }
   const ground = levels.find((l) => l.kind === 'ground')
   // the ground: his traced ground floor; else the lowest flats' columns carry the tower and a flat with no column drawn
   // stands in with its shell (never a floating flat)

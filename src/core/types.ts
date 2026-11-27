@@ -31,6 +31,8 @@ export interface Opening {
   widthM: number
   heightM: number
   sillM: number // 0 for doors/passages
+  /** a glass wall's mullion spacing (m) as the architect's file draws it (an IFC curtain wall's); absent: equal bays of at most 1.4 m */
+  bayM?: number
   /** door swing/hinge side hint (kind 'door' only; ignored on sliders); purely visual */
   hinge?: 'a' | 'b'
   swing?: 'in' | 'out'
@@ -309,6 +311,11 @@ export interface Shell {
    * in the flats' window openings, with the rooms behind it and their lights at night (three/building.ts). Absent: as drawn.
    */
   glass?: 'opaque'
+  /**
+   * A whole building's model dropped on a drawing (a 3D model, no storeys: import/mesh.ts): its lowest point is the street —
+   * on each floor its drawing stands on, it stands that floor's height lower (data/building/projects.ts projectTower).
+   */
+  street?: true
 }
 
 /**
