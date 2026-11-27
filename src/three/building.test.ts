@@ -1203,6 +1203,19 @@ describe('the storeys the set prints (session 31 heights: data/building/storeys.
     expect(plaster(b)).toBeLessThan(plaster(solid))
   })
 
+  test('the roof over a walked top floor of the Studio’s 10 ft walls lies over its own roof: the Building view never looks into its rooms nor sees its wall tops (anybuilding)', async () => {
+    const { ROOF_M } = await import('./render')
+    const u = { ...(await fixture()), floor: 1 }
+    const b = await built(projectTower(makeProject('p', u, 1, 1, 'none')), u, 1)
+    const own = Math.max(...u.walls.map((w) => w.heightM)) + ROOF_M // the walked flat's roof (Look): its walls' tops and the slab on them
+    expect(own).toBeGreaterThan(b.levelOf(2)) // (3.048 + 0.155 over a 3.198 m storey: why it showed)
+    // straight down onto its rooms' middles from the sky: the roof's slab is the first thing, above the flat's own roof
+    const THREE = await import('three')
+    const tops = core.deriveRooms(u).filter((x) => x.kind !== 'shaft' && x.areaSqm > 6).map((x) => new THREE.Raycaster(new THREE.Vector3(x.centroid.x, 50, x.centroid.y), new THREE.Vector3(0, -1, 0)).intersectObject(b, true).find((h) => h.object.visible)?.point.y ?? -1)
+    expect(tops.length).toBeGreaterThan(3)
+    for (const y of tops) expect(y).toBeGreaterThan(own)
+  })
+
   test('a project whose set has no section: the very same tower, vertex for vertex, as before this lane', async () => {
     const u = await fixture()
     const t = projectTower(makeProject('p', u, 2, 6, 'none'))

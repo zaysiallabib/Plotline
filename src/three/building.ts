@@ -597,7 +597,11 @@ export class Building extends THREE.Group {
         const rooms = roof ? roofRooms(s) : this.roomsOf(s)
         if (roof) {
           if (hasShell) continue
-          for (const [r, gs] of this.edgesBy(s, k, plate(u, rooms, roofLevel.length ? -UNDER_LEVEL_M : 0, PLATE_M, u.walls, this.lid(s, k)).map(at))) put(k, r, ...gs)
+          // (over the walked top floor its own roof — Look's, to its walls' tops — may reach past the roof's datum: the Studio's
+          // 10 ft walls under a 3.198 m storey by 5 mm. The slab then lies a skin over it, or its wall tops drew lines on the roof)
+          const lid = this.lid(s, k)
+          const deckTop = roofLevel.length ? -UNDER_LEVEL_M : Math.max(0, lid ? lid.y + SKIN_M : 0)
+          for (const [r, gs] of this.edgesBy(s, k, plate(u, rooms, deckTop, PLATE_M, u.walls, lid).map(at))) put(k, r, ...gs)
           if (roofLevel.length) continue
           // parapet: the walls with open air on one side (outside every flat of the floor below), 1.1 m (or as the set prints it), no openings
           const others = standIns.filter((o) => o !== s)
