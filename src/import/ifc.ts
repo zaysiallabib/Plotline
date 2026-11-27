@@ -352,7 +352,7 @@ function readModel(W: WebIfc, api: Api, model: number, fileName: string, t0: num
     const rel = line(r)
     for (const e of rel.RelatedObjects ?? []) {
       aggregateParent.set(e.value, rel.RelatingObject.value)
-      childrenOf.set(rel.RelatingObject.value, [...(childrenOf.get(rel.RelatingObject.value) ?? []), e.value])
+      ;(childrenOf.get(rel.RelatingObject.value) ?? childrenOf.set(rel.RelatingObject.value, []).get(rel.RelatingObject.value)!).push(e.value)
       if (!parentOf.has(e.value)) parentOf.set(e.value, rel.RelatingObject.value)
     }
   }
@@ -378,7 +378,10 @@ function readModel(W: WebIfc, api: Api, model: number, fileName: string, t0: num
   // the plan origin: the lowest storey's placement in file x / y
   const o0 = storeys[0] ? worldFrame(line(storeys[0].id).ObjectPlacement?.value).o : [0, 0, 0]
   const origin: Pt = { x: o0[0], y: o0[1] }
-  const planOfWorld = (X: number, Z: number): Pt => ({ x: X - origin.x, y: Z + origin.y })
+  // (the meshes are moved into the plan frame as they are read — worldMesh —, so a mesh point is a plan point: the outside
+  // shape stands on its plans, and a file placed far from its 0 (EDEA's site 722 km east, Gaia's storeys 95 m north) keeps
+  // its precision in the GLB's 32-bit numbers)
+  const planOfWorld = (X: number, Z: number): Pt => ({ x: X, y: Z })
   const planOfFile = (x: number, y: number): Pt => ({ x: x - origin.x, y: -(y - origin.y) })
 
   // types (door operation), materials (layer thickness)
@@ -651,7 +654,7 @@ function readModel(W: WebIfc, api: Api, model: number, fileName: string, t0: num
       }
     }
   }
-  /** one placed geometry → world positions (Y shifted to the datum), normals, indices */
+  /** one placed geometry → positions in the plan frame (X − origin x, Y over the datum, Z + origin y: Z is plan y), normals, indices */
   const worldMesh = (g: { geometryExpressID: number; flatTransformation: number[] }): { P: Float32Array; N: Float32Array; I: Uint32Array } | null => {
     const geo = api.GetGeometry(model, g.geometryExpressID)
     const v = api.GetVertexArray(geo.GetVertexData(), geo.GetVertexDataSize())
@@ -663,9 +666,9 @@ function readModel(W: WebIfc, api: Api, model: number, fileName: string, t0: num
     const P = new Float32Array(n * 3), N = new Float32Array(n * 3)
     for (let i = 0, j = 0; i < v.length; i += 6, j += 3) {
       const x = v[i], y = v[i + 1], z = v[i + 2]
-      P[j] = m[0] * x + m[4] * y + m[8] * z + m[12]
+      P[j] = m[0] * x + m[4] * y + m[8] * z + m[12] - origin.x
       P[j + 1] = m[1] * x + m[5] * y + m[9] * z + m[13] - baseY
-      P[j + 2] = m[2] * x + m[6] * y + m[10] * z + m[14]
+      P[j + 2] = m[2] * x + m[6] * y + m[10] * z + m[14] + origin.y
       const nx = v[i + 3], ny = v[i + 4], nz = v[i + 5]
       const wx = m[0] * nx + m[4] * ny + m[8] * nz, wy = m[1] * nx + m[5] * ny + m[9] * nz, wz = m[2] * nx + m[6] * ny + m[10] * nz
       const l = Math.hypot(wx, wy, wz) || 1
