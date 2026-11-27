@@ -1216,12 +1216,26 @@ describe("the building's outside (session 31 facade): what the tower's walls and
     expect(before).not.toContain('paneTint')
   })
 
-  test("red brick for the whole building: every flat's walls, the parapets and the ground's blocks; the plates and columns stay plaster", async () => {
+  test("red brick for the whole building: every flat's walls, the parapets and the ground's blocks — and its edges (session 31 outside2): the slabs' edges, the balconies' bands, the ground's columns; the plates' rooms stay plaster", async () => {
     const b = await tower({ ...A, floor: 2 }, { s_outside: 'fo_out_brick_red' })
     expect(count(b, BRICK)).toBeGreaterThan(10000)
     expect(count(b, BRICK, 9)).toBeGreaterThan(0) // the roof's parapet
-    expect(count(b, PLASTER)).toBeGreaterThan(1000) // the floor plates, the columns
+    expect(count(b, PLASTER)).toBeGreaterThan(1000) // the floor plates' rooms (their tops under the floors, their soffits)
     expect(count(await tower({ ...A, floor: 2 }), BRICK)).toBe(0)
+    // the edges: what was plaster with the walls brick is brick now, and the plaster that is left is the plates' rooms only
+    const walls = await tower({ ...A, floor: 2 }, { s_outside: 'fo_out_brick_red', s_edges: 'fo_edge_plaster' })
+    expect(count(b, BRICK)).toBeGreaterThan(count(walls, BRICK) + 2000)
+    expect(count(b, BRICK, 0)).toBeGreaterThan(count(walls, BRICK, 0)) // the ground's columns
+    expect(count(walls, PLASTER)).toBe(count(b, PLASTER) + count(b, BRICK) - count(walls, BRICK))
+  })
+
+  test('the edges in their own finish (concrete, metal) whatever the walls: a plaster tower with concrete edges keeps its walls plaster', async () => {
+    const CONC = 'd4d8d8' // (fair-faced concrete's tint)
+    const b = await tower({ ...A, floor: 2 }, { s_edges: 'fo_edge_concrete' })
+    const brickEdges = await tower({ ...A, floor: 2 }, { s_outside: 'fo_out_brick_red' })
+    const walls = await tower({ ...A, floor: 2 }, { s_outside: 'fo_out_brick_red', s_edges: 'fo_edge_plaster' })
+    expect(count(b, CONC)).toBe(count(brickEdges, BRICK) - count(walls, BRICK)) // the very same edges
+    expect(count(b, BRICK)).toBe(0)
   })
 
   test('one wall: its run on every floor its drawing stands on; one floor: only that floor; the wall beats the floor', async () => {

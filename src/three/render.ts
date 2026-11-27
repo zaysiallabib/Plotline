@@ -18,7 +18,7 @@ import { GTAOPass } from 'three/addons/postprocessing/GTAOPass.js'
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js'
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js'
 import * as core from '../core'
-import type { Id, Pt, Room, Unit } from '../core'
+import type { Id, MaterialRef, Pt, Room, Unit } from '../core'
 import type { Street } from '../data/building'
 import { kitAsset, lightOf, placementSize } from '../furnish/kit'
 import { bottomOf } from '../studio/furniture'
@@ -29,7 +29,7 @@ import { dayMix, isCovered, LAMP_RANGE, lampBake, lampOut, nightOut, openToSky, 
 import { carriesRoof, coverSlabGeometry, junctionShade, roomCeiling, storeyTop, wallLift } from './details'
 import { EXTERIOR_PLASTER, isBlank, materialFor } from './materials'
 import { meterUVs, PANES, setGlassSky } from './openings'
-import { balconyEdges } from './rails'
+import { balconyEdgeParts } from './rails'
 
 /**
  * high: GTAO + 4× MSAA buffer, up to 2× pixels, 2048 shadow map, 12 lamps (3 casting). low: 1× pixels with MSAA, no AO,
@@ -187,6 +187,39 @@ export const drawWide = (moved: boolean, waited: number): boolean => !moved || w
 
 /** the frusta of the flat's own shadow maps — the sun's sharp one and each lamp's (Look, markSharp) — wideOnly's meshes are never drawn into */
 const flatMaps = new WeakSet<THREE.Frustum>()
+
+/** a wall's stretch of the walked flat's slab: its foot box, a balcony's band under it — triangles start … start + count (index order) */
+export interface EdgeRange {
+  id: Id
+  start: number
+  count: number
+}
+/**
+ * The walked flat's slab in the building's Edges and caps (session 31 outside2: a brick tower had a plaster seam at every
+ * floor): its index rearranged so each material's triangles are one run — the rest of the slab (its rooms' undersides, a
+ * wall whose edge is the plaster) the first group, then one group per material `refOf` names for a wall's ranges (null: the
+ * plaster). null: every range the plaster — the slab as built, one material.
+ */
+export function edgeGroups(index: ArrayLike<number>, ranges: EdgeRange[], refOf: (wallId: Id) => MaterialRef | null): { index: number[]; groups: { start: number; count: number; materialIndex: number }[]; refs: (MaterialRef | null)[] } | null {
+  const by = new Map<MaterialRef | null, [number, number][]>([[null, []]])
+  const add = (r: MaterialRef | null, a: number, b: number) => b > a && by.set(r, [...(by.get(r) ?? []), [a, b]])
+  let at = 0
+  for (const r of ranges) {
+    add(null, at, r.start)
+    add(refOf(r.id), r.start, r.start + r.count)
+    at = r.start + r.count
+  }
+  add(null, at, index.length)
+  if (by.size === 1) return null
+  const out: number[] = []
+  const groups: { start: number; count: number; materialIndex: number }[] = []
+  for (const spans of by.values()) {
+    const start = out.length
+    for (const [a, b] of spans) for (let i = a; i < b; i++) out.push(index[i])
+    groups.push({ start, count: out.length - start, materialIndex: groups.length })
+  }
+  return { index: out, groups, refs: [...by.keys()] }
+}
 export const markSharp = (light: THREE.DirectionalLight | THREE.SpotLight): void => void flatMaps.add(light.shadow.getFrustum())
 /** a wideOnly mesh's culling test: never in the flat's maps, otherwise as three tests it (the view, the sun's wide map) */
 function exceptSharp(this: THREE.Mesh, f: THREE.Frustum): boolean {
@@ -732,6 +765,25 @@ export class Look {
   private towerStreet = false
   private groundY = 0
 
+  /**
+   * The building's Edges and caps on this flat's slab (PlotlineScene.applyMaterials): each wall's stretch of the slab's edge and
+   * a balcony's band under it in what `refOf` says (null: the plaster); every one the plaster — one material, as built.
+   */
+  dressEdges(refOf: (wallId: Id) => MaterialRef | null): void {
+    const slab = this.unitGroup.children.find((o) => o.userData.slabEdges) as THREE.Mesh | undefined
+    if (!slab) return
+    const { ranges, index } = slab.userData.slabEdges as { ranges: EdgeRange[]; index: ArrayLike<number> }
+    const g = slab.geometry
+    const d = edgeGroups(index, ranges, refOf)
+    g.clearGroups()
+    const now = g.index!.array as Uint16Array | Uint32Array
+    now.set(d?.index ?? index)
+    g.index!.needsUpdate = true
+    if (!d) return void (slab.material = materialFor(EXTERIOR_PLASTER))
+    for (const x of d.groups) g.addGroup(x.start, x.count, x.materialIndex)
+    slab.material = d.refs.map((r) => (r ? materialFor(r, false, false, false, true) : materialFor(EXTERIOR_PLASTER)))
+  }
+
   /** The street plane, and this flat's own slab / lights / street: hidden while the Building view shows a level below them. */
   showGround(plane: boolean, flat = plane): void {
     this.ground.visible = plane
@@ -814,7 +866,8 @@ export class Look {
     const wallParts = unit.walls.map((w) => box(w, 0))
     // under the floors: each wall's box under its lower side's floor; none under a flush line (the floors meet on it, and a
     // box there poked up through a ramp beside it)
-    const footParts = unit.walls.flatMap((w) => (w.heightM > 0 ? [box(w, Math.min(...wallLift(w, unit, rooms).foot))] : []))
+    const footWalls = unit.walls.filter((w) => w.heightM > 0)
+    const footParts = footWalls.map((w) => box(w, Math.min(...wallLift(w, unit, rooms).foot)))
     // the roof closes no wall that stands only among open zones (a kerb, a boundary wall, a screen in a lawn): a beam at the
     // storey's top over it would hang in the sky and stripe the lawn with its shadow
     const open = (r: Room | null) => !r || r.kind === 'shaft' || (core.isOutdoor(r.kind) && !isCovered(r, cover)) // a void in a roof deck too
@@ -828,10 +881,13 @@ export class Look {
     // (a drawing with nothing traced yet — a set's floor still a picture to trace — has no parts: an empty slab, not a crash)
     const merged = (gs: THREE.BufferGeometry[]) => (gs.length ? mergeGeometries(gs) : new THREE.BufferGeometry())
     // its balconies' slab edges standing out past their fronts (rails.ts; not under an architect's shape: its own slabs show)
-    const edges = unit.shell ? null : balconyEdges(unit, rooms)
-    edges?.setIndex([...Array(edges.attributes.position.count).keys()]) // (the slab's parts are indexed)
-    const slabGeo = merged([...underFloors, ...footParts, ...(edges ? [edges] : [])])
-    edges?.dispose()
+    const edges = unit.shell ? [] : balconyEdgeParts(unit, rooms)
+    for (const [, g] of edges) g.setIndex([...Array(g.attributes.position.count).keys()]) // (the slab's parts are indexed)
+    const slabGeo = merged([...underFloors, ...footParts, ...edges.map(([, g]) => g)])
+    // each wall's stretch of its edge, for the building's Edges and caps (dressEdges)
+    let at = underFloors.reduce((n, g) => n + g.index!.count, 0)
+    const ranges: EdgeRange[] = [...footParts.map((g, i): [Id, THREE.BufferGeometry] => [footWalls[i].id, g]), ...edges].map(([id, g]) => ({ id, start: (at += g.index!.count) - g.index!.count, count: g.index!.count }))
+    edges.forEach(([, g]) => g.dispose())
     // the roof's room undersides (single planes the shadow map stores) sit ROOF_LIFT higher than its wall boxes: 5 mm over
     // the wall tops, the shadow biases reached past them and lit the top few mm of every wall facing the sun — a thin sun
     // streak at the ceiling (founder, 2026-10-04). The boxes still close the wall tops, so no low sun gets in between.
@@ -845,6 +901,7 @@ export class Look {
     ;[...roomParts, ...underFloors, ...wallParts, ...footParts, ...lifted, ...over, ...roofWalls].forEach((g) => g.dispose())
     const slab = new THREE.Mesh(slabGeo, materialFor(EXTERIOR_PLASTER))
     slab.castShadow = slab.receiveShadow = true
+    if (slabGeo.index) slab.userData.slabEdges = { ranges, index: slabGeo.index.array.slice() }
     // the storey above: ceilings don't cast, so without it the sun pours in through every ceiling
     const roof = new THREE.Mesh(roofGeo, slab.material)
     roof.position.y = this.topY + ROOF_M // underside 5 mm above the ceiling plane: no z-fight

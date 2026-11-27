@@ -372,6 +372,15 @@ const DRIP_IN = 0.03
  * mitred round the front's corners (a curved balcony's short walls too). null: no balcony front.
  */
 export function balconyEdges(unit: Unit, rooms: Room[]): THREE.BufferGeometry | null {
+  const parts = balconyEdgeParts(unit, rooms).map(([, g]) => g)
+  if (!parts.length) return null
+  const g = mergeGeometries(parts)!
+  parts.forEach((x) => x.dispose())
+  return g
+}
+
+/** balconyEdges a front wall at a time: [the wall's id, its band and drip] — the building's Edges and caps dress each as its wall (three/building.ts). */
+export function balconyEdgeParts(unit: Unit, rooms: Room[]): [string, THREE.BufferGeometry][] {
   const sideOf = new Map<string, number>()
   for (const r of rooms) {
     if (r.kind !== 'balcony') continue
@@ -385,21 +394,19 @@ export function balconyEdges(unit: Unit, rooms: Room[]): THREE.BufferGeometry | 
       if (!front !== !back) sideOf.set(w.id, front ? -1 : 1) // (the side with no room is outside)
     }
   }
-  const parts: THREE.BufferGeometry[] = []
+  const out: [string, THREE.BufferGeometry][] = []
   const graph = { vertices: unit.vertices, walls: unit.walls }
   for (const [id, s] of sideOf) {
     const w = unit.walls.find((x) => x.id === id)!
     const { L, at } = localOf(w, graph)
-    const out = w.thicknessM / 2 + BAND_P
+    const far = w.thicknessM / 2 + BAND_P
     const mate = (x: Wall) => sideOf.has(x.id)
     const half = (x: Wall) => x.thicknessM / 2 + BAND_P
     const [ca, cb] = (['a', 'b'] as const).map((e) => endCut(graph, w, e, mate, half, () => 0))
     const across = (w0: number, w1: number): [number, number] => (s > 0 ? [w0, w1] : [-w1, -w0])
-    parts.push(along(at, 0, L, -BAND_DOWN, BAND_UP, ...across(0, out), ca, cb))
-    parts.push(along(at, 0, L, -BAND_DOWN - 0.015, -BAND_DOWN, ...across(out - DRIP_IN - 0.015, out - DRIP_IN), ca, cb))
+    const parts = [along(at, 0, L, -BAND_DOWN, BAND_UP, ...across(0, far), ca, cb), along(at, 0, L, -BAND_DOWN - 0.015, -BAND_DOWN, ...across(far - DRIP_IN - 0.015, far - DRIP_IN), ca, cb)]
+    out.push([id, mergeGeometries(parts)!])
+    parts.forEach((x) => x.dispose())
   }
-  if (!parts.length) return null
-  const g = mergeGeometries(parts)!
-  parts.forEach((x) => x.dispose())
-  return g
+  return out
 }

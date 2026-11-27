@@ -13,7 +13,7 @@ import type { Roof } from '../data/building/roof'
 import { buildingOf, keptAt, outsideRecord, placesIn, readFinishes } from '../data/building/apartments'
 import { readProjects, sharedAt, slotsText } from '../data/building/projects'
 import { arriveBy, isStair, isStairRoom } from '../furnish/stairs'
-import { FRAMES_SLOT, OUTSIDE_SLOT, faceWallId, frameKey, outerRuns, outsideOf, roomKey, wallKey } from '../furnish/finishes'
+import { EDGES_SLOT, FRAMES_SLOT, OUTSIDE_SLOT, faceWallId, frameKey, outerRuns, outsideOf, roomKey, wallKey } from '../furnish/finishes'
 import { placementLabel, placementSize } from '../furnish/kit'
 import { onOwnChange, ownVersion, refreshOwnOptions, withOwnOptions } from '../furnish/own'
 import { deletePiece, layoutFor, movePiece, pieceQuad, refurnish, resizeAxes, resizePiece, surfaceOf, type Move } from '../studio/furniture'
@@ -741,7 +741,7 @@ function Viewer({ first }: { first: Shown }) {
   const ownV = useSyncExternalStore(onOwnChange, ownVersion)
   useMemo(() => refreshOwnOptions(unit.finishSlots), [unit.finishSlots, ownV])
   /** the outside's two slots (what the walls are clad in, the window frames) with the staff's own options in them */
-  const outSlots = useMemo(() => withOwnOptions([OUTSIDE_SLOT, FRAMES_SLOT]), [ownV]) // eslint-disable-line react-hooks/exhaustive-deps
+  const outSlots = useMemo(() => withOwnOptions([OUTSIDE_SLOT, FRAMES_SLOT, EDGES_SLOT]), [ownV]) // eslint-disable-line react-hooks/exhaustive-deps
   // the outside into the 3D: before the unit (setUnit builds the tower with it), then each change (the tower built again)
   useEffect(() => scene?.setOutside(outsideOf(outside, outSlots)), [scene, outside, outSlots])
   /** the floor the walked flat stands on in its tower: the outside card's "This floor" */

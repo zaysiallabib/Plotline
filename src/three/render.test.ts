@@ -1,7 +1,7 @@
 /** The sky's light by the sun's altitude, the lamps' auto rule and the shadow-casting pick (render.ts): pure, no WebGL. */
 import * as THREE from 'three'
 import { describe, expect, test } from 'vitest'
-import { aoSize, assignPool, coverLightSpots, DAY_EXPOSURE, drawWide, EDGE_FADE, EDGE_FADE_Z, widenEdge, fitSunBox, keptLoop, lampCandela, lampShares, lensFov, lightsOn, LITE_PIXELS, markSharp, NIGHT_EXPOSURE, pickCasters, pixelRatioFor, SITE_REACH_M, skyLight, sunLit, TIERS, towerLevel, twilight, WIDE_EVERY, WIDE_M, WIDE_UP_M, wideOnly } from './render'
+import { aoSize, assignPool, coverLightSpots, DAY_EXPOSURE, drawWide, EDGE_FADE, edgeGroups, EDGE_FADE_Z, widenEdge, fitSunBox, keptLoop, lampCandela, lampShares, lensFov, lightsOn, LITE_PIXELS, markSharp, NIGHT_EXPOSURE, pickCasters, pixelRatioFor, SITE_REACH_M, skyLight, sunLit, TIERS, towerLevel, twilight, WIDE_EVERY, WIDE_M, WIDE_UP_M, wideOnly } from './render'
 import { LAMP_RANGE } from './daylight'
 import * as core from '../core'
 import type { Room } from '../core'
@@ -73,6 +73,24 @@ describe('the picture’s pixels per tier (pixelRatioFor)', () => {
     expect(pixelRatioFor('lite', 1, 1600, 1000, 1)).toBe(1)
     expect(pixelRatioFor('high', 2, 1600, 1000, 0.5)).toBe(1)
     expect(pixelRatioFor('low', 2, 1600, 1000, 0.5)).toBe(0.5)
+  })
+})
+
+describe("the walked flat's slab in the building's Edges and caps (edgeGroups, session 31 outside2)", () => {
+  const index = [...Array(12).keys()] // four triangles: the rooms' undersides 0–5, wall w1's edge 6–8, w2's 9–11
+  const ranges = [{ id: 'w1', start: 6, count: 3 }, { id: 'w2', start: 9, count: 3 }]
+  const BRICK = { kind: 'pbr' as const, textureId: 'brick_red' }
+  test('every edge the plaster: none (the slab as built, one material)', () => {
+    expect(edgeGroups(index, ranges, () => null)).toBeNull()
+  })
+  test("one material's triangles together, the plaster's first; every triangle kept once", () => {
+    const d = edgeGroups(index, ranges, (id) => (id === 'w2' ? BRICK : null))!
+    expect(d.refs).toEqual([null, BRICK])
+    expect(d.index).toEqual([0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11])
+    expect(d.groups).toEqual([{ start: 0, count: 9, materialIndex: 0 }, { start: 9, count: 3, materialIndex: 1 }])
+    const e = edgeGroups(index, ranges, (id) => (id === 'w1' ? BRICK : null))!
+    expect(e.index).toEqual([0, 1, 2, 3, 4, 5, 9, 10, 11, 6, 7, 8])
+    expect(e.groups.map((g) => g.count)).toEqual([9, 3])
   })
 })
 

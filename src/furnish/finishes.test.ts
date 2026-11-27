@@ -10,7 +10,7 @@ import sheltechB from '../data/units/sheltech-b.json'
 import { initialState, normalizeUnit, reducer } from '../studio/model'
 import { floorSlotId } from '../three/details'
 import { resolveFinishRef } from '../three/materials'
-import { FINISH_CATALOG, FRAMES_SLOT, OUTSIDE_SLOT, faceWallId, finishSlotsFor, frameKey, isLevel, outerRuns, outsideFloorKey, outsideKey, outsideOf } from './finishes'
+import { EDGES_SLOT, EDGE_SAME, FINISH_CATALOG, FRAMES_SLOT, OUTSIDE_SLOT, faceWallId, finishSlotsFor, frameKey, isLevel, outerRuns, outsideFloorKey, outsideKey, outsideOf } from './finishes'
 
 const HAND = { 'type-a': typeA, 'type-b': typeB, 'type-c': typeC, 'sheltech-a': sheltechA, 'sheltech-b': sheltechB } as unknown as Record<string, Unit>
 /** the founder's draft as Preview 3D hands it to the viewer: Studio load (Join walls), then the viewer's normalizeUnit */
@@ -206,6 +206,27 @@ describe('the outside (session 31 facade): a building-wide choice, one floor, on
     expect(o.frame('d', 'p')).toEqual(FRAMES_SLOT.options.find((x) => x.id === 'fo_frame_white')!.material)
     expect(outsideOf({ s_outside: 'no_such' }).wall('d', 'w')).toBeNull() // a choice not offered: as drawn
     expect(outsideOf({ b: '1', a: '2' }).sig).toBe(outsideOf({ a: '2', b: '1' }).sig)
+  })
+
+  it('the edges and caps (session 31 outside2): nothing chosen, none; else the building\'s own choice, or each wall\'s outside as it wears it', () => {
+    const ids = [...FINISH_CATALOG, OUTSIDE_SLOT, FRAMES_SLOT, EDGES_SLOT].flatMap((s) => s.options.map((o) => o.id))
+    expect(new Set(ids).size).toBe(ids.length)
+    expect(EDGES_SLOT.options[0].id).toBe(EDGE_SAME)
+    expect(EDGES_SLOT.defaultOptionId).toBe(EDGE_SAME)
+    for (const o of EDGES_SLOT.options) expect(o.brand && o.sku && o.label && o.priceDeltaBdt === 0).toBeTruthy()
+    const mat = (id: string) => [...OUTSIDE_SLOT.options, ...EDGES_SLOT.options].find((o) => o.id === id)!.material
+    expect(outsideOf({}).edge('d', 'w', 3)).toBeNull()
+    // a brick tower: its edges brick, a wall in timber its own edge timber, the plinth floor's stone on that floor
+    const o = outsideOf({ s_outside: 'fo_out_brick_red', [outsideKey('d', 'w')]: 'fo_out_timber_slats', [outsideFloorKey(0)]: 'fo_out_stone' })
+    expect(o.edge('d', 'x', 3)).toEqual(mat('fo_out_brick_red'))
+    expect(o.edge('d', 'w', 3)).toEqual(mat('fo_out_timber_slats'))
+    expect(o.edge(null, null, 0)).toEqual(mat('fo_out_stone')) // a ground column
+    expect(outsideOf({ s_outside: 'fo_out_brick_red', s_edges: EDGE_SAME }).edge('d', 'x', 3)).toEqual(mat('fo_out_brick_red'))
+    // the building's own edges beat every wall's; alone they dress a plaster tower's edges
+    const c = outsideOf({ s_outside: 'fo_out_brick_red', [outsideKey('d', 'w')]: 'fo_out_timber_slats', s_edges: 'fo_edge_concrete' })
+    expect([c.edge('d', 'w', 3), c.edge(null, null, 0), c.wall('d', 'w', 3)]).toEqual([mat('fo_edge_concrete'), mat('fo_edge_concrete'), mat('fo_out_timber_slats')])
+    expect(outsideOf({ s_edges: 'fo_edge_metal' }).edge('d', 'x', 2)).toEqual(mat('fo_edge_metal'))
+    expect(outsideOf({ s_edges: 'fo_edge_metal' }).wall('d', 'x', 2)).toBeNull()
   })
 
   it("staff's own outside option (Finishes → + Add option) is one more option of the slot", () => {

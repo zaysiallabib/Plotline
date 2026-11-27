@@ -262,6 +262,11 @@ chosen once for the whole building, not flat by flat.
   whole building** sits in the same card; **Done** closes it.
 - A balcony's walls are the outside: they take the outside finish unless a buyer picked a paint for that wall or that
   balcony.
+- **Edges and caps** (at the end of Finishes, and in the same card under Window frames): the band of floor slab between
+  the storeys, a balcony's slab edge, the cap on a parapet or low wall, the ground floor's columns and the roof's cornice.
+  **Same as the walls** (the start) dresses each one in its own wall's finish — a brick tower has brick slab edges, a
+  timber balcony front a timber edge under it, no plaster stripes; or **Plaster**, **Fair-faced concrete** or
+  **Anthracite metal** for every edge of the building. Nothing chosen anywhere: everything stays as it was drawn.
 - **Chosen for one wall, floor or window** lists those choices; **undo** takes one back.
 - Your own brick, stone or cladding panel: **+ Add option** under **Outside walls**, its look a **Picture** (§3).
 - It is kept for the whole building at once (in this browser, in the project saved online, and in every buyer link
@@ -1898,7 +1903,7 @@ is a job (hand-tested 2026-10-05, updated since).
 | Pool | not tested | not tested | not tested |
 | Parking bay | No | Yes — size, number, add, delete | The painted lines |
 | Wall paint of one room / one wall | Yes — Finishes open, click the wall; kept for that flat | No | — |
-| The building's outside (every outer wall, one floor's band, one wall; the window frames) | Yes (staff) — Finishes → Outside walls / Window frames, or click an outer wall: This wall · This floor · Whole building; kept for the whole building | Yes — a wall's **Outside**, a window's **Frame** | — |
+| The building's outside (every outer wall, one floor's band, one wall; the window frames; the edges and caps) | Yes (staff) — Finishes → Outside walls / Window frames / Edges and caps, or click an outer wall: This wall · This floor · Whole building; kept for the whole building | Yes — a wall's **Outside**, a window's **Frame** | — |
 | Tree, shrub, plant, furniture, loungers, pergola | Yes — move, turn, resize, delete, add from the library | Yes (F) | Swap a plant for another in one step |
 | Sunshade, canopy, awning, fins, louvres, jaali, roller shutter, AC outdoor unit, fire escape, edge planter, name sign on a wall's outside | Yes — add from **Outside**, move along the outside, up and down, resize, delete (Dollhouse; on a balcony in Walk; the Building view adds only) | Yes (F: click outside the wall) | Their colour or material |
 | Solar panels, chimney, flagpole, porch roof | Yes — like any piece, on a rooftop deck or a ground-floor zone | Yes (F) | A roof that is no traced level (the tower's own flat roof) takes none |

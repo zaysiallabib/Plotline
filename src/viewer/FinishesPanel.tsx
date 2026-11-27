@@ -9,7 +9,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useFinger } from './Hud'
 import type { Configuration, FinishOption, FinishSlot, Id, MaterialRef } from '../core'
-import { FRAMES_SLOT, OUTSIDE_SLOT, outsideFloorKey, outsideKey } from '../furnish/finishes'
+import { EDGES_SLOT, EDGE_SAME, FRAMES_SLOT, OUTSIDE_SLOT, outsideFloorKey, outsideKey } from '../furnish/finishes'
 import { isOwnId, ownItem, type OwnFinish } from '../furnish/own'
 import { textureSet } from '../furnish/textures'
 import { OwnFinishForm } from './OwnFinish'
@@ -27,7 +27,7 @@ export interface Surface {
   outside?: { drawing?: Id; run?: Id; floor?: number; name: string }
 }
 
-/** Staff: the building's outside record, its two slots (the staff's own options in them) and a choice for it (null: back to what it falls back to). */
+/** Staff: the building's outside record, its slots (walls, frames, edges; the staff's own options in them) and a choice for it (null: back to what it falls back to). */
 export interface OutsideProps {
   rec: Configuration
   slots: FinishSlot[]
@@ -159,6 +159,9 @@ function SurfaceBlock({ surface, keys, cfg, onSelect, onClose }: { surface: Surf
 }
 
 const NONE: FinishSlot[] = []
+/** "Same as the walls" (the edges' first option) shown in the building's own wall finish: a brick tower's chip is brick */
+const asWalls = (o: FinishOption, walls: FinishSlot | undefined, rec: Configuration): FinishOption =>
+  o.id === EDGE_SAME && walls ? { ...o, material: chosen(walls, rec)?.material ?? o.material } : o
 type Scope = 'wall' | 'floor' | 'building'
 /**
  * An outer wall clicked (staff): "This wall" (its run, on every floor its drawing stands on), "This floor" (every outer wall
@@ -168,7 +171,7 @@ function OutsideBlock({ spot, outside, onClose }: { spot: NonNullable<Surface['o
   const wall = spot.drawing && spot.run ? outsideKey(spot.drawing, spot.run) : null
   const floor = spot.floor !== undefined ? outsideFloorKey(spot.floor) : null
   const [scope, setScope] = useState<Scope>(wall ? 'wall' : floor ? 'floor' : 'building')
-  const [walls, frames] = [OUTSIDE_SLOT, FRAMES_SLOT].map((s) => outside.slots.find((x) => x.id === s.id) ?? s)
+  const [walls, frames, edges] = [OUTSIDE_SLOT, FRAMES_SLOT, EDGES_SLOT].map((s) => outside.slots.find((x) => x.id === s.id) ?? s)
   const { rec, onSelect } = outside
   const shown = useShown()
   const key = scope === 'wall' && wall ? wall : scope === 'floor' && floor ? floor : walls.id
@@ -206,6 +209,12 @@ function OutsideBlock({ spot, outside, onClose }: { spot: NonNullable<Surface['o
           <Chip key={o.id} o={o} bare on={o.id === (rec[frames.id] ?? frames.defaultOptionId)} onClick={() => onSelect(frames.id, o.id)} />
         ))}
       </div>
+      <div className="label">Edges and caps · whole building</div>
+      <div className="chips">
+        {edges.options.map((o) => (
+          <Chip key={o.id} o={asWalls(o, walls, rec)} bare on={o.id === (rec[edges.id] ?? edges.defaultOptionId)} onClick={() => onSelect(edges.id, o.id)} />
+        ))}
+      </div>
       <button className="link" onClick={onClose}>
         Done
       </button>
@@ -238,6 +247,7 @@ export default function FinishesPanel({ slots, cfg, keys, surface, onSelect, onC
   /** a slot's chosen option id, an option's choice: the building's outside slots go to its record */
   const isOut = (id: string) => outSlots.some((s) => s.id === id)
   const select = (slotId: string, id: string) => (isOut(slotId) ? outside!.onSelect(slotId, id) : onSelect(slotId, id))
+  const outWalls = outSlots.find((s) => s.id === OUTSIDE_SLOT.id)
   const block = (slot: FinishSlot, sel: string | undefined, price: boolean) => (
     <div key={slot.id} className="slot">
       <div className="label">{slot.label}</div>
@@ -251,7 +261,7 @@ export default function FinishesPanel({ slots, cfg, keys, surface, onSelect, onC
               </button>
             </div>
           ) : (
-            <Chip key={o.id} o={o} bare={!price} on={o.id === sel} onClick={() => select(slot.id, o.id)} />
+            <Chip key={o.id} o={outside ? asWalls(o, outWalls, outside.rec) : o} bare={!price} on={o.id === sel} onClick={() => select(slot.id, o.id)} />
           ),
         )}
       </div>

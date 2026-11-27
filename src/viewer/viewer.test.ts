@@ -963,7 +963,7 @@ describe("a buyer link carries the building's outside (session 31 facade)", () =
     const { linkUnit } = await import('../lib/publish')
     const u = typeA as unknown as Unit
     expect('outside' in linkUnit(u, null, [], {})).toBe(false)
-    const rec = { s_outside: 'fo_out_brick_red', 'out:d:w1': 'fo_out_stone', 'out:floor:0': 'fo_out_stone', s_frames: 'fo_frame_black', 'frame:d:o1': 'fo_frame_white' }
+    const rec = { s_outside: 'fo_out_brick_red', 'out:d:w1': 'fo_out_stone', 'out:floor:0': 'fo_out_stone', s_frames: 'fo_frame_black', 'frame:d:o1': 'fo_frame_white', s_edges: 'fo_edge_concrete' }
     const sent = JSON.parse(JSON.stringify(linkUnit(u, { s_x: 'y' }, [], rec)))
     expect(sent.outside).toEqual(rec)
     expect(keepOutside(sent.outside)).toEqual(rec)
