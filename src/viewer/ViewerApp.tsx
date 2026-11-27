@@ -1668,6 +1668,7 @@ function Viewer({ first }: { first: Shown }) {
               scene.showFloor(k)
             }}
             finishesOpen={finishesOpen}
+            outsidePick={finishesOpen && KEEP}
             commenting={commenting}
             sunOpen={simOpen}
             locked={locked}

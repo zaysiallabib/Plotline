@@ -253,7 +253,8 @@ chosen once for the whole building, not flat by flat.
   panels, Charcoal and Rust composite panels — and **Window frames**: Silver (as before), White, Anthracite, Black,
   Timber. One click dresses every flat and every floor of the building; the tower is built again round you in a moment.
 - **One wall, one floor:** with Finishes open, click an outer wall — in the **Building view** any wall of the tower (a
-  ground-floor block too; while Finishes is open a click there chooses, it does not open the flat), in **Walk** or the
+  ground-floor block too; while Finishes is open a click there chooses — the card beside the pointer says *Click to
+  choose its outside* — it does not open the flat), in **Walk** or the
   **Dollhouse** the outside of a wall or a balcony's wall. The card **OUTSIDE · FLOOR 5 · TYPE B WALL** has **This wall ·
   This floor · Whole building**: *this wall* is that straight wall on every floor its floor plan stands on (a balcony's
   front can be timber in a brick tower); *this floor* is every outer wall of that floor (a stone plinth on the ground
