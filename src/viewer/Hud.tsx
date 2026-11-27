@@ -170,6 +170,8 @@ interface Props {
   hand: HandInfo | null
   /** staff (arrange.ts isStaff): G picks up furniture; the dot and the keys show in walk */
   staff: boolean
+  /** staff on the flat's own page with Finishes open: a click on the tower chooses for its outside (the tower's card says so) */
+  outsidePick?: boolean
   /** the unit has a site with the map's blocks or roads in the 3D: their credit in the footer */
   osm?: boolean
   /** staff only: saves the flat as a 3D model file (.glb); null hides it */
@@ -197,20 +199,22 @@ export const railWord = (label: string): { text: string; serif: boolean } => ({ 
  * over a flat, the flat's name and its size from the plan ("Type B · 2736 sft"); over a level, its name when that says more
  * than the word. `act`: what a click (a finger: a second tap) does there — open the flat, walk the level, or pick the floor.
  */
-export function towerCard(t: Tower, h: TowerHit, finger: boolean): { title: string; line?: string; act: string } {
+export function towerCard(t: Tower, h: TowerHit, finger: boolean, outside = false): { title: string; line?: string; act: string } {
   const title = h.k <= 0 || h.k > topFloor(t) ? levelName(t, h.k) : `Floor ${h.k}`
   const f = t.FLOORS.find((x) => x.floor === h.k)
   const level = f?.standIns?.find((s) => t.LEVELS?.[s] !== undefined)
   const u = h.flat ? t.FLATS[h.flat.stem]?.unit : level ? t.FLATS[level].unit : null
   const line = !u || u.name === title ? undefined : /sft/i.test(u.name) || !(u.areaSqft > 0) ? u.name : `${u.name} · ${u.areaSqft} sft`
   const tap = finger ? 'Tap again' : 'Click'
+  // staff with Finishes open (outside): a click chooses for the building's outside there — on the roof itself, its roof
+  if (outside) return { title, line, act: h.k > topFloor(t) && !h.wall ? `${tap} to change the roof` : `${tap} to choose its outside` }
   return { title, line, act: h.flat ? `${tap} to open it` : level ? `${tap} to walk it` : `${tap} to pick this floor` }
 }
 
 /** The card beside the pointer on the tower (towerCard): it follows the mouse while it shows; a tap puts it by the finger, beside it where it fits, else over it. */
-function TowerCard({ t, hover, finger }: { t: Tower; hover: TowerHit & { x: number; y: number }; finger: boolean }) {
+function TowerCard({ t, hover, finger, outside }: { t: Tower; hover: TowerHit & { x: number; y: number }; finger: boolean; outside?: boolean }) {
   const ref = useRef<HTMLDivElement>(null)
-  const c = towerCard(t, hover, finger)
+  const c = towerCard(t, hover, finger, outside)
   useLayoutEffect(() => {
     const place = (x: number, y: number) => {
       const el = ref.current
@@ -608,7 +612,7 @@ export default function Hud(p: Props) {
       </div>
 
       {p.hand && p.mode !== 'building' && <HandTag hand={p.hand} locked={p.locked} finger={finger} />}
-      {p.mode === 'building' && p.tower && p.hover && <TowerCard t={p.tower} hover={p.hover} finger={finger} />}
+      {p.mode === 'building' && p.tower && p.hover && <TowerCard t={p.tower} hover={p.hover} finger={finger} outside={p.outsidePick} />}
       {p.staff && p.locked && p.mode === 'walk' && <div className="dot" />}
       {p.mode === 'building' && p.floors && (
         <div className="floor-rail">

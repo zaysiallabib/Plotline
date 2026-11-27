@@ -107,6 +107,11 @@ describe('hud', () => {
     expect(towerCard(banani, { k: 0, flat: null }, false)).toEqual({ title: 'Ground floor', line: 'Ground level', act: 'Click to walk it' })
     const own = { ...bti, FLATS: { ...bti.FLATS, 'type-a': { ...bti.FLATS['type-a'], unit: { ...bti.FLATS['type-a'].unit, name: 'Type A' } } } }
     expect(towerCard(own, { k: 2, flat: flat('type-a', 2) }, false).line).toBe('Type A · 2703 sft') // a Studio flat's bare name: its size from the plan
+    // staff with Finishes open: a click chooses for the building's outside there (session 31 facade) — on the roof, its roof
+    expect(towerCard(bti, { k: 4, flat: flat('type-b', 4), wall: { drawing: 'd', run: 'w' } }, false, true).act).toBe('Click to choose its outside')
+    expect(towerCard(bti, { k: 0, flat: null }, true, true).act).toBe('Tap again to choose its outside')
+    expect(towerCard(bti, { k: 9, flat: null }, false, true).act).toBe('Click to change the roof')
+    expect(towerCard(bti, { k: 9, flat: null, wall: { drawing: 'd', run: 'w' } }, false, true).act).toBe('Click to choose its outside') // its parapet
   })
 
   it('the compass: true north as you look now, clockwise from straight ahead', () => {

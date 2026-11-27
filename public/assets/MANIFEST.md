@@ -129,20 +129,39 @@ tile_floor_ceramic AO map as its colour and marble_floor_white's roughness, 800 
 | rubber_gym | texture | https://polyhaven.com/a/rubber_tiles | Amal Kumar | CC0 | 2026-10-04 | textures/rubber_gym/{albedo.jpg,normal.jpg,roughness.jpg,ao.jpg} — gym floor | 1714677 |
 | soil | texture | https://polyhaven.com/a/farm_soil | Amal Kumar | CC0 | 2026-10-04 | textures/soil/{albedo.jpg,normal.jpg,roughness.jpg,ao.jpg} — `planter` zones | 3587235 |
 
+### Added session 31 (facade: what an outer wall is clad in)
+
+1K JPG maps (Poly Haven through api.polyhaven.com/files: Diffuse → albedo, nor_gl → normal, Rough → roughness; ambientCG's
+1K-JPG zip), re-encoded small in a browser canvas (albedo q80, normal q82, roughness q70), no AO (a facade is seen from
+the street). Licence pages read 2026-11-27: Poly Haven "Our assets are all licensed as CC0"; ambientCG "All assets are
+released under the Creative Commons CC0 license". The script: E:/dev/tmp/s31/facade/tools/process.mjs (not in the repo).
+
+| id | type | source | author | license | checked | file(s) | bytes |
+|---|---|---|---|---|---|---|---|
+| brick_red | texture | https://polyhaven.com/a/large_red_bricks | Rob Tuytel | CC0 | 2026-11-27 | textures/brick_red/{albedo.jpg,normal.jpg,roughness.jpg} — clean orange-red brick, 2 m a repeat | 562818 |
+| brick_painted | texture | https://polyhaven.com/a/whitewashed_brick | Rob Tuytel | CC0 | 2026-11-27 | textures/brick_painted/{albedo.jpg,normal.jpg,roughness.jpg} — its colour taken out (grey-white bricks and mortar, ×1.08) so an option tints it: white painted, grey | 463780 |
+| stone_blocks | texture | https://polyhaven.com/a/stone_tile_wall | Charlotte Baglioni | CC0 | 2026-11-27 | textures/stone_blocks/{albedo.jpg,normal.jpg,roughness.jpg} — light stone blocks (cladding, a plinth) | 291833 |
+| timber_slats | texture | https://polyhaven.com/a/synthetic_wood | Dario Barresi, Charlotte Baglioni | CC0 | 2026-11-27 | textures/timber_slats/{albedo.jpg,normal.jpg,roughness.jpg} — vertical composite slats with dark gaps (Dhaka's timber-look panels) | 304724 |
+| timber_clapboard | texture | https://ambientcg.com/view?id=WoodSiding007 | ambientCG (Lennart Demes) | CC0 | 2026-11-27 | textures/timber_clapboard/{albedo.jpg,normal.jpg,roughness.jpg} — lap siding, 13 boards a 2 m repeat (sized from the boards: ambientCG gives no size); from the 1K-JPG zip (Color, NormalGL, Roughness) | 417723 |
+| metal_seam | texture | https://polyhaven.com/a/box_profile_metal_sheet | Amal Kumar | CC0 | 2026-11-27 | textures/metal_seam/{albedo.jpg,normal.jpg,roughness.jpg} — its red taken out and lightened (×2.1) to a zinc grey: zinc rib panels | 285057 |
+| metal_corrugated | texture | https://polyhaven.com/a/corrugated_iron_02 | Jenelle van Heerden, Sergej Majboroda | CC0 | 2026-11-27 | textures/metal_corrugated/{albedo.jpg,normal.jpg,roughness.jpg} — galvanised corrugated sheet | 402602 |
+| concrete_fair | texture | https://polyhaven.com/a/concrete_wall_008 | Dario Barresi, Charlotte Baglioni | CC0 | 2026-11-27 | textures/concrete_fair/{albedo.jpg,normal.jpg,roughness.jpg} — fair-faced concrete, its colour 80 % taken out (the scan read olive-green) | 202128 |
+| concrete_precast | texture | https://polyhaven.com/a/concrete_wall_008 | Dario Barresi, Charlotte Baglioni | CC0 | 2026-11-27 | textures/concrete_precast/{albedo.jpg,normal.jpg,roughness.jpg} — the same scan, its colour 80 % taken out, with a 13 mm panel joint drawn in every 2.71 × 1.355 m (colour ×0.45, a groove in the relief, matte): precast panels | 224667 |
+| panel_grid | texture | https://polyhaven.com/a/concrete_wall_008 | Dario Barresi, Charlotte Baglioni | CC0 | 2026-11-27 | textures/panel_grid/{albedo.jpg,normal.jpg,roughness.jpg} — the scan flattened to an even light grey (12 % of its variation, roughness 0.42) with 10 mm joints every 1.2 × 0.8 m: flat fibre-cement / composite panels, tinted by the options | 108866 |
+
 ### Added session 31 (the roof: a building's roof coverings)
 
 Poly Haven 1K JPG maps (Diffuse → albedo, nor_gl → normal, Rough → roughness) downloaded through api.polyhaven.com/files and
 re-encoded in a browser canvas to keep them small: albedo 1024 px q80, normal 1024 px q72, roughness 512 px q70, no AO.
 Each asset page read on 2026-11-27: "CC0 1.0 Universal - public domain dedication". Used by the roof's coverings
-(`src/furnish/finishes.ts` ROOF_COVERINGS); the green roof is the `turf` set above, terrace tiles `tile_floor_terracotta`.
+(`src/furnish/finishes.ts` ROOF_COVERINGS); zinc and corrugated: the facade sets above; the green roof is the `turf` set above, terrace tiles `tile_floor_terracotta`.
 
 | id | type | source | author | license | checked | file(s) | bytes |
 |---|---|---|---|---|---|---|---|
 | roof_clay | texture | https://polyhaven.com/a/clay_roof_tiles_02 | Amal Kumar | CC0 | 2026-11-27 | textures/roof_clay/{albedo.jpg,normal.jpg,roughness.jpg} — clay tiles, 2.5 m a repeat | 415154 |
 | roof_slate | texture | https://polyhaven.com/a/grey_roof_01 | Rob Tuytel | CC0 | 2026-11-27 | textures/roof_slate/{albedo.jpg,normal.jpg,roughness.jpg} — dark grey slate-look roof tiles, 8 m | 398068 |
 | roof_shingles | texture | https://polyhaven.com/a/roof_slates_02 | Rob Tuytel | CC0 | 2026-11-27 | textures/roof_shingles/{albedo.jpg,normal.jpg,roughness.jpg} — weathered grey timber shingles, 3 m | 459445 |
-| roof_seam | texture | https://polyhaven.com/a/box_profile_metal_sheet | Amal Kumar | CC0 | 2026-11-27 | textures/roof_seam/{albedo.jpg,normal.jpg,roughness.jpg} — profiled metal sheet, 2 m; the red albedo turned zinc grey (luminance × 1.6 + 40) | 165763 |
-| roof_corrugated | texture | https://polyhaven.com/a/corrugated_iron_02 | Jenelle van Heerden, Sergej Majboroda | CC0 | 2026-11-27 | textures/roof_corrugated/{albedo.jpg,normal.jpg,roughness.jpg} — corrugated galvanized sheet, 2.7 m | 232706 |
 | roof_gravel | texture | https://polyhaven.com/a/gravel_floor_02 | Jenelle van Heerden, Dimitrios Savva | CC0 | 2026-11-27 | textures/roof_gravel/{albedo.jpg,normal.jpg,roughness.jpg} — grey roof gravel, 2 m | 818155 |
 
-Session 31 roof: **+2489291 bytes (2.4 MB)**, 6 texture sets; each loads only when a roof wears it.
+Session 31 roof: **+2090822 bytes (2.0 MB)**, 4 texture sets; each loads only when a roof wears it. A zinc or corrugated roof
+wears the outside sets `metal_seam` and `metal_corrugated` (the same two Poly Haven sheets, kept once).

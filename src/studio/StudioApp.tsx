@@ -1681,7 +1681,7 @@ export default function StudioApp() {
       if (!p) return null
       // each apartment's furniture and finishes ride with it (`apartments`), so another computer opens them as they were left
       const units = Object.fromEntries(Object.entries(p.units).map(([id, x]) => [id, withLayout(x)]))
-      return { key: itemKey('project', p.id), kind: 'project', name: p.name, data: withPictures({ ...p, units, apartments: keptFor(Object.keys(p.units)) }, [...Object.keys(p.units), ...(p.sheets ?? []).map((s) => s.id)]) }
+      return { key: itemKey('project', p.id), kind: 'project', name: p.name, data: withPictures({ ...p, units, apartments: keptFor([...Object.keys(p.units), p.id]) }, [...Object.keys(p.units), ...(p.sheets ?? []).map((s) => s.id)]) }
     }
     return u.vertices.length ? { key: itemKey('unit', u.id), kind: 'unit', name: u.name.trim() || 'Untitled drawing', data: withPictures({ ...withLayout(u), apartments: keptFor([u.id]) }, [u.id]) } : null
   }
@@ -1694,7 +1694,7 @@ export default function StudioApp() {
     if (kind === 'project') {
       const [p] = parseProjects(JSON.stringify([data]))
       if (!p) return false
-      if (apartments) putKept(Object.keys(p.units), apartments) // (a copy saved before records leaves this browser's as they are)
+      if (apartments) putKept([...Object.keys(p.units), p.id], apartments) // (a copy saved before records leaves this browser's as they are; p.id: its building's outside)
       for (const u of Object.values(p.units)) saveLayout(u.id, u.furniture)
       const keep = projRef.current?.id === p.id ? projRef.current.drawing : undefined
       setActive({ id: p.id })

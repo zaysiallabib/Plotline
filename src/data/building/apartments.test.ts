@@ -3,7 +3,7 @@ import { describe, expect, test } from 'vitest'
 import type { FurniturePlacement, Unit } from '../../core'
 import * as bti from './demo-tower'
 import * as sheltech from './sheltech-tower'
-import { apartmentKey, drawingOf, finishesKey, keptAt, keptFor, layoutKey, placesIn, putKept, readFinishes, readLayout, saveFinishes, saveLayout, splitKept } from './apartments'
+import { apartmentKey, buildingOf, drawingOf, finishesKey, keptAt, keptFor, layoutKey, outsideRecord, placesIn, putKept, readFinishes, readLayout, saveFinishes, saveLayout, splitKept } from './apartments'
 import { keepApartments, makeProject, newProject, projectTower, setSlot } from './projects'
 
 const memStore = () => {
@@ -113,5 +113,23 @@ describe('the cloud: the records travel inside the project JSON', () => {
     expect(keptFor(['a'], there)).toEqual(recs)
     expect(readLayout('zz:3', there)).toEqual(bed(8)) // another project's: untouched
     expect(splitKept({ id: 'p', units: {} })).toEqual({ data: { id: 'p', units: {} } }) // saved before records: nothing to put
+  })
+})
+
+describe("the building's outside: one record for the whole building (session 31 facade)", () => {
+  test('a project keeps it under its own id, a built-in tower under its first flat, a lone flat under its id; the cloud carries it', () => {
+    const p = projectTower(makeProject('proj', box('a'), 2, 4, 'right'))
+    expect([buildingOf(p, 'a'), buildingOf(p, 'a-m'), buildingOf(bti, 'unit_type_b_1747'), buildingOf(null, 'lone')]).toEqual(['proj', 'proj', 'type-a', 'lone'])
+    expect(outsideRecord('proj')).toBe('proj:outside')
+    expect(drawingOf(outsideRecord('proj'))).toBe('proj')
+    const here = memStore()
+    saveFinishes(outsideRecord('proj'), { s_outside: 'fo_out_brick_red' }, {}, here)
+    saveFinishes(outsideRecord('lone'), { s_frames: 'fo_frame_black' }, {}, here)
+    const recs = keptFor(['a', 'proj'], here)
+    expect(recs).toEqual({ 'proj:outside': { finishes: { s_outside: 'fo_out_brick_red' } } })
+    const there = memStore()
+    putKept(['a', 'proj'], recs, there)
+    expect(readFinishes(outsideRecord('proj'), there)).toEqual({ s_outside: 'fo_out_brick_red' })
+    expect(keptFor(['lone'], here)).toEqual({ 'lone:outside': { finishes: { s_frames: 'fo_frame_black' } } }) // a lone drawing's own cloud copy
   })
 })
