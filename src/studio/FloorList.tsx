@@ -7,7 +7,7 @@
  * from (Project.from: "from page 7 · 2ND FLOOR PLAN · 1 : 48", "from Flat-A.dxf", "traced on img_3.webp"), then the open
  * drawing, the floor plans, the views kept from the set by kind, the site, and (signed in) members and links.
  */
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { deriveFlats, deriveRooms, newId } from '../core'
 import type { Id, Unit } from '../core'
 import { drawingName, forkFloor, parseFloors, planOf, removeDrawing, setSlot, slotsOf, slotsText, slotsWith, type Project, type ProjectPlan, type Slot } from '../data/building/projects'
@@ -19,6 +19,9 @@ import { copyPicture, deletePicture } from './pictures'
 import { ask, askText } from '../lib/ask'
 import { roofOf, roofWords } from '../data/building/roof'
 import { RoofFields } from './RoofFields'
+import { HeightsFields } from './HeightsFields'
+import { heightsLine, typedHeights, type HeightField } from '../data/building/storeys'
+import { FLOOR_M } from '../data/building/demo-tower'
 
 /** a drawing's name: its own, else what Preview 3D calls it ("Floor plan A", "Type A"); per unit object (the list re-renders every second) */
 const titleCache = new WeakMap<Unit, string>()
@@ -126,6 +129,11 @@ export function FloorList({ projects, project, drawing, unit, fresh, onStore, on
   const [also, setAlso] = useState<Record<Id, string>>({})
   /** the roof's fields open under its line */
   const [roofOpen, setRoofOpen] = useState(false)
+  /** the heights' fields open under their line: the heights as they were when opened, and what is typed over them */
+  const [heightsOpen, setHeightsOpen] = useState<{ base: Project['heights'] | null; typed: Partial<Record<HeightField, string>> } | null>(null)
+  const heightsRef = useRef<HTMLDivElement>(null)
+  const heightsShown = !!heightsOpen
+  useEffect(() => void (heightsShown && heightsRef.current?.scrollIntoView({ block: 'nearest' })), [heightsShown])
   // a clicked button lets go of the keys (Enter / Space on it again must not draw another floor)
   const blur = (e: React.MouseEvent) => e.target instanceof HTMLButtonElement && e.target.blur()
 
@@ -241,6 +249,19 @@ export function FloorList({ projects, project, drawing, unit, fresh, onStore, on
     for (const id of [...Object.keys(project.units), ...(project.sheets ?? []).map((s) => s.id)]) void deletePicture(id).catch(() => {})
     if (onStore(fresh().filter((p) => p.id !== pid))) onActivate(null)
   }
+  /**
+   * The heights typed after Build (as in the Set panel before it): kept on the project when every field reads as a length —
+   * on Enter, on leaving the fields, at once for the roof's kind — and Show building draws every storey to them.
+   */
+  const keepHeights = (typed: Partial<Record<HeightField, string>>) => {
+    const base = heightsOpen?.base ?? null
+    const t = typedHeights(base, typed)
+    if (t.bad.length || JSON.stringify(t.heights) === JSON.stringify(base)) return
+    change(({ heights: _, ...p }) => (t.heights ? { ...p, heights: { ...t.heights, typed: true } } : p)) // eslint-disable-line @typescript-eslint/no-unused-vars
+  }
+  const hTyped = heightsOpen && typedHeights(heightsOpen.base ?? null, heightsOpen.typed)
+  const hFrom = project.heights?.from ?? []
+  const hLine = `${heightsLine(project.heights, FLOOR_M)}${project.heights?.typed ? ' · as you typed' : hFrom.length ? ` · from ${hFrom[0]}${hFrom.length > 1 ? ` and ${hFrom.length - 1} more` : ''}` : ''}`
   const inProject = !!drawing && !!project.units[drawing]
   // a whole floor of many flats (an architect's storey): which of them the 3D furnishes — the others stand bare
   const flatsHere = inProject ? flatNames(unit) : []
@@ -464,6 +485,38 @@ export function FloorList({ projects, project, drawing, unit, fresh, onStore, on
               </details>
             )
           })}
+        </section>
+      )}
+      {!project.elevations && (project.heights || !!project.sheets?.length) && (
+        <section className="roof-line heights-line" aria-label="Heights">
+          <div className="site-line">
+            <span className="label">Heights</span>
+            <span className="muted" title={hLine}>
+              {hLine}
+            </span>
+            <button
+              className="link"
+              title="How tall each storey is built: floor to floor, the top floor's ceiling, the slab, the roof's levels — the same fields as under a section in the set"
+              onClick={() => setHeightsOpen((o) => (o ? null : { base: project.heights ?? null, typed: {} }))}
+            >
+              {heightsOpen ? 'Close' : 'Change'}
+            </button>
+          </div>
+          {heightsOpen && (
+            <div ref={heightsRef} onBlur={() => keepHeights(heightsOpen.typed)} onKeyDown={(e) => e.key === 'Enter' && keepHeights(heightsOpen.typed)}>
+              <HeightsFields
+                heights={heightsOpen.base ?? null}
+                typed={heightsOpen.typed}
+                now={hTyped?.heights}
+                bad={hTyped?.bad}
+                onType={(f, v) => {
+                  const typed = { ...heightsOpen.typed, [f]: v }
+                  setHeightsOpen({ ...heightsOpen, typed })
+                  if (f === 'kind') keepHeights(typed)
+                }}
+              />
+            </div>
+          )}
         </section>
       )}
       <section className="site-line">

@@ -667,3 +667,7 @@ ul.notes { margin: 0; padding-left: var(--s-4); display: grid; gap: var(--s-1); 
 /* the project's roof (FloorList, under the floors): its line as the Site's, its fields under it (index.css .roof-fields) */
 .floors .roof-line { display: flex; flex-direction: column; gap: var(--s-3); }
 .floors .roof-line .site-line > span.muted { display: block; }
+/* the heights (FloorList, under the kept drawings): the line wraps (it is read, not scanned), the Set panel's fields two a row */
+.floors .heights-line .site-line > span.muted { white-space: normal; line-height: 1.45; }
+.floors .heights-line .set-heights { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); align-items: end; gap: var(--s-3); }
+.floors .heights-line .set-heights :is(input, select) { width: 100%; min-width: 0; }

@@ -61,9 +61,10 @@ export interface Project {
    * How tall each storey is, as the set's sections and elevations print it (session 31, Stage 3: src/import/heights.ts) or
    * the person typed it in the Set panel: floor levels, the top floor's ceiling, the slab, the roof (flat with its parapet, or
    * pitched with its eave and ridge), and the drawings it was read from. Absent in older projects and sets with no section:
-   * every storey FLOOR_M, as before. An imported building's own storeys (`elevations`) come first.
+   * every storey FLOOR_M, as before. An imported building's own storeys (`elevations`) come first. `typed`: changed after
+   * Build in the project column's Heights line (the Studio says "as you typed").
    */
-  heights?: Heights & { from?: string[] }
+  heights?: Heights & { from?: string[]; typed?: boolean }
   /**
    * The roof over the top floor as the person set it (session 31 roof lane, roof.ts: kind, pitch, ridge, overhang, covering,
    * edge, roof windows): Studio → Building → Roof, or the 3D view's Finishes → the roof. It comes over what the set's sections

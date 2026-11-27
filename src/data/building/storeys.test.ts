@@ -1,7 +1,7 @@
 /** A building's storeys as the tower draws them (storeys.ts): from the heights its drawings print to each floor's level and walls. */
 import { describe, expect, test } from 'vitest'
 import { FT, type Unit } from '../../core'
-import { storeyUnit, towerHeights } from './storeys'
+import { heightsLine, storeyUnit, towerHeights, typedHeights } from './storeys'
 
 const ft = (f: number, i = 0) => (f + i / 12) * FT
 
@@ -39,5 +39,23 @@ describe('a flat on its storey', () => {
   })
   test('no height known: the very same flat', () => {
     expect(storeyUnit(u, undefined)).toBe(u)
+  })
+})
+
+describe("the project column's Heights line", () => {
+  const farm = { floors: { 0: 0, 1: 3.05 }, ceilingM: 5.79, eaveM: 6.1, ridgeM: 8.89 }
+  test('as the set read it, in one short line', () => {
+    expect(heightsLine(farm, 3.2)).toBe('Floor to floor 3.05 m · ceiling +5.79 · slab 0.15 · gable, eave +6.10, ridge +8.89')
+    expect(heightsLine({ floors: { 0: 0, 1: 4.5, 2: 7.55 }, roofM: 10.6 }, 3.2)).toBe('Floor to floor G 4.50, 1 3.05 m · slab 0.15 · flat roof +10.60, parapet 1.10')
+    expect(heightsLine(undefined, 3.198)).toBe('Floor to floor 3.20 m, as usual')
+  })
+  test('changed after Build: the same fields as the Set panel, over what was kept', () => {
+    const t = typedHeights(farm, { storeys: '3.20', slab: '0.20' })
+    expect(t.bad).toEqual([])
+    // the roof stays on the top floor: the ceiling, eave and ridge not typed over move up with it (15 cm)
+    expect(heightsLine(t.heights, 3.2)).toBe('Floor to floor 3.20 m · ceiling +5.94 · slab 0.20 · gable, eave +6.25, ridge +9.04')
+    expect(typedHeights(farm, { storeys: '3.20', ceiling: '+5.79' }).heights).toMatchObject({ ceilingM: 5.79, eaveM: 6.25 })
+    expect(typedHeights(farm, { storeys: '3.20', ceiling: '+5.94' }).heights).toMatchObject({ ceilingM: 5.94, eaveM: 6.25 }) // (as the field shows it: unchanged)
+    expect(typedHeights(farm, { kind: 'flat', roof: '+6.20' }).heights).toMatchObject({ roofM: 6.2 })
   })
 })

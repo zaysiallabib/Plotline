@@ -17,7 +17,8 @@ import { deriveRooms } from '../core'
 import type { PdfDoc, ScaleFound } from '../import/pdf'
 import type { ImportResult } from '../import'
 import { KEPT, SHEET_KINDS, fileView, norm, parseSlots, readSheet, setChoices, slotsWords, type Box, type SetSlot, type SheetKind, type SheetRead, type Storeys, type View } from '../import/sheets'
-import { heightFields, heightsOf, setHeights, storeysOf, storeysWords, typedHeights, viewHeights, type HeightField, type Heights, type SetHeights } from '../import/heights'
+import { heightsOf, setHeights, storeysOf, storeysWords, typedHeights, viewHeights, type HeightField, type Heights, type SetHeights } from '../import/heights'
+import { FIELD_WORDS, HeightsFields } from './HeightsFields'
 
 /** a file of the set: a PDF (its pages), or a DXF / SVG (one drawing); `folder`: the folder or .zip it was dropped in */
 export interface SetFile {
@@ -141,28 +142,8 @@ interface Props {
   onReading?: (reading: boolean) => void
 }
 
-const FIELD_WORDS: Record<HeightField, string> = { storeys: 'Floor to floor', ceiling: 'Ceiling', slab: 'Slab', roof: 'Roof level', parapet: 'Parapet', eave: 'Eave', ridge: 'Ridge', kind: 'Roof' }
-const FIELD_TIPS: Partial<Record<HeightField, string>> = {
-  storeys: 'Metres from one floor to the next: one number for every storey, or by floor — G 4.50, 1-9 3.05 (feet and inches with their marks)',
-  ceiling: "The top floor's ceiling, as the drawing prints its level (+5.79)",
-  slab: "How thick the floor slab is (m): each storey's walls stop this far under the next floor",
-  roof: "The roof slab's top, as printed (+13.42)",
-  parapet: 'How high the parapet stands over the roof (m)',
-  eave: 'The eave, as printed (+6.10)',
-  ridge: 'The ridge, as printed (+8.89)',
-}
-
-/** a section's or elevation's heights under its row: each a field over what was read; a field as read is muted, one typed is ink */
+/** a section's or elevation's heights under its row (HeightsFields), or one quiet line when nothing is read or typed */
 function HeightsRow({ row, typed, onType }: { row: SetRow; typed?: { heights: Heights | null; bad: HeightField[] }; onType: (f: HeightField, v: string) => void }) {
-  const shown = heightFields(row.heights ?? null)
-  const val = (f: HeightField) => row.typed?.[f] ?? shown[f]
-  const kind = val('kind')
-  const field = (f: HeightField) => (
-    <label key={f} className={row.typed?.[f] !== undefined && row.typed[f] !== shown[f] ? 'yours' : ''}>
-      <span className="label">{FIELD_WORDS[f]} m</span>
-      <input className={typed?.bad.includes(f) ? 'bad' : ''} value={val(f)} placeholder="—" title={FIELD_TIPS[f]} onChange={(e) => onType(f, e.target.value)} />
-    </label>
-  )
   // nothing read and nothing typed: one quiet line; the fields come when he asks for them
   if (!row.heights && !row.typed)
     return (
@@ -173,20 +154,7 @@ function HeightsRow({ row, typed, onType }: { row: SetRow; typed?: { heights: He
         </button>
       </div>
     )
-  return (
-    <div className="set-heights">
-      {(['storeys', 'ceiling', 'slab'] as const).map(field)}
-      <label>
-        <span className="label">Roof</span>
-        <select value={kind} title="Flat (a slab with a parapet), pitched (two slopes from the eaves to the ridge, a gable at each end) or hipped (sloped at the ends too)" onChange={(e) => onType('kind', e.target.value)}>
-          <option value="flat">Flat</option>
-          <option value="pitched">Pitched</option>
-          <option value="hip">Hipped</option>
-        </select>
-      </label>
-      {(kind === 'flat' ? (['roof', 'parapet'] as const) : (['eave', 'ridge'] as const)).map(field)}
-    </div>
-  )
+  return <HeightsFields heights={row.heights ?? null} typed={row.typed} now={typed?.heights} bad={typed?.bad} onType={onType} />
 }
 
 /** the set's heights together, as the project will be built: one line, and a question where two drawings differ */

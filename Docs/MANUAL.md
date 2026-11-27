@@ -1513,7 +1513,9 @@ elevations' outline of the roof: a long side whose ridge runs its whole length i
 the ends a hip's. Levels are shown as the drawing prints them (+6.10 m over the ground floor), heights in metres (each field's name ends in "m": FLOOR TO FLOOR M).
 A mark with no number printed is measured on the drawing at its printed scale (or from a dimension printed between two
 level lines). Click any field and type over it — metres, or feet and inches with their marks (`10'-0"`, `+20'-0"`);
-red when it is no length; the roof's kind in its box. What you type is remembered by the drawing's title, like a kind. A
+red when it is no length; the roof's kind in its box. The roof stays on the top floor: type another floor to floor and
+the Ceiling, Roof level, Eave and Ridge move up or down with the top floor (shown in their fields); one you type over stays
+where you typed it. What you type is remembered by the drawing's title, like a kind. A
 section or elevation with no marks says "No level marks on it" — **Type its heights** opens its fields.
 
 Under the list, **Heights — how tall each storey is built** says what the project will be built to: the sections first,
@@ -1532,6 +1534,16 @@ typical floor); a building taller than its section keeps the section's top store
 its Dollhouse — its ceiling is at its storey's height; the drawing itself keeps its walls as drawn (only a full-height wall
 stands its storey: a low wall, a parapet, a planter edge keep theirs). The message after the build says "every storey as
 tall as its sections print (7 drawings)". A project with no heights read is drawn exactly as before.
+
+**Changing the heights after Build.** The project's column has a **Heights** line under **Kept from the drawing set**
+("Floor to floor 3.05 m · ceiling +5.79 · slab 0.15 · gable, eave +6.10, ridge +8.89 · from SECTION LOOKING NORTH and 6
+more"; a set with no levels read: "Floor to floor 3.20 m, as usual"). **Change** opens the same fields as under a section
+in the set — Floor to floor, Ceiling, Slab, Roof (Flat / Pitched / Hipped) and its levels — showing what the project is
+built to now. Type over one (another floor to floor moves the ceiling and the roof with the top floor, as in the set): it
+is kept when you press Enter or click away (the roof's kind at once), the line then ends
+"as you typed", and **Show building** draws every storey to the new heights (open a Building view already open again). A
+field in red is no length and keeps nothing. Empty every field and the project goes back to 3.20 m floor to floor.
+The line is not there for a building read from an architect's 3D file (its storeys come from the file).
 
 What it reads today, set by set: [SETS_SCOREBOARD.md](SETS_SCOREBOARD.md).
 
@@ -1590,7 +1602,8 @@ its name in large type with **Rename**, **Delete** and **Close**; **Show buildin
 from the highest down, **Ground floor**, **Basement 1**, **Basement 2**… each with its drawing's name and, under it, where
 that drawing came from ("from page 7 · 2ND FLOOR PLAN · 1 : 48", "from Internal_Ground.dxf", "from
 LTU_A-House_redesign.ifczip · VÅNING 2", "traced on img_3.webp"); then the open drawing (**Open now**), **Floor plans**,
-**Kept from the drawing set** (a set's elevations, sections, site and schedules by kind), **Site** (where the building
+**Kept from the drawing set** (a set's elevations, sections, site and schedules by kind), **Heights** (how tall each storey is
+built, with **Change**: §5 Changing the heights after Build), **Site** (where the building
 stands: **Open** opens the Site panel, as ⋯ → Site) and, signed in to a company, **Team**: **Members** and **Links** open
 your account card on that list (as ⋯ → your email).
 
