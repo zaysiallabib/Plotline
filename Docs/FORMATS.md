@@ -79,7 +79,8 @@ reads in Firefox today, with what fails and why: [SAMPLES.md](SAMPLES.md).
   curtain wall keeps its mullion spacing and frame colour; a window's frame colour comes from its names. The street is
   the ground storey — the one named Ground / EG / RDC / 1F, else the storey at the file's elevation 0, else the lowest
   that holds rooms or outer walls (never one named a basement); an empty datum storey under the building is left out.
-  A gable wall stops at its eaves (the gable is in the shape). A name Plotline does not know keeps the plaster and is
+  A gable wall stops at its eaves (the gable is in the shape). The outside shape is moved into the plans' own frame as
+  it is read, so a file placed far from its 0 (map coordinates) stands on its plans and keeps its precision. A name Plotline does not know keeps the plaster and is
   listed; the Studio's **Materials** list maps it in one click, kept for the next file. Measured per file:
   [FORMATS_SCOREBOARD.md](FORMATS_SCOREBOARD.md), "Session 31, ifcmap".
 

@@ -29,6 +29,98 @@ services or structural model, a test file of single shapes). *refused*: the Stud
 
 Left out: 69 git-lfs pointers (130-byte stand-ins for files not downloaded in this copy of the corpus).
 
+## Session 31, ifcmap — an architect's IFC arrives dressed
+
+The founder (2026-11-27): the files an architect hands over with the least hassle must "produce the actual building" on
+their own, IFC first. Until now the IFC reader dropped every material name, `IsExternal`, PredefinedType and style name
+(Docs/review/outside/INVENTORY.md §4): an imported building stood in the file's flat colours, Plotline's own plaster boxes
+poked through IfcOpenHouse's gable roof, and three buildings floated over or sank under the street. Now the reader reads
+the words (`src/import/materials.ts`, eleven languages) and dresses the building with Plotline's own finishes — the
+outside shape's walls, roof and window frames wear the same pictures as Plotline's walls, the walked flat's outer walls
+wear the same finish (the building's outside record), and Finishes → Whole building changes both.
+
+**How it is measured.** The numbers: the reader itself in Node over the 21 sample IFCs (`E:/dev/tmp/s31/ifcmap/score.test.ts`,
+copied into `src/import` to run; the before numbers from a frozen `git archive` of s31/redesign a6938ad). The pictures: the
+founder's path in Firefox (drop on `/studio` → **Show building**; a 3D model on Type A → **Building → Put only this plan
+into a building… → Show building**), the Building view's camera moved round the outside shape as the outside lane did —
+before `E:/dev/plotline-shots/s31/outside/close/<file>-a|b|c.png`, after `E:/dev/plotline-shots/s31/ifcmap/after/<file>-a|b|c.png`,
+side by side `E:/dev/plotline-shots/s31/ifcmap/contact-01…05.png` (harness `E:/dev/tmp/s31/ifcmap/scripts/shots.mjs`,
+`contact.mjs`). The Studio's own lists checked as a person sees them: `E:/dev/plotline-shots/s31/ifcmap/ui/`.
+
+*Materials known / listed*: the outer-wall material names read (an outer layer of an outer wall), and how many of them
+Plotline knows; one not known keeps the plaster and is listed in **Materials** for a person to map. *Outer walls dressed /
+outer*: walls the file calls outside (`IsExternal`, or every wall when it does not say) that wear the finish their names
+say. *The building's own*: the commonest named finish when the named walls make 30 % of the outer walls, else the
+plaster. *Railings read*: IfcRailings that made the low wall under them glass / metal / timber, or a low wall of their
+own on a balcony edge (in brackets: the low walls made, by kind); a stair's handrail and a window guard against a wall
+stay in the shape. *Roof read*: the roof setting (kind, pitch, covering) from IfcRoof's own kind (else its slopes);
+"the file's own shape" for a freeform roof. *Street*: the storey whose floor is the street; **bold** where it moved.
+
+| building | materials known / listed | outer walls dressed / outer | the building’s own | railings read / in file | roof read | street (ground storey) | shots (file name) |
+|---|---|---|---|---|---|---|---|
+| De Basis, Doorn (structural) | 0 / 0 | 0 / 0 | — | 0 / 0 | — | peil=0 | balconies-a3-de-basis-doorn |
+| Amstelveen block (structural) | 0 / 0 | 0 / 0 | — | 0 / 0 | — | 01 eerste verdieping | balconies-a4-amstelveen |
+| Spaarnelicht, Amsterdam (structural) | 3 / 3 | 702 / 702 | Fair-faced concrete | 0 / 0 | — | **V0 bk. ruwe vloer** (was K2) | balconies-a7-spaarnelicht-amsterdam |
+| BIM4EEB demo, Finland | 1 / 1 | 216 / 226 | Fair-faced concrete; frames timber | 0 / 0 | — | 1. Kerros | bim4eeb-demo-fin |
+| BIM4EEB demo, Poland | 0 / 0 | 0 / 63 | — | 0 / 0 | flat (file: notdefined ×10) | P0(+0.00m) | bim4eeb-demo-pol |
+| Advanced Project | 5 / 5 | 158 / 390 | White render; frames black | 3 / 19 (2 railing, 6 glass) | flat, terrace tiles (file: notdefined ×2) | **Level 1** (was -1 - Garage) | bimwhale-advanced-project |
+| Gaia switch house | 3 / 3 | 103 / 103 | Sand render; frames anthracite | 1 / 1 (1 glass) | flat, terrace tiles (file: flat ×4, notdefined ×10) | **Level 0** (was Level -2) | chek-gaia-switch-house |
+| EDEA, Cáceres | 4 / 4 | 23 / 23 | Precast concrete panels; frames white | 2 / 7 (2 railing) | flat, gravel (file: notdefined ×2) | **Level 0** (was Level -1) | encore-edea-caceres |
+| IfcOpenHouse (IFC2x3) | 1 / 1 | 4 / 4 | Red brick | 0 / 0 | gable 45° (file: gable) | Storey | ifcopenhouse-ifc2x3 |
+| IfcOpenHouse (IFC4) | 1 / 1 | 4 / 4 | Red brick | 0 / 0 | gable 45° (file: gable) | Storey | ifcopenhouse-ifc4 |
+| Nordic LCA housing, timber | 4 / 4 | 83 / 84 | Timber slats | 3 / 11 (6 railing) | flat (file: notdefined ×10) | **Level_01** (was Sea_Level) | nordic-lca-housing-timber |
+| Nordic LCA office, concrete | 6 / 6 | 238 / 437 | Fair-faced concrete | 0 / 0 | flat, green roof (file: notdefined ×11, flat) | **Level_01** (was Foundations) | nordic-lca-office-concrete |
+| Azuma house | 2 / 2 | 0 / 0 | Fair-faced concrete | 0 / 0 | — | NIVEAU 0 | oimr-azuma-house |
+| Svaleveien 8, house A | 4 / 5 | 51 / 57 | Timber slats | 0 / 2 | the file's own shape (file: freeform) | 1-etasje | oimr-svaleveien-8-hus-a |
+| Donor building, The Hague | 0 / 0 | 0 / 33 | — | 0 / 6 | flat (file: flat) | **01 Ground Floor** (was 00 Garage) | sum4re-den-haag-donor |
+| HoloLens flat C | 0 / 0 | 0 / 29 | — | 0 / 0 | flat (file: flat) | Level 1 | sum4re-hololens-apartment-c |
+| HoloLens flat D | 0 / 0 | 0 / 37 | — | 0 / 0 | flat (file: notdefined) | Level 1 | sum4re-hololens-apartment-d |
+| Longyearbyen | 0 / 0 | 0 / 46 | — | 12 / 15 (28 railing) | flat (file: flat, shed) | 01 Ground Floor | sum4re-longyearbyen |
+| Vienna real-world model | 16 / 17 | 116 / 116 | White render | 12 / 25 (30 railing) | flat, gravel (file: notdefined ×18) | **EG** (was UG2) | tuwien-vienna-realworld |
+| Kleine Wohnung | 1 / 1 | 26 / 168 | White render; frames anthracite | 8 / 8 (22 glass) | flat (file: notdefined ×4) | BT-A_0990_UG01_RDOK_0,000 | webifc-kleine-wohnung-r22 |
+| LTU A-House | 1 / 1 | 3 / 2622 | Warm plaster | 1 / 3 (1 railing) | flat (file: notdefined ×14) | VÅNING 1 | webifc-ltu-a-house |
+| **all 21** | **52 / 54** | **1727 / 5144** | | **42 / 97** | **16 of 16 files with a roof** | **8 moved to the right storey** | |
+
+**What the founder sees now, building by building** (after shots; compare the before shots of the same name):
+- **IfcOpenHouse** — red brick walls under its gable roof; the walls stop at the eaves (they stood through the roof as
+  flat-topped plaster boxes); the roof read as a 45° gable.
+- **Gaia switch house** — sand render ("Crépi beige, texturé"), anthracite PVC frames, the little annex in white painted
+  sand-lime brick; the glass veranda toned to Plotline's glass (it was violet); its basements under the street (the
+  lowest storey stood on it).
+- **Nordic LCA housing** — timber cladding ("Puuverhous") on 83 of 84 outer walls, the concrete base ("Betoniverhous")
+  in fair-faced concrete; on the street (it floated 47 m up on an empty "Sea_Level" storey).
+- **Kleine Wohnung** — white render (its walls' type names say WDVS, an ETICS render), anthracite frames, its eight
+  glass balustrades read as glass low walls, the saturated blue windows toned to glass.
+- **Vienna real-world model** — white render (Zementputz), zinc sheet metal (Blech), timber parts; the garage levels
+  under the street (they stood above it); a gravel flat roof; 12 of its 25 railings read (made of parts).
+- **Advanced Project** — white render (Paint), engineering brick, black frames, terrace tiles on its flat roof; the
+  garage under the street.
+- **EDEA, Cáceres** — precast concrete panels, perforated ceramic brick, white aluminium frames, a gravel roof.
+- **Nordic LCA office** — fair-faced concrete, a green roof ("Nurmi").
+- **Svaleveien 8** — rough timber cladding ("Rupanel"), render ("Puss"); its freeform metal roof keeps the file's shape.
+- **Spaarnelicht, Amstelveen, De Basis** (structural models) — concrete where the file says outer walls (Spaarnelicht);
+  the other two say no wall is outside: as before. Spaarnelicht's street moved from its lowest kelder (K2) to V0.
+
+**The outside shape stands on its own plans.** Found on the way: an IFC whose storeys the file places away from its 0
+had its outside shape drawn that far from its flats — Gaia's 95 m off, EDEA's (a site in map coordinates) 4 374 km off, so
+its Building view showed the shape alone with no street, its walls rounded to half a metre and its new textures
+sparkling; Svaleveien's 3 m. The meshes are now moved into the plan frame as they are read (src/import/ifc.ts worldMesh):
+the three stand on their plans in their streets (after shots), the other 18 are unchanged.
+
+**Still flat-coloured, and why.** A file whose materials are placeholders — "Default", "Generic Material", "Material_10",
+"Layer" (Donor, both HoloLens flats, Longyearbyen, BIM4EEB Poland) — names nothing to dress: those buildings stay in the
+file's colours, said in the notes; the architect exports again with materials (FORMATS.md §3). LTU A-House's outer walls
+are "beklädnad, invändig" (inner lining) and "tomt mönster" (empty pattern) on their ends: 3 of 2 622 outer walls say
+brick, so the building's own stays plaster. A curtain wall's opaque spandrel panels are still glass (Plotline's glass wall
+has no spandrel yet). Copper ("Kupari") is drawn as rust composite panels, the nearest option. The 3D models carry their
+own pictures and are not re-dressed; a model drawn at 1 : 10 (NASA VAB, 15 m for a 160 m hall) looks like a plausible
+small building and is not asked about — one under 8 m across (NASA HQ) or well under the drawing is.
+
+**The 3D models** (6): each now stands on the street on the floor its drawing stands on (Shell.street; they floated at
+the walked flat's floor), centred on the drawing; a fully see-through Collada material is drawn solid (the Macky
+Auditorium was invisible: 52 meshes at opacity 0); coloured glass is toned; a model under 8 m across or well under the
+drawing asks once how big it is ("As it is: 7.8 m" · "778 m across (×100)" · "78 m across (×10)"), kept for its name.
+
 ## Session 31, bigifc — a big architect model does not drown the person in marks (Stage 7)
 
 The founder's LTU A-House screenshot: a university floor of 3 062 walls and 1 076 rooms under hundreds of ×N badges, a

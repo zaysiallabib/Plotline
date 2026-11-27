@@ -1354,7 +1354,8 @@ file with that material name. **Plotline decides** gives it back. What an archit
 
 **Outside shape** (in the panel while the drawing has one): its name and triangle count, **Offset x / y (m)** (slide it
 until its walls sit on yours), **Turn (deg)**, **Floor height (m)** (how high this drawing's floor is inside it), each one
-Ctrl+Z; **Remove outside shape**. In a project every drawing shares the building's shape. The model is kept in this
+Ctrl+Z; **Remove outside shape**. In a project every drawing shares the building's shape. An IFC's shape stands on
+its own plans wherever the file places them (a file in map coordinates, a storey placed 95 m from the file's 0). The model is kept in this
 browser only (an exported drawing file names it but does not hold it); Lite skips a shape over 500 000 triangles and
 says so. An IFC whose windows came with solid glass (no see-through colour on any window, as some exports give): its
 windows are left out of the shape and the Building view and the windows round your flat draw real glass in your flats'
