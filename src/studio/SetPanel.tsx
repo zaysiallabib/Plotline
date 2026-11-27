@@ -153,7 +153,7 @@ function HeightsRow({ row, typed, onType }: { row: SetRow; typed?: { heights: He
   const kind = val('kind')
   const field = (f: HeightField) => (
     <label key={f} className={row.typed?.[f] !== undefined && row.typed[f] !== shown[f] ? 'yours' : ''}>
-      <span className="label">{FIELD_WORDS[f]}</span>
+      <span className="label">{FIELD_WORDS[f]} m</span>
       <input className={typed?.bad.includes(f) ? 'bad' : ''} value={val(f)} placeholder="—" title={FIELD_TIPS[f]} onChange={(e) => onType(f, e.target.value)} />
     </label>
   )

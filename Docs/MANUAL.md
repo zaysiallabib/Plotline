@@ -1452,7 +1452,7 @@ floor** (one number when every storey is alike, else by floor: "G 4.50, 1–9 3.
 **Slab** when a drawing prints them, and the roof — **Flat** with its **Roof level** and **Parapet**, or **Pitched** (a gable
 at each end) or **Hipped** (sloped at the ends too) with its **Eave** and **Ridge**. Gable or hip is read from the
 elevations' outline of the roof: a long side whose ridge runs its whole length is a gable's, one whose slopes stop short of
-the ends a hip's. Levels are shown as the drawing prints them (+6.10 m over the ground floor), heights in metres.
+the ends a hip's. Levels are shown as the drawing prints them (+6.10 m over the ground floor), heights in metres (each field's name ends in "m": FLOOR TO FLOOR M).
 A mark with no number printed is measured on the drawing at its printed scale (or from a dimension printed between two
 level lines). Click any field and type over it — metres, or feet and inches with their marks (`10'-0"`, `+20'-0"`);
 red when it is no length; the roof's kind in its box. What you type is remembered by the drawing's title, like a kind. A
