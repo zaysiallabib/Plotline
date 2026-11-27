@@ -197,14 +197,16 @@ export const railWord = (label: string): { text: string; serif: boolean } => ({ 
 /**
  * The card beside the pointer on the tower: the floor's word as its title (Floor 4, Ground floor, Basement 1, Rooftop) and,
  * over a flat, the flat's name and its size from the plan ("Type B · 2736 sft"); over a level, its name when that says more
- * than the word. `act`: what a click (a finger: a second tap) does there — open the flat, walk the level, or pick the floor.
+ * than the word; a project's floor whose drawing is still a picture to trace (it stands in as a block) "Not traced yet". `act`:
+ * what a click (a finger: a second tap) does there — open the flat, walk the level, or pick the floor.
  */
 export function towerCard(t: Tower, h: TowerHit, finger: boolean, outside = false): { title: string; line?: string; act: string } {
   const title = h.k <= 0 || h.k > topFloor(t) ? levelName(t, h.k) : `Floor ${h.k}`
   const f = t.FLOORS.find((x) => x.floor === h.k)
-  const level = f?.standIns?.find((s) => t.LEVELS?.[s] !== undefined)
+  const untraced = !!t.UNTRACED?.includes(h.k)
+  const level = untraced ? undefined : f?.standIns?.find((s) => t.LEVELS?.[s] !== undefined)
   const u = h.flat ? t.FLATS[h.flat.stem]?.unit : level ? t.FLATS[level].unit : null
-  const line = !u || u.name === title ? undefined : /sft/i.test(u.name) || !(u.areaSqft > 0) ? u.name : `${u.name} · ${u.areaSqft} sft`
+  const line = untraced ? 'Not traced yet' : !u || u.name === title ? undefined : /sft/i.test(u.name) || !(u.areaSqft > 0) ? u.name : `${u.name} · ${u.areaSqft} sft`
   const tap = finger ? 'Tap again' : 'Click'
   // staff with Finishes open (outside): a click chooses for the building's outside there — on the roof itself, its roof
   if (outside) return { title, line, act: h.k > topFloor(t) && !h.wall ? `${tap} to change the roof` : `${tap} to choose its outside` }

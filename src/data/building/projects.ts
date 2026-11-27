@@ -612,28 +612,44 @@ export function projectTower(p: Project): Tower {
   )
   // a project-first building is as tall as he said, its floors without a drawing yet standing in
   const top = Math.max(0, p.plan?.floors ?? 0, ...p.floors.map((g) => g.to))
-  const lowest = [...Array(top)].map((_, i) => i + 1).find((k) => onFloor(p, k).length) ?? 1
-  const base = onFloor(p, lowest)
+  // a drawing still a picture to trace (no wall drawn on it yet) is no drawing to the Building view: its floor stands in like a
+  // floor without one (qa4fix: Pearl's floors 3, 5, 7, 9 were gaps, its roof floated) — unless nothing is traced yet anywhere
+  const traced = (id: Id) => (p.units[id]?.walls.length ?? 0) > 0
+  const drawnOn = (k: number) => onFloor(p, k).filter((s) => traced(p.flats[s].unitId))
+  const some = [...Array(top)].some((_, i) => drawnOn(i + 1).length)
   // stage 2: his traced levels on their own floors (a common floor only under the top flats: the top floor carries the roof);
   // one drawing on several levels (B1 and B2 alike), or on floors of flats too, gets a stem of its own per extra place
   const levels = (p.levels ?? [])
     .filter((l) => p.units[l.unitId] && (l.kind !== 'common' || levelFloor(l, top) < top))
     .map((l, i, ls) => ({ ...l, stem: FLATS[l.unitId] || ls.findIndex((m) => m.unitId === l.unitId) < i ? `${l.unitId}@${levelFloor(l, top)}` : l.unitId }))
-  const common = new Map(levels.filter((l) => l.kind === 'common').map((l) => [levelFloor(l, top), l.stem]))
+  // (a ground, common floor or rooftop still a picture: as if it had none — the flats' columns or shells carry the tower, the
+  // roof is the automatic one; a basement still a picture stays listed, drawing nothing under the street)
+  const common = new Map(levels.filter((l) => l.kind === 'common' && traced(l.unitId)).map((l) => [levelFloor(l, top), l.stem]))
+  const ground = levels.find((l) => l.kind === 'ground' && traced(l.unitId))
+  // no floor of flats traced, his ground floor is: the floors over it stand in with its outline (the farmhouse's upper floor
+  // still a picture: its gable stood a storey over the ground), a copy of it that is massing, not the level
+  const shell = !some && ground && p.floors.length ? `${ground.stem}~shell` : null
+  const on = some || shell ? drawnOn : (k: number) => onFloor(p, k)
+  const lowest = [...Array(top)].map((_, i) => i + 1).find((k) => on(k).length) ?? 1
+  const base = shell ? [shell] : on(lowest)
   // floors 1..top; a common floor takes its floor's place; a floor without flats (below the first one listed, or a gap)
   // stands in with the nearest listed floor below it, else above; nothing to stand in (no flat yet): not drawn
   const FLOORS: Tower['FLOORS'] = []
+  const UNTRACED: number[] = []
   for (let k = 1; k <= top; k++) {
-    const flats = onFloor(p, k)
+    const flats = on(k)
     let near = k
-    while (near > 0 && !onFloor(p, near).length) near--
+    while (near > 0 && !on(near).length) near--
     const c = common.get(k)
-    const standIns = near > 0 ? onFloor(p, near) : base
+    const standIns = near > 0 && !shell ? on(near) : base
+    if (!c && !drawnOn(k).length) UNTRACED.push(k)
     if (c) FLOORS.push({ floor: k, flats: [], standIns: [c] })
     else if (flats.length) FLOORS.push({ floor: k, flats })
     else if (standIns.length) FLOORS.push({ floor: k, flats: [], standIns })
   }
   for (const l of levels) FLATS[l.stem] = { unit: p.units[l.unitId], offset: l.offset }
+  if (shell && ground) FLATS[shell] = FLATS[ground.stem]
+  for (const l of levels) if (l.kind !== 'common' && !traced(l.unitId)) UNTRACED.push(levelFloor(l, top))
   const LEVELS = Object.fromEntries(levels.map((l) => [l.stem, levelFloor(l, top)]))
   // the storeys the set's sections print (Stage 3): every floor's level, the walls a slab under the next, the roof's own shape
   const lowestFloor = Math.min(0, ...(p.levels ?? []).filter((l) => l.kind === 'basement').map((l) => -(l.n ?? 1)), -(p.plan?.basements ?? 0))
@@ -650,7 +666,6 @@ export function projectTower(p: Project): Tower {
     const k = LEVELS[stem] ?? FLOORS.find((f) => f.flats.includes(stem))?.floor ?? 1
     FLATS[stem] = { ...FLATS[stem], unit: { ...FLATS[stem].unit, shell: { ...shell, baseY: ELEVATIONS?.[k] ?? k * FLOOR_M } } }
   }
-  const ground = levels.find((l) => l.kind === 'ground')
   // the ground: his traced ground floor; else the lowest flats' columns carry the tower and a flat with no column drawn
   // stands in with its shell (never a floating flat)
   const columns: Rect[] = ground
@@ -662,7 +677,7 @@ export function projectTower(p: Project): Tower {
   const shells = ground ? [ground.stem] : base.filter((s) => !FLATS[s].unit.pillars?.length)
   if (shells.length) FLOORS.unshift({ floor: 0, flats: [], standIns: shells })
   for (const b of levels.filter((l) => l.kind === 'basement').sort((l, m) => (l.n ?? 1) - (m.n ?? 1))) FLOORS.unshift({ floor: LEVELS[b.stem], flats: [], standIns: [b.stem] })
-  const roof = levels.find((l) => l.kind === 'rooftop')
+  const roof = levels.find((l) => l.kind === 'rooftop' && traced(l.unitId))
   if (roof) FLOORS.push({ floor: top + 1, flats: [], standIns: [roof.stem] })
   // the plot: the flats' (and his ground floor's) extent and 2 m round it; a half-made project: whatever it has, else 6 m round its origin
   const near = [...base, ...(ground ? [ground.stem] : [])]
@@ -678,7 +693,7 @@ export function projectTower(p: Project): Tower {
   // tower's listed core does; a traced rooftop draws its own
   const topF = FLOORS.find((f) => f.floor === top)
   const CORE: Tower['CORE'] = roof || isPitched(ROOF_SHAPE) ? [] : [...new Set([...(topF?.flats ?? []), ...(topF?.standIns ?? [])])].flatMap((s) => [...new Set(deriveRooms(FLATS[s].unit).filter(runsUp).map((r) => r.name))].map((n): [string, string] => [s, n]))
-  return { ID: p.id, FLOOR_M, FLATS, FLOORS, CORE, GROUND: { plot, roads: [], gardens: [], ramp: [], bays: [], blocks: [], columns }, ROOF: { gardens: [], tanks: [] }, LEVELS, ...(ELEVATIONS ? { ELEVATIONS } : {}), ...(STOREYS ? { STOREYS } : {}), ...(ROOF_SHAPE ? { ROOF_SHAPE } : {}) }
+  return { ID: p.id, FLOOR_M, FLATS, FLOORS, CORE, GROUND: { plot, roads: [], gardens: [], ramp: [], bays: [], blocks: [], columns }, ROOF: { gardens: [], tanks: [] }, LEVELS, ...(ELEVATIONS ? { ELEVATIONS } : {}), ...(STOREYS ? { STOREYS } : {}), ...(ROOF_SHAPE ? { ROOF_SHAPE } : {}), ...(UNTRACED.length ? { UNTRACED } : {}) }
 }
 
 /** The tower's floor heights by floor number (the rooftop = top + 1) from an imported building's storey elevations; undefined when the project has none. */

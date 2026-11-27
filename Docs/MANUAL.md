@@ -1576,7 +1576,11 @@ project. **Start over** then empties the Studio without asking and says so ("An 
 Tower keeps its copy of Floor plan A").
 **Show building** opens the stacked building in a new tab, straight on the tower (no start screen); a floor with no drawing
 yet is filled with the one below it. A floor whose drawing is still a picture to trace (a set's second typical plan you
-have not traced yet) stands empty — a gap in the tower, the roof above it — until you trace it.
+have not traced yet) stands the same way: a plain block of the nearest traced floor below it (else above) — its outline,
+its windows, the building's outside, lit at night — never a gap, and the card beside the mouse says **Not traced yet**
+("Click to pick this floor"). A ground floor or rooftop still a picture is as if it had none: the flats' columns (or
+their shells) carry the tower, the roof is the usual flat roof with its parapet. A house whose upper floor is still a
+picture stands its traced ground floor's outline up to the roof. Trace the drawing and its floors show it.
 
 **One floor different from the others**
 - A drawing on several floors is ONE drawing: change its walls, doors or windows in the Studio and every floor with it

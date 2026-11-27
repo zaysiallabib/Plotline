@@ -624,6 +624,43 @@ describe('the Building view: rooms behind every window, the picked flat lit (ses
     expect(eye.distanceTo(target)).toBeGreaterThan(Math.hypot(r.maxX - r.minX, r.maxY - r.minY))
   })
 
+  test('a floor whose drawing is still a picture to trace stands as a block of the nearest traced floor: one traced floor and three not yet draw four storeys (qa4fix)', async () => {
+    const a = { ...bti.FLATS['type-a'].unit, id: 'a' }
+    const pic = { ...a, id: 'pic', name: 'Floor plan B', walls: [], vertices: [], roomLabels: [], pillars: [] } // a picture to trace: nothing drawn on it
+    let p = newProject('p', 'Block', { basements: 0, floors: 4, rooftop: true })
+    p = setSlot(p, 1, a)
+    for (const k of [2, 3, 4]) p = setSlot(p, k, pic)
+    p = setSlot(setSlot(p, 0, { ...pic, id: 'g', name: 'Ground floor' }), 'R', { ...pic, id: 'r', name: 'Rooftop' })
+    const t = projectTower(p)
+    expect(t.FLOORS.filter((f) => f.floor >= 1).map((f) => [f.floor, f.flats.join(), (f.standIns ?? []).join()])).toEqual([[1, 'a', ''], [2, '', 'a'], [3, '', 'a'], [4, '', 'a']])
+    expect([...t.UNTRACED!].sort()).toEqual([0, 2, 3, 4, 5]) // the ground and the rooftop pictures too: the flats' columns carry it, the roof is the automatic one
+    expect(topFloor(t)).toBe(4)
+    expect(projectTower(makeProject('q', a, 1, 4, 'none')).UNTRACED).toBeUndefined()
+    const { towerCard } = await import('../viewer/Hud')
+    expect(towerCard(t, { k: 3, flat: null }, false)).toEqual({ title: 'Floor 3', line: 'Not traced yet', act: 'Click to pick this floor' })
+    const { Building } = await import('./building')
+    const b = new (Building as unknown as new (u: Unit, t: Tower, s: string, k: number, q: string) => { make(): Generator<void> })({ ...a, floor: 1 }, t, 'a', 1, 'high')
+    for (const _ of b.make()); // eslint-disable-line @typescript-eslint/no-unused-vars
+    const drawn = new Map<number, number>()
+    ;(b as unknown as Group).traverse((o) => {
+      const m = o as Mesh
+      if (m.isMesh && m.visible && typeof o.userData.level === 'number') drawn.set(o.userData.level, (drawn.get(o.userData.level) ?? 0) + m.geometry.attributes.position.count)
+    })
+    for (const k of [2, 3, 4]) expect(drawn.get(k), `floor ${k}`).toBeGreaterThan(1000) // walls, windows, plate: a storey, not a gap
+    expect(drawn.get(5)).toBeGreaterThan(0) // the roof over floor 4
+    // nothing traced yet anywhere: as before, the floors listed with their drawings (nothing to stand in with)
+    let q = newProject('q', 'Block', { basements: 0, floors: 2, rooftop: false })
+    for (const k of [1, 2]) q = setSlot(q, k, pic)
+    expect(projectTower(q).FLOORS.filter((f) => f.floor >= 1).map((f) => [f.floor, f.flats.join()])).toEqual([[1, 'pic'], [2, 'pic']])
+    // a traced ground under floors still pictures (the farmhouse): the floors over it stand in with its outline, as massing
+    let h = newProject('h', 'House', { basements: 0, floors: 1, rooftop: false })
+    h = setSlot(setSlot(h, 0, { ...a, id: 'house' }), 1, pic)
+    const ht = projectTower(h)
+    expect(ht.FLOORS.map((f) => [f.floor, f.flats.join(), (f.standIns ?? []).join()])).toEqual([[0, '', 'house'], [1, '', 'house~shell']])
+    expect(roleIn(ht, 'house~shell')).toBe('massing')
+    expect(topFloor(ht)).toBe(1)
+  })
+
   test('an architect’s shape whose windows came with solid glass: they leave the shape, the tower’s own panes take their place (polish2)', async () => {
     const THREE = await import('three')
     const { solidWindowsOut } = await import('./shell')

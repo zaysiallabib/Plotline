@@ -16,9 +16,10 @@ import type { TowerHeights } from './storeys'
  * number (m above the lowest floor; a floor not listed stands at floor × FLOOR_M); STOREYS: a Studio project's storeys as its
  * set's sections print them (data/building/storeys.ts: each floor's walls, the slab, the roof) — absent, every storey as before;
  * ROOF_SHAPE: a Studio project's roof (roof.ts: its setting over what its set read) — absent, the flat roof and its parapet;
- * ID: a Studio project's id (the building's outside is kept under it: apartments.ts outsideRecord).
+ * ID: a Studio project's id (the building's outside is kept under it: apartments.ts outsideRecord); UNTRACED: a Studio
+ * project's floors whose drawing is still a picture to trace, or that have none (they stand in with the nearest traced floor).
  */
-export type Tower = typeof bti & { LEVELS?: Record<string, number>; ELEVATIONS?: Record<number, number>; STOREYS?: TowerHeights; ROOF_SHAPE?: Roof; ID?: string }
+export type Tower = typeof bti & { LEVELS?: Record<string, number>; ELEVATIONS?: Record<number, number>; STOREYS?: TowerHeights; ROOF_SHAPE?: Roof; ID?: string; UNTRACED?: number[] }
 
 const TOWERS: Tower[] = [bti, sheltech, banani, dmd]
 
