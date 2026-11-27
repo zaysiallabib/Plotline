@@ -2209,7 +2209,7 @@ export class PlotlineScene {
         sides: [
           { roomId: front, target: 'wall', ...face(front), ...kerb, ...outer(front) },
           { roomId: back, target: 'wall', ...face(back), ...kerb, ...outer(back) },
-          { roomId: front ?? back, target: 'wall', edge: true, ...face(front ?? back), ...(planter ? { ref: CONCRETE } : kerb) },
+          { roomId: front ?? back, target: 'wall', edge: true, ...face(front ?? back), ...(planter ? { ref: CONCRETE } : { ...outer(back), ...outer(front), ...kerb }) },
         ],
       })
       // a solid low wall's cap (rails.ts), finished as its top — daylit and stood on its floor as the wall is (build)

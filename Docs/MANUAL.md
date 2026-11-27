@@ -267,6 +267,10 @@ chosen once for the whole building, not flat by flat.
   **Same as the walls** (the start) dresses each one in its own wall's finish — a brick tower has brick slab edges, a
   timber balcony front a timber edge under it, no plaster stripes; or **Plaster**, **Fair-faced concrete** or
   **Anthracite metal** for every edge of the building. Nothing chosen anywhere: everything stays as it was drawn.
+- Brick, stone, concrete, timber and the roof's clay tiles, slate and shingles are laid by the building's own metres: a
+  brick course runs on from one floor over the slab's edge into the next with no stripe at the floors, and the picture's
+  repeat (a clay tile every 2.5 m, a brick every 2 m) no longer shows from the street — each patch of the wall or roof is
+  a little lighter or darker, as a weathered one is. The plaster is as it always was.
 - **Chosen for one wall, floor or window** lists those choices; **undo** takes one back.
 - Your own brick, stone or cladding panel: **+ Add option** under **Outside walls**, its look a **Picture** (§3).
 - It is kept for the whole building at once (in this browser, in the project saved online, and in every buyer link

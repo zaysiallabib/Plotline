@@ -4,7 +4,7 @@ import { expect, test } from 'vitest'
 import * as core from '../core'
 import type { LowWallKind, Unit, Wall } from '../core'
 import { GLAZING_GLASS } from './openings'
-import { BAND_DOWN, BAND_P, BAND_UP, CAP_H, CAP_P, CHAIN_MESH, GRILLE_PAINT, RAIL_COLOR, RAIL_STEEL, RAIL_TIMBER, balconyEdges, capGeometry, railParts } from './rails'
+import { BAND_DOWN, BAND_P, BAND_UP, CAP_H, CAP_P, CHAIN_MESH, GRILLE_PAINT, RAIL_COLOR, RAIL_STEEL, RAIL_TIMBER, balconyEdges, block, capGeometry, faceUvs, railParts } from './rails'
 
 /** A bed (3 × 3 m) and its balcony (3 × 1.5 m) in front of it: the balcony's three sides are 1.1 m low walls, `front` its front. */
 function balcony(front: Partial<Wall> = {}, sides: Partial<Wall> = {}): Unit {
@@ -27,6 +27,34 @@ function balcony(front: Partial<Wall> = {}, sides: Partial<Wall> = {}): Unit {
 const bounds = (g: THREE.BufferGeometry) => (g.computeBoundingBox(), g.boundingBox!)
 const wallOf = (u: Unit, id: string) => u.walls.find((w) => w.id === id)!
 const KINDS: LowWallKind[] = ['glass', 'railing', 'grille', 'timber', 'fence', 'chainlink']
+
+test('faceUvs (session 31 outside2): any box in metres along its faces and up, as block() lays them; a BoxGeometry turned 30° as a block at that angle', () => {
+  const B = new THREE.BoxGeometry(2, 0.2, 0.25).rotateY(Math.PI / 6).translate(3, -0.1, 1)
+  const uvs = (g: THREE.BufferGeometry) => {
+    const n = g.attributes.normal, p = g.attributes.position, uv = g.attributes.uv
+    const out = new Map<string, [number, number]>()
+    for (let i = 0; i < p.count; i++) out.set([p.getX(i), p.getY(i), p.getZ(i), n.getX(i), n.getY(i), n.getZ(i)].map((v) => v.toFixed(3)).join(), [uv.getX(i), uv.getY(i)])
+    return out
+  }
+  const got = uvs(faceUvs(B.clone()))
+  // the same corners as a block(): their coordinates the block's own
+  const c = (u: number, v: number, w: number): [number, number, number] => {
+    const [cs, sn] = [Math.cos(Math.PI / 6), Math.sin(Math.PI / 6)]
+    return [3 + u * cs + w * sn, -0.1 + v, 1 - u * sn + w * cs]
+  }
+  const P: [number, number, number][] = []
+  for (let k = 0; k < 2; k++) for (let j = 0; j < 2; j++) for (let i = 0; i < 2; i++) P.push(c(i ? 1 : -1, j ? 0.1 : -0.1, k ? 0.125 : -0.125))
+  for (const [key, uv] of uvs(block(P))) {
+    const mine = got.get(key)
+    if (!mine) continue
+    expect(mine[0]).toBeCloseTo(uv[0], 4)
+    expect(mine[1]).toBeCloseTo(uv[1], 4)
+  }
+  // a brick course stays level: an upright face's v is the height
+  const p = B.attributes.position
+  const f = faceUvs(B.clone()).attributes.uv
+  for (let i = 0; i < p.count; i++) if (Math.abs(B.attributes.normal.getY(i)) < 0.5) expect(f.getY(i)).toBeCloseTo(p.getY(i), 6)
+})
 
 test("a railing's own colour (session 31 outside2): every part of it but a glass front's panes; none chosen, the material it always had", () => {
   const mats = (front: Partial<Wall>) => railParts(wallOf(balcony(front), 'front'), balcony(front)).map((p) => p.m)

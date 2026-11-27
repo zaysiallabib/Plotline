@@ -108,6 +108,31 @@ export function block(P: V3[]): THREE.BufferGeometry {
   return g
 }
 
+/**
+ * UVs in metres on any block from its own normals, as block() lays them: an upright face along itself and up, a flat one by
+ * plan x / z — a brick course runs level and the right size on a slab's edge or a column at any angle (a BoxGeometry's own
+ * stretch one picture over each face). Non-indexed or indexed alike; returns g.
+ */
+export function faceUvs(g: THREE.BufferGeometry): THREE.BufferGeometry {
+  const p = g.attributes.position
+  const n = g.attributes.normal
+  const uv = new Float32Array(p.count * 2)
+  for (let i = 0; i < p.count; i++) {
+    const [nx, ny, nz] = [n.getX(i), n.getY(i), n.getZ(i)]
+    if (Math.abs(ny) > 0.5) {
+      uv[2 * i] = p.getX(i)
+      uv[2 * i + 1] = p.getZ(i)
+      continue
+    }
+    let [ax, az] = [-nz, nx]
+    if (ax < 0 || (ax === 0 && az < 0)) [ax, az] = [-ax, -az]
+    const l = Math.hypot(ax, az) || 1
+    uv[2 * i] = (ax * p.getX(i) + az * p.getZ(i)) / l
+    uv[2 * i + 1] = p.getY(i)
+  }
+  return g.setAttribute('uv', new THREE.BufferAttribute(uv, 2))
+}
+
 /** wall-local (u along a→b from vertex a, v up, w along its normal) → world */
 function localOf(wall: Wall, graph: Pick<Unit, 'vertices'>): { L: number; f: ReturnType<typeof core.wallFrame>; at: (u: number, v: number, w: number) => V3 } {
   const f = core.wallFrame(wall, graph.vertices)

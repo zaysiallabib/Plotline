@@ -867,6 +867,23 @@ describe('the rooms behind the glass take none of the walked flat’s lamps (ses
     expect(used.has(materialFor(EXTERIOR_PLASTER))).toBe(false) // never the walk's own
     b.dispose()
   })
+  test("session 31 outside2: the tower's pictures laid by the scene's metres (a brick course runs on over a slab's edge), the roof's covering by its own; a brick or tile repeat broken up, the plaster as before — one program", async () => {
+    const THREE = await import('three')
+    const { materialFor, EXTERIOR_PLASTER, TILE } = await import('./materials')
+    const brick = { kind: 'pbr' as const, textureId: 'brick_red' }
+    const wall = materialFor(brick, false, false, true)
+    const cover = materialFor(brick, false, false, true, false, 'cover')
+    expect([wall.userData.faceUv, cover.userData.faceUv, materialFor(brick, false, false, true, false, 'shell').userData.faceUv]).toEqual([true, false, false])
+    expect([wall.userData.tileK, materialFor(brick, false, true).userData.tileK, materialFor(EXTERIOR_PLASTER, false, false, true).userData.tileK]).toEqual([TILE.brick_red, TILE.brick_red, undefined])
+    expect(TILE.roof_clay).toBeGreaterThan(0)
+    const s = { uniforms: {} as Record<string, { value: unknown }>, vertexShader: THREE.ShaderLib.standard.vertexShader, fragmentShader: THREE.ShaderLib.standard.fragmentShader }
+    wall.onBeforeCompile(s as never, undefined as never)
+    expect(s.vertexShader).toMatch(/plUv = abs\(plN\.y\) > 0\.5/)
+    expect(s.vertexShader).toMatch(/vMapUv = \( mapTransform \* vec3\( plUv, 1 \) \)/)
+    expect(s.fragmentShader).toMatch(/plMap\( map, vMapUv, 0\.0 \)/)
+    expect([s.uniforms.faceUv.value, s.uniforms.tileK.value]).toEqual([1, TILE.brick_red])
+    expect([wall.customProgramCacheKey(), cover.customProgramCacheKey()]).toEqual(['outside', 'outside'])
+  })
 })
 
 describe('a code-built piece as a stand-in too (session 31 perf: a curtain’s pleats, a bed’s quilting were 4–11 thousand triangles on Lite)', () => {

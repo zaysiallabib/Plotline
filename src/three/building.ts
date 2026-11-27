@@ -44,7 +44,7 @@ import { ROOF_M, SITE_REACH_M, TIERS, towerLevel, wideOnly, type Quality } from 
 import { batch, CELL_M, HIDDEN } from './batch'
 import { CONCRETE, EXTERIOR_PLASTER, PAINT as BAY_PAINT, fallbackColor, materialFor, noSpots, resolveFinishRef, zoneFinishRef } from './materials'
 import { SPANDREL, WATER, meterUVs, spandrelOf } from './openings'
-import { balconyEdgeParts, capGeometry, railParts, type RailPart } from './rails'
+import { balconyEdgeParts, capGeometry, faceUvs, railParts, type RailPart } from './rails'
 import { roofGeometry } from './roof'
 
 /** every drawing's rooms (interiors.ts roomsGeometry) per tower and key, for the page: built once, whichever floor is walked */
@@ -773,13 +773,16 @@ export class Building extends THREE.Group {
       put(0, PAINT, ...[[x0, y0, x1, y0 + e], [x0, y1 - e, x1, y1], [x0, y0, x0 + e, y1], [x1 - e, y0, x1, y1]].map((r) => flat(r as Rect, G)))
     }
     if (!hasShell) put(0, this.outRef(null, null, 0) ?? EXTERIOR_PLASTER, ...GROUND.blocks.map((r) => rectBox(plan(r), G, G + this.wallsOf(0)))) // (the ground floor's outside)
-    if (!hasShell) put(0, this.edgeRef(null, null, 0) ?? EXTERIOR_PLASTER, ...GROUND.columns.map((r) => rectBox(plan(r), G, G + this.wallsOf(0)))) // (the building's edges)
+    const columns = this.edgeRef(null, null, 0) // (the building's edges: their picture at its real size)
+    if (!hasShell) put(0, columns ?? EXTERIOR_PLASTER, ...GROUND.columns.map((r) => rectBox(plan(r), G, G + this.wallsOf(0))).map((g) => (columns ? faceUvs(g) : g)))
     if (!hasShell && !pitched) put(top + 1, TANK, ...ROOF.tanks.map((r) => rectBox(plan(r), R + FLOOR_M, R + FLOOR_M + 1.2))) // (water tanks on a flat roof only)
 
+    // (the roof's covering keeps its own pictures' lay, along the eaves and up the slope: materials.ts faceUvPatch 'cover')
+    const covers = new Set<unknown>(shape ? [coveringOf(shape).material, deck] : [])
     for (const [k, byMaterial] of lists)
       for (const [m, geos] of byMaterial) {
         const pane = m === 'glass'
-        const mesh = new THREE.Mesh(merge(geos), pane ? this.panes : m instanceof THREE.Material ? m : materialFor(m, false, false, true))
+        const mesh = new THREE.Mesh(merge(geos), pane ? this.panes : m instanceof THREE.Material ? m : materialFor(m, false, false, true, false, covers.has(m) ? 'cover' : ''))
         mesh.castShadow = !pane && m !== GREEN && m !== PAINT && m !== ASPHALT && !(m instanceof THREE.Material && m.transparent)
         mesh.receiveShadow = true // a pane too: its frame in the facade's shade
         if (pane) this.paneOwners.set(mesh, owners.get(k) ?? []) // picked: a ray through a window names the flat behind it
@@ -1055,7 +1058,7 @@ export class Building extends THREE.Group {
     for (const g of geos) {
       const id = g.userData.edgeOf as Id | undefined
       const r = (id !== undefined && this.edgeRef(s, id || null, k)) || EXTERIOR_PLASTER
-      by.set(r, [...(by.get(r) ?? []), g])
+      by.set(r, [...(by.get(r) ?? []), r === EXTERIOR_PLASTER ? g : faceUvs(g)]) // (dressed: its picture at its real size, not one a face)
     }
     return [...by]
   }
@@ -1206,7 +1209,10 @@ export class Building extends THREE.Group {
     }
     const storey = Math.min(storeyTop(u, rooms) || WALL_M, cap)
     const column = (k === 0 && this.edgeRef(s, null, 0)) || EXTERIOR_PLASTER // (the ground floor's columns: the building's edges)
-    for (const p of u.pillars ?? []) put(column, box(p.x - p.wM / 2, p.y - p.hM / 2, p.x + p.wM / 2, p.y + p.hM / 2, core.floorLevelAt(u, p.x, p.y, rooms), storey))
+    for (const p of u.pillars ?? []) {
+      const g = box(p.x - p.wM / 2, p.y - p.hM / 2, p.x + p.wM / 2, p.y + p.hM / 2, core.floorLevelAt(u, p.x, p.y, rooms), storey)
+      put(column, column === EXTERIOR_PLASTER ? g : faceUvs(g))
+    }
     if (k >= 1 && k <= top) for (const [r, gs] of this.edgesBy(s, k, plate(u, rooms, -UNDER_LEVEL_M, PLATE_M, u.walls, lid))) put(r, ...gs)
     if (k > top) {
       const full = new Set(u.walls.filter((w) => w.heightM >= 2).map((w) => w.id))
