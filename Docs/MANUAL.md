@@ -243,7 +243,7 @@ Finishes is open: then the click picks that floor's finish).
 - **Share** puts the one-room and one-wall choices into the link. On a buyer link each one goes to the change list
   under its room's name ("Bed-1 · floor: White marble"), and taking one back is a row too.
 - On a buyer link, **Your name** sits at the top (the same field as in Comment).
-- Staff add their own options here (**+ Add option**, §3).
+- Staff add their own options here (**+ Add option**, §3), and change the building's roof (§3, "The roof").
 
 **Every flat keeps its own** (staff, founder 2026-11-21). A flat is one floor plan in one place of the building: floor 3's
 Type A, floor 4's Type A and the mirrored flat next door on floor 3 are three flats. What staff pick in Finishes — a whole
@@ -482,6 +482,30 @@ The one that is on is the white row, marked "on". On a buyer link (`/s/…`) non
 browser that has opened the Studio: no **Edit ▾**, no **G**, no **+ Add option** — you see what the buyer sees. To edit
 that flat, open its own address (`/u/…`, or **Preview 3D** in the Studio).
 
+### The roof
+
+The roof over the whole building (staff; buyers see it, never its choices). In the **Building** view open **Finishes** and
+click the roof on the tower (or **Change** beside "The roof · the whole building" at the foot of Finishes): the panel's top
+block is the roof.
+- **Its covering**, as swatches: a flat roof — **Plain roof slab** (as before), **Gravel**, **Green roof**, **Terracotta
+  terrace tiles**; a pitched roof — **Grey metal sheet** (as before), **Clay tiles**, **Slate**, **Zinc standing seam**,
+  **Timber shingles**, **Corrugated metal**. The chosen one is the white row; no price (it is not a buyer's choice).
+- **Kind**: **Flat** (the parapet, as every building had), **Gable** (two slopes, a gable wall at each end), **Hip** (slopes
+  at the ends too), **Shed** (one slope, high along the back), **Mansard** (steep lower slopes all round, a low roof over
+  them). Under a pitched roof there is no parapet, no stair head room, no water tanks and no roof garden.
+- A pitched roof: **Pitch °** (empty: 30°, or as steep as the drawing set's eave and ridge make it — "as drawn"),
+  **Ridge** (**Lengthwise**, along the building's long side, or **Crosswise**), **Eaves m** (how far the roof reaches past the walls:
+  the slopes run on at the same pitch, a white fascia board along the edge and a soffit under it).
+- A flat roof: **Coping** (**None**, **Plaster**, **Metal**, **Stone**): a cap along the top of the parapet.
+- **A cornice band under the roof**: a band round the building just under the roof line (on a flat roof, round the parapet's
+  foot).
+- **Roof windows** (on a flat roof **Skylights**): **+ Add** puts one on the front slope; the windows on a slope spread out
+  evenly; **Front / Back** moves one to the other slope; drag its slider to slide it along; **×** takes it away. A roof
+  window is glass in a grey frame lying on the slope; a skylight sits on a 15 cm curb on the roof.
+- Each change rebuilds the tower round the flat at once; **Done** closes the block. It is kept at once: a building made in
+  the Studio keeps it in its project (the Studio's project column shows it under **ROOF**, §6); a built-in building
+  (Type A's, Sheltech's) keeps it in this browser.
+
 ### Edit furniture
 
 - **Click a piece** to pick it — also one seen through a window or a glass door. A click whose mouse slides up to 6
@@ -659,6 +683,12 @@ The whole tower, floor by floor: point at a floor to see which it is, open a fla
   edge, the stair and lift head room with the water tanks on it, and the roof garden its data lists (the Demo tower). A
   building made in the Studio gets the head room over the rooms its top floor's drawing names a stair or a lift ("Stair",
   "Lift", "Lift lobby") — name them so on the plan. A traced rooftop (Sheltech) shows as drawn.
+- **A pitched roof** (gable, hip, shed or mansard; staff set it, §3 "The roof", or the Studio's project column, §6): drawn
+  over the top floor instead of the parapet, in its covering (clay tiles, slate, zinc, shingles, corrugated metal), at its
+  pitch, with its overhang, fascia, soffit and roof windows; a flat roof can be gravel, a green roof or terrace tiles, with a
+  coping on its parapet and a cornice. A drawing set whose sections print an eave and a ridge gets its gable (or hip) at the
+  printed heights without anyone setting it. A traced rooftop stays as drawn under a pitched roof. One roof covers the top
+  floor's whole outline as a rectangle: an L-shaped building gets one roof over its box; no dormers yet.
 - **Top left** names the picked floor: "Floor 2" over "Type A · 2703 sft", the flats of another floor, or "Ground
   floor", "Basement 1", "Rooftop".
 - **Walk this level** (the blue button under the floors) shows for a ground floor, basement, rooftop or common floor.
@@ -1398,6 +1428,14 @@ LTU_A-House_redesign.ifczip · VÅNING 2", "traced on img_3.webp"); then the ope
 stands: **Open** opens the Site panel, as ⋯ → Site) and, signed in to a company, **Team**: **Members** and **Links** open
 your account card on that list (as ⋯ → your email).
 
+**ROOF** (under the floors): the roof over the top floor in one line ("Flat, with its parapet · Plain roof slab", "Gable ·
+pitch as drawn · Clay tiles · eaves 0.45 m · 2 roof windows"). **Change** opens its fields under it — **Kind**, **Pitch °**,
+**Ridge**, **Eaves m**, **Covering** (a list), **Coping**, **A cornice band under the roof**, **Roof windows** / **Skylights**
+with **+ Add**, **Front / Back**, a slider and **×** — the same as the 3D view's roof block (§3, "The roof"); **Close** folds
+them. A typed number goes in on Enter or when you leave the box. Saved in the project at once; **Show building** shows it.
+A project built from a drawing set whose sections print an eave and a ridge starts with that roof ("Gable · pitch as
+drawn"): change its covering or overhang and it stays at the printed heights; type a pitch to make it steeper or flatter.
+
 **Give each floor a drawing** — work down the list:
 - **Draw** (an empty floor): a new drawing for it opens, called Floor plan A, Floor plan B… (or Ground floor, Basement 1,
   Rooftop); the flats inside keep the sheet's names (Type A, Type B). Drop its plan picture, set the scale, trace.
@@ -1714,6 +1752,8 @@ is a job (hand-tested 2026-10-05, updated since).
 | Door, double door, gate, window, passage | Yes — kind, width, height, sill, slide, delete | Yes — plus hinge side and swing | Door material. Cannot be *added* in 3D |
 | Column | No | Yes — each corner and side by mouse (or typed), move, delete, add | — |
 | Ceiling, slab, ceiling height, ceiling lights | One room's ceiling can be clicked in Finishes, but only one ceiling colour exists | No | Everything else |
+| Roof (the whole building's) | Yes (staff) — Building view, Finishes open, click the roof: kind (flat, gable, hip, shed, mansard), pitch, ridge, eaves, covering, coping, cornice | Yes — the project's column, **ROOF → Change** | A roof shaped to an L-shaped building (one roof over its box); dormers |
+| Roof window, skylight | Yes (staff) — the roof block: add, front / back slope, slide along, take away | Yes — **ROOF → Change** | Its size (78 × 118 cm) |
 | Floor of ONE room | Yes — Finishes open, click the floor; kept for that flat (§2, "Every flat keeps its own") | No | — |
 | Lawn, paving, driveway, deck surface | No | No | No finish choices exist for outdoor areas |
 | Shape, kind or floor level of an area | No | Yes | — |
