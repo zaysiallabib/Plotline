@@ -1283,6 +1283,46 @@ async function readBounded<T, Result>(items: readonly T[], limit: number, read: 
   return out
 }
 
+type OcrEngine = Awaited<ReturnType<(typeof import('tesseract.js'))['createWorker']>>
+
+/**
+ * `n` OCR engines for one read, started together: the read begins once ONE is up and each other one joins the moment it
+ * is. In Firefox a tesseract.js engine now and then never finishes starting — it stops inside its WebAssembly start and
+ * neither starts nor fails, and tesseract.js has no way out of that (s31 hang lane: Sapphire, Palm Spring, La Reina) —
+ * so a read that waited for every engine waited for ever ("Reading the plan (text)…" > 7 min). Every start failing fails
+ * the read with the first one's reason. `set` reaches the engines up and, before any line, those that come up later;
+ * `end` stops them all (one still starting stops with the trace's worker). `start`: tests only.
+ */
+export async function ocrEngines(n: number, opts: Pick<ReadTextOptions, 'langPath' | 'cachePath'>, start?: () => Promise<OcrEngine>) {
+  const T = await import('tesseract.js')
+  const scheduler = T.createScheduler()
+  const up: OcrEngine[] = []
+  const params: Record<string, string> = {}
+  let ended = false
+  const open = start ?? (() => T.createWorker('eng', T.OEM.LSTM_ONLY, { ...(opts.langPath ? { langPath: opts.langPath } : {}), ...(opts.cachePath ? { cachePath: opts.cachePath } : {}) }))
+  const starts = Array.from({ length: Math.max(1, n) }, () =>
+    open().then((w) => {
+      if (ended) return void w.terminate()
+      // (its settings go first: an engine handles its messages in order, so no line reaches it before them)
+      if (Object.keys(params).length) w.setParameters({ ...params }).catch(() => {})
+      up.push(w)
+      scheduler.addWorker(w)
+    }),
+  )
+  await Promise.any(starts).catch((e: AggregateError) => {
+    throw e.errors[0]
+  })
+  return {
+    PSM: T.PSM,
+    read: (image: Uint8Array | Blob, output?: Parameters<OcrEngine['recognize']>[2]) => scheduler.addJob('recognize', image as unknown as Blob, {}, output),
+    set: (params2: Record<string, string>) => (Object.assign(params, params2), Promise.all(up.map((w) => w.setParameters(params2)))),
+    end: async () => {
+      ended = true
+      await scheduler.terminate()
+    },
+  }
+}
+
 /** Gray → binary PGM bytes. tesseract.js decodes it (leptonica) in the browser worker and in node alike — no canvas. */
 export function toPgm(g: Gray): Uint8Array {
   const head = new TextEncoder().encode(`P5\n${g.width} ${g.height}\n255\n`)
@@ -1622,23 +1662,18 @@ export async function readText(src: Gray | ImageBitmapSource, opts: ReadTextOpti
     const before = passes.slice(0, k).filter((q) => q.frame === p.frame && q.strict === p.strict).flatMap((q) => q.lines)
     p.lines = p.lines.filter((l) => (p.frame === 0 || !l.vertical) && !before.some((m) => iou(m.box, l.box) >= 0.6))
   }
-  const T = await import('tesseract.js')
-  const scheduler = T.createScheduler()
-  const workers = await Promise.all(
-    Array.from({ length: opts.workers ?? ocrWorkers() }, () =>
-      T.createWorker('eng', T.OEM.LSTM_ONLY, { ...(opts.langPath ? { langPath: opts.langPath } : {}), ...(opts.cachePath ? { cachePath: opts.cachePath } : {}) }),
-    ),
-  )
-  workers.forEach((w) => scheduler.addWorker(w))
-  const setAll = (params: Record<string, string>) => Promise.all(workers.map((w) => w.setParameters(params)))
+  const n = opts.workers ?? ocrWorkers()
+  const ocr = await ocrEngines(n, opts)
+  const T = { PSM: ocr.PSM }
+  const setAll = ocr.set
   try {
     let done = 0
     let total = passes.reduce((t, p) => t + p.lines.length, 0)
     /** every pass's lines `idx[k]` read, the image of each made by `image` */
     const readAll = async (idx: number[][], image: (p: Pass, l: TextLine) => Blob) => {
       const work = idx.flatMap((indices, k) => indices.map((i) => ({ i, pass: passes[k] })))
-      const flat = await readBounded(work, workers.length, async ({ pass, i }) => {
-        const { data } = await scheduler.addJob('recognize', image(pass, pass.lines[i]))
+      const flat = await readBounded(work, n, async ({ pass, i }) => {
+        const { data } = await ocr.read(image(pass, pass.lines[i]))
         opts.onProgress?.(++done, total)
         return { text: data.text.replace(/\s+/g, ' ').trim(), conf: data.confidence / 100 }
       })
@@ -1830,7 +1865,7 @@ export async function readText(src: Gray | ImageBitmapSource, opts: ReadTextOpti
       const heard: string[] = []
       for (const px of [44, 34]) {
         const todo = bare.flatMap((it, i) => (it.kind === 'dims' ? [i] : []))
-        const reads = await readBounded(todo, workers.length, (i) => scheduler.addJob('recognize', toPgm(pad(stretch(resample(upright(i), Math.max(1, Math.min(8, px / letterH(i))), 'lanczos')), 12)) as unknown as Blob))
+        const reads = await readBounded(todo, n, (i) => ocr.read(toPgm(pad(stretch(resample(upright(i), Math.max(1, Math.min(8, px / letterH(i))), 'lanczos')), 12))))
         todo.forEach((i, k) => {
           const name = (heard[i] = reads[k].data.text.replace(/\s+/g, ' ').trim())
           const room = verbatim(name) && flatRoom(name, true) ? roomName(name)! : null
@@ -1858,7 +1893,7 @@ export async function readText(src: Gray | ImageBitmapSource, opts: ReadTextOpti
     if (tables.some((t) => t.rows.some((r) => r.num !== undefined && !r.onPlan))) {
       const nums = numberMarks(passes[0].glyphs, passes[0].charH).filter((b) => !inTable(tables, { box: b } as TextItem) && !items.some((it) => it.kind !== 'other' && overlapOfSmaller(it.box, b) > 0)).slice(0, 600) // ponytail: first 600 marks; a sheet of more needs the plan's box first
       await setAll({ tessedit_pageseg_mode: T.PSM.SINGLE_LINE, tessedit_char_whitelist: '0123456789', debug_file: '/dev/null' })
-      const reads = await Promise.all(nums.map((b) => scheduler.addJob('recognize', lineImage(gray, { box: b, vertical: false }, 48, 'lanczos'))))
+      const reads = await Promise.all(nums.map((b) => ocr.read(lineImage(gray, { box: b, vertical: false }, 48, 'lanczos'))))
       const found = nums.flatMap((b, i): TextItem[] => (/^\d\d$/.test(reads[i].data.text.trim()) && reads[i].data.confidence >= 90 ? [{ text: reads[i].data.text.trim(), box: b, kind: 'other', conf: reads[i].data.confidence / 100, source: 'ocr' }] : []))
       applyTables(found, tables)
       items.push(...found.filter((it) => it.kind === 'room'))
@@ -1874,7 +1909,7 @@ export async function readText(src: Gray | ImageBitmapSource, opts: ReadTextOpti
     const rejected = strips.filter((r, i) => !strips.slice(0, i).some((o) => o.reason === r.reason && overlapOfSmaller(o.box, r.box) >= 0.5))
     return { items, glyphPx: charH, ...(tables.length ? { tables } : {}), ...(rejected.length ? { rejected } : {}) }
   } finally {
-    await scheduler.terminate()
+    await ocr.end()
   }
 }
 
@@ -1915,22 +1950,21 @@ export async function readInFaces(g: Gray, faces: { x: number; y: number }[][], 
   })
   // Recover mixed-case labels such as Hoistway as well as capitals.
   if (!todo.length) return []
-  const T = await import('tesseract.js')
-  // (the faces read in parallel, as many workers as readText uses — s26: one worker made big sheets wait)
-  const scheduler = T.createScheduler()
-  const workers = await Promise.all(Array.from({ length: Math.min(todo.length, opts.workers ?? ocrWorkers()) }, () => T.createWorker('eng', T.OEM.LSTM_ONLY, { ...(opts.langPath ? { langPath: opts.langPath } : {}), ...(opts.cachePath ? { cachePath: opts.cachePath } : {}) })))
-  workers.forEach((w) => scheduler.addWorker(w))
+  // (the faces read in parallel, as many engines as readText uses — s26: one engine made big sheets wait)
+  const n = Math.min(todo.length, opts.workers ?? ocrWorkers())
+  const ocr = await ocrEngines(n, opts)
+  const T = { PSM: ocr.PSM }
   const out: TextItem[] = []
   try {
     const found = new Map<number, { name: string; box: Box }>()
     const coreVotes = new Map<number, string>()
     for (const v of FACE_VIEWS) {
-      await Promise.all(workers.map((w) => w.setParameters({ tessedit_pageseg_mode: T.PSM[v.psm], user_defined_dpi: '300', tessedit_char_whitelist: NAME_CHARS + 'abcdefghijklmnopqrstuvwxyz', debug_file: '/dev/null' })))
-      await readBounded(todo, workers.length, async (f, i) => {
+      await ocr.set({ tessedit_pageseg_mode: T.PSM[v.psm], user_defined_dpi: '300', tessedit_char_whitelist: NAME_CHARS + 'abcdefghijklmnopqrstuvwxyz', debug_file: '/dev/null' })
+      await readBounded(todo, n, async (f, i) => {
           if (found.has(i)) return
           const scale = Math.max(1, Math.min(8, v.px / ch)), border = 12
           const img = pad(stretch(resample(f.image, scale, 'lanczos')), border)
-          const { data } = await scheduler.addJob('recognize', toPgm(img) as unknown as Blob, {}, { blocks: true })
+          const { data } = await ocr.read(toPgm(img), { blocks: true })
           const lines = data.blocks?.flatMap(block => block.paragraphs.flatMap(paragraph => paragraph.lines)) ?? []
           for (const line of lines) {
             const name = line.text.trim()
@@ -1958,14 +1992,14 @@ export async function readInFaces(g: Gray, faces: { x: number; y: number }[][], 
       for (const [px, word, kernel] of [[48, false, 'lanczos'], [48, true, 'lanczos'], [40, true, 'lanczos'], [48, true, 'cubic'], [40, true, 'cubic']] as const) {
         const pending = strips.flatMap((s, j) => found.has(s.i) ? [] : [j])
         if (!pending.length) break
-        await Promise.all(workers.map((w) => w.setParameters({ tessedit_pageseg_mode: word ? T.PSM.SINGLE_WORD : T.PSM.SINGLE_LINE, tessedit_char_whitelist: word ? '' : NAME_CHARS + 'abcdefghijklmnopqrstuvwxyz' })))
-        const reads = await readBounded(pending, workers.length, (j) => {
+        await ocr.set({ tessedit_pageseg_mode: word ? T.PSM.SINGLE_WORD : T.PSM.SINGLE_LINE, tessedit_char_whitelist: word ? '' : NAME_CHARS + 'abcdefghijklmnopqrstuvwxyz' })
+        const reads = await readBounded(pending, n, (j) => {
           const { i, strip } = strips[j]
           const masked = cropInFace(g, strip.box, todo[i].poly)
           const upright = strip.angle === 90 ? rotateCW(masked) : strip.angle === -90 ? rotateCCW(masked) : masked
           // Trim across the letter height after rotation so a sideways word keeps both ends.
           const crop = word ? cropGray(upright, { x: 0, y: Math.floor(.1875 * upright.height), w: upright.width, h: Math.ceil(upright.height / 1.6) + 1 }) : upright
-          return scheduler.addJob('recognize', toPgm(pad(stretch(resample(crop, Math.min(8, px / ch), kernel)), 12)) as unknown as Blob)
+          return ocr.read(toPgm(pad(stretch(resample(crop, Math.min(8, px / ch), kernel)), 12)))
         })
         pending.forEach((j, index) => {
           const s = strips[j]
@@ -1986,7 +2020,7 @@ export async function readInFaces(g: Gray, faces: { x: number; y: number }[][], 
       out.push({ text: name, box, kind: 'room', roomKind: room.kind, green: room.green || undefined, conf: 0.5, source: 'ocr' })
     }
   } finally {
-    await scheduler.terminate()
+    await ocr.end()
   }
   return out
 }
@@ -2007,18 +2041,18 @@ export async function readTypes(g: Gray, trace: TextTrace, opts: Pick<ReadTextOp
     return !trace.items.some((o) => TYPE_RE.test(o.text) && Math.hypot(centre(o.box).x - c.x, centre(o.box).y - c.y) < 3 * it.box.h)
   })
   if (!todo.length) return []
-  const T = await import('tesseract.js')
-  const worker = await T.createWorker('eng', T.OEM.LSTM_ONLY, { ...(opts.langPath ? { langPath: opts.langPath } : {}), ...(opts.cachePath ? { cachePath: opts.cachePath } : {}) })
+  // (one block at a time, but two engines start: one that never comes up holds nothing)
+  const ocr = await ocrEngines(2, opts)
   const out: TextItem[] = []
   try {
-    await worker.setParameters({ tessedit_pageseg_mode: T.PSM.SINGLE_BLOCK, user_defined_dpi: '300', debug_file: '/dev/null' })
+    await ocr.set({ tessedit_pageseg_mode: ocr.PSM.SINGLE_BLOCK, user_defined_dpi: '300', debug_file: '/dev/null' })
     for (const it of todo) {
       const c = centre(it.box), h = it.box.h
       const box = { x: Math.round(c.x - it.box.w), y: Math.round(c.y - 3.5 * h), w: Math.round(2 * it.box.w), h: Math.round(4.5 * h) }
       // (a letter read at any size wins over a digit: the red B reads "8" at some sizes)
       let got: string | null = null
       for (const s of [4, 6, 3]) {
-        const { data } = await worker.recognize(toPgm(pad(stretch(resample(cropGray(g, box), s, 'lanczos')), 12)) as unknown as Blob)
+        const { data } = await ocr.read(toPgm(pad(stretch(resample(cropGray(g, box), s, 'lanczos')), 12)))
         const m = TYPE_RE.exec(data.text)?.[1].toUpperCase()
         if (m && (!got || /^\d+$/.test(got))) got = m
         if (got && !/^\d+$/.test(got)) break
@@ -2026,7 +2060,7 @@ export async function readTypes(g: Gray, trace: TextTrace, opts: Pick<ReadTextOp
       if (got) out.push({ text: `TYPE-${got}`, box: { x: c.x - it.box.w / 2, y: c.y - 2 * h, w: it.box.w, h }, kind: 'other', conf: 0.5, source: 'ocr' })
     }
   } finally {
-    await worker.terminate()
+    await ocr.end()
   }
   return out
 }

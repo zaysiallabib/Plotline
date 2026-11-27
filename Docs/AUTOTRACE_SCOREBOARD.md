@@ -661,3 +661,42 @@ deleted in Edit furniture is not built (V7 V8 V10 V2 V3 V4; shots `E:/dev/plotli
 
 **Not measured.** Memory (headless Firefox reports none); a real pale scan (none of the 1 098 pictures is one — his faded
 copy of a Sheltech crop is the test); a double-action door on a real sheet (none of the five hand-traced flats draws one).
+
+## Session 31 hang lane (2026-11-27): Auto-trace's reading that never finished
+
+**In plain words.** On some sheets the box sat at "Reading the plan (text)… 0 %" for good (Eastern Housing Sapphire,
+Finlay Palm Spring, La Montana A; CPDL La Reina and Sheltech L2 at "(graph)…"), with no error. The cause: the reading
+starts six copies of the OCR engine at once and waited until all six were ready. Now and then one copy stops in the
+middle of starting up — it neither starts nor fails — and the reading waited for it for ever. The second look inside
+unnamed rooms (the "(graph)…" hangs) and the flat-type read start copies too. Now a reading starts on the first copy
+that is ready and the others join as they come up; a copy that never starts holds nothing. The box's % also moves while
+the words are read, and a trace that cannot finish says why with **Try again**.
+
+**How it was caught** (Firefox, the founder's own path: drop the sheet, S, Auto-trace; each OCR copy's start-up steps
+logged): a fresh page, its first trace of Sapphire — copies 1–5 up in 0.8 s, copy 6 at "initializing tesseract 0" (its
+WebAssembly start) and then nothing for 200 s; a page that had traced Sapphire three times — the fourth waited on
+its copies the same way. It is not tied to one sequence of clicks: about one Sapphire trace in ten in these runs (2 of 24), rarer on small
+sheets, on a fresh page or a used one. Ruled out: a picture buffer handed over twice (each Auto-trace makes its own), a
+lost message (the trace worker was alive and waiting), memory (squeezing the page's memory gave the plain "out of
+memory" message, not a silent wait; the hang above came with the page at 0.9 GB, under half of its
+usual 2 GB peak).
+
+**After, the same harness on the fixed tree** (`E:/dev/plotline-shots/s31/hang/*.log`):
+
+| run | finished | engines that never came up (the read went on without them) |
+|---|---|---|
+| Sapphire 10× in one page | 10 of 10, 63–68 s each, 115 walls · 27 rooms · 22 named every time | 2 traces: 5 of 6 up, 4 of 6 up |
+| Cancel mid-read, Auto-trace again, 3× | 3 of 3 | 1 trace: 4 of 6 and 3 of 6 up |
+| one page: La Reina → Palm Spring → Sapphire → Sheltech L2 | 4 of 4 | Palm Spring: 5 of 6 up |
+| the 33 sheets once (the p2trace harness above, against its final run on the same code before the fix) | 33 of 33 at the first try | — |
+
+The 33, scored by the same fixed scorer: rooms closed and named right 508 → 508, lifts / stairs / lobbies 43 → 43 of 93,
+names read 541 → 541, room by room no difference, the five hand-traced flats' rooms, walls and openings the same. Check
+these 1 499 → 1 500 (Silvi 76 → 77) and one false room fewer (Nirvana): both are the tracer's own run-to-run wobble — the
+tree before the fix, run again beside it, gives Silvi 77 too, and Nirvana's walls go 251 / 252 on the same code. Seconds
+to "Point at a flat": 947 → 1 038 for the 33, the machine about a tenth slower today (the tree before the fix, run beside
+the fixed one: Silvi 23.2 / 23.2 s, Nirvana 20.1 / 21.1 s); Sapphire in one page 64–77 s before, 63–68 s after.
+
+**Still possible.** A read whose every OCR copy stops starting (six at once on the words, two on the flat types) would
+still wait; not seen in any run. If the trace's worker itself dies or its answer cannot be read, the message now says so
+with Try again.
