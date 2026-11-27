@@ -467,6 +467,8 @@ interface KeptFlat {
   from: { unit: Unit; cover: Pt[][]; down: string }
   layout: FurniturePlacement[]
   cfg: Configuration
+  /** the building's outside it was dressed in (Outside.sig) */
+  outSig: string
   /** its static, ceiling and furniture groups' children, each in a group of its own, in that order (arrive's `leaving`) */
   parts: THREE.Group
   shell: THREE.Group | null
@@ -989,6 +991,7 @@ export class PlotlineScene {
   private *replace(unit: Unit): Generator<void> {
     this.wake()
     this.unit = closeGaps(raiseHeads(onStorey(unit))) // (as build: its floor is what changed)
+    if (this.outside.sig) (this.applyMaterials(), this.rebatch('static')) // (its outside may differ floor by floor: a plinth band)
     this.blocks = neighbours(this.unit, this.street ?? { walls: core.unitBounds(this.unit) })
     this.day = yield* this.bake(this.unit)
     yield
@@ -1106,7 +1109,7 @@ export class PlotlineScene {
   /** The flat on screen as it is (its parts moved into `parts` by arrive): what a stair back to its drawing shows again (restore). */
   private flatNow(parts: THREE.Group): Omit<KeptFlat, 'look'> {
     return {
-      from: this.builtFrom!, layout: this.layout, cfg: this.cfg, parts, shell: this.shell, unit: this.unit!, rooms: this.rooms, stairs: this.stairs,
+      from: this.builtFrom!, layout: this.layout, cfg: this.cfg, outSig: this.outside.sig, parts, shell: this.shell, unit: this.unit!, rooms: this.rooms, stairs: this.stairs,
       wells: this.wells, lifts: this.lifts, solid: this.solid, top: this.top, floors: [...this.floors], surfaces: [...this.surfaces],
       wallFrames: new Map(this.wallFrames), center: this.center.clone(), radius: this.radius, days: this.days, dayKeep: this.dayKeep, day: this.day,
     }
@@ -1136,7 +1139,7 @@ export class PlotlineScene {
     ;[this.days, this.dayKeep, this.day, this.builtFrom, this.layout] = [k.days, k.dayKeep, k.day, k.from, k.layout]
     this.look.restore(k.look)
     this.asked = new WeakMap()
-    if (!sameConfig(k.cfg, this.cfg)) (this.applyMaterials(), this.rebatch('static')) // (kept in other finishes than this floor's)
+    if (!sameConfig(k.cfg, this.cfg) || k.outSig !== this.outside.sig) (this.applyMaterials(), this.rebatch('static')) // (kept in other finishes than this floor's, or the outside changed since)
     yield
     yield* this.replace(unit)
   }
@@ -2289,10 +2292,10 @@ export class PlotlineScene {
     const deck = outdoor.length > 0 && outdoor.every((r) => isCovered(r, this.cover))
     // the building's outside (setOutside) on the flat's outer sides — a balcony's too, unless a buyer picked that wall or the
     // whole balcony; not a parking deck's (its grey paint); nothing chosen: as always
-    const u = this.builtFrom?.unit ?? this.unit
+    const u = this.builtFrom?.unit ?? this.unit // (the drawing as given: its runs, as the tower's)
     const t = towerOf(u)
     const stem = t && stemIn(t, u)
-    const floor = t && stem ? floorIn(t, stem, u.floor) : u.floor
+    const floor = t && stem ? floorIn(t, stem, this.unit.floor) : this.unit.floor // (a stair's next floor of it: that floor's band)
     const outer = (side: NonNullable<Surface['sides'][number]>): THREE.MeshStandardMaterial | null => {
       if (!side.outer || !this.outside.sig || (side.roomId && zones.has(side.roomId) && deck)) return null
       const r = side.roomId && this.rooms.find((x) => x.id === side.roomId)

@@ -1714,6 +1714,10 @@ Things that are confusing or not finished. Each one is a job on the list.
   "Sliding door" (Studio panel); "Reset layout" (3D) / "Reset to preset" (Studio).
 - One-room finishes: the clicked floor or wall is not outlined in 3D (only the panel names it); the Studio cannot set
   them; two rooms of one floor group with different floors get no threshold strip in their doorway.
+- The building's outside: a building drawn with the architect's own 3D outside shape (Studio → Outside shape) keeps the
+  file's colours — the outside finish dresses the walls Plotline draws (the walked flat's, every tower without a shape).
+  The tower is built again for each choice (about half a second); the floor plates' edges stay plaster. Roof coverings,
+  railings and glass balcony fronts are their own work.
 
 **Site:** most neighbour heights are guesses (3 floors) — type the ones you know. The map may miss new buildings or keep
 torn-down ones (delete those; a building cannot be added by hand yet). The plot is where the middle of the open drawing
