@@ -1071,8 +1071,8 @@ would take glows (its closed rooms and the open floor round them). Then:
   - It takes about half a minute to read a sheet before "Point at a flat" shows (the BTI 2nd floor: 31 s), then a few
     seconds for the floor.
 - **Cancel** in the box stops it.
-- While it reads the sheet, the box says how far it is ("Reading the plan (text · 23 %)…"); the printed words take
-  the longest, up to a minute and a half on a big sheet.
+- While it reads the sheet, the box says what it is reading and how far it is: the printed words ("Reading the plan
+  (text · 23 %)…"), then the walls and rooms ("(graph · 70 %)…") — on a big sheet (Eastern Housing Sapphire) about a minute.
 - If it cannot finish, a message with a red dot at the bottom says why and nothing on the drawing has changed:
   **Try again** in it runs Auto-trace once more.
 - The trace replaces the walls and names; the drawing keeps its own name, project, floor, true north, site and outside
