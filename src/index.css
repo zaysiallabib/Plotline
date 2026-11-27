@@ -133,6 +133,7 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .slate-body > .label { padding-top: var(--s-3); border-top: 1px solid var(--line); }
 .slate h1 { margin: var(--s-5) 0 var(--s-4); font-size: var(--fs-3xl); text-wrap: balance; }
 .slate-line { max-width: 44ch; font-size: var(--fs-lg); color: var(--ink-2); }
+.slate-why { display: block; margin-top: var(--s-3); font-size: var(--fs-sm); color: var(--muted); overflow-wrap: anywhere; }
 .slate-actions { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s-3); margin-top: var(--s-6); }
 .slate .btn {
   display: inline-flex; align-items: center; justify-content: center; height: var(--touch); padding: 0 var(--s-5);

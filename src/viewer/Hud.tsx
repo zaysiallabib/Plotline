@@ -15,6 +15,7 @@ import { sqmToSqft, takesLowKind, type Room, type Wall } from '../core'
 import { levelName, topFloor, type Tower } from '../data/building'
 import type { TowerHit } from '../three/building'
 import type { PlotlineScene, SceneMode } from '../three/PlotlineScene'
+import { drawingTitle } from './defaults'
 import { noteAt } from './Notes'
 import { NAME, QUALITIES, read, readout, readoutText, tab, write, type Quality } from './quality'
 
@@ -206,7 +207,8 @@ export function towerCard(t: Tower, h: TowerHit, finger: boolean, outside = fals
   const untraced = !!t.UNTRACED?.includes(h.k)
   const level = untraced ? undefined : f?.standIns?.find((s) => t.LEVELS?.[s] !== undefined)
   const u = h.flat ? t.FLATS[h.flat.stem]?.unit : level ? t.FLATS[level].unit : null
-  const line = untraced ? 'Not traced yet' : !u || u.name === title ? undefined : /sft/i.test(u.name) || !(u.areaSqft > 0) ? u.name : `${u.name} · ${u.areaSqft} sft`
+  const name = u && drawingTitle(u)
+  const line = untraced ? 'Not traced yet' : !u || name === title ? undefined : /sft/i.test(name!) || !(u.areaSqft > 0) ? name! : `${name} · ${u.areaSqft} sft`
   const tap = finger ? 'Tap again' : 'Click'
   // staff with Finishes open (outside): a click chooses for the building's outside there — on the roof itself, its roof
   if (outside) return { title, line, act: h.k > topFloor(t) && !h.wall ? `${tap} to change the roof` : `${tap} to choose its outside` }
@@ -279,10 +281,10 @@ export function floorTitle(t: Tower, k: number, stem: string): FloorTitle {
   const level = f?.standIns?.find((s) => t.LEVELS?.[s] !== undefined)
   const on = f?.flats.includes(stem) ? [stem] : (f?.flats ?? [])
   const units = (on.length ? on : level ? [level] : []).map((s) => t.FLATS[s].unit)
-  const name = units.map((u) => u.name).join(', ')
+  const name = units.map(drawingTitle).join(', ')
   if (!name || name === word) return { name: word }
   const u = units.length === 1 && !level ? units[0] : null
-  return { label: word, name, size: u && u.areaSqft > 0 && !/sft/i.test(u.name) ? `${u.areaSqft} sft` : undefined }
+  return { label: word, name, size: u && u.areaSqft > 0 && !/sft/i.test(name) ? `${u.areaSqft} sft` : undefined }
 }
 
 /** The bottom hint: the keys of what is on (staff: the editors'); null while a piece is in hand (its tag says it). `finger`: what a finger does, no keys. */

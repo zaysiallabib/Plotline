@@ -523,6 +523,8 @@ that flat, open its own address (`/u/…`, or **Preview 3D** in the Studio).
 The roof over the whole building (staff; buyers see it, never its choices). In the **Building** view open **Finishes** and
 click the roof on the tower (or **Change** beside "The roof · the whole building" at the foot of Finishes): the panel's top
 block is the roof.
+- A building that stands in its architect's 3D shape (an IFC's) keeps the file's own roof — its kind and slopes are the
+  file's: the block shows its covering's swatches only ("Its shape is the architect's file's: its covering changes here").
 - **Its covering**, as swatches: a flat roof — **Plain roof slab** (as before), **Gravel**, **Green roof**, **Terracotta
   terrace tiles**; a pitched roof — **Grey metal sheet** (as before), **Clay tiles**, **Slate**, **Zinc standing seam**,
   **Timber shingles**, **Corrugated metal**. The chosen one is the white row; no price (it is not a buyer's choice).
@@ -784,7 +786,9 @@ The whole tower, floor by floor: point at a floor to see which it is, open a fla
 - **The roof:** a building whose rooftop was not traced still has one — the top floor's slab, a parapet along its outer
   edge, the stair and lift head room with the water tanks on it, and the roof garden its data lists (the Demo tower). A
   building made in the Studio gets the head room over the rooms its top floor's drawing names a stair or a lift ("Stair",
-  "Lift", "Lift lobby") — name them so on the plan. A traced rooftop (Sheltech) shows as drawn.
+  "Lift", "Lift lobby") — name them so on the plan. A traced rooftop (Sheltech) shows as drawn. A building that is its
+  ground floor alone (a one-storey house on **Ground floor**) has its roof over its rooms — never over its lawn, drive or
+  pool — and every wall and floor of it answers a click as a flat's does (Finishes → its outside card).
 - **A pitched roof** (gable, hip, shed or mansard; staff set it, §3 "The roof", or the Studio's project column, §6): drawn
   over the top floor instead of the parapet, in its covering (clay tiles, slate, zinc, shingles, corrugated metal), at its
   pitch, with its overhang, fascia, soffit and roof windows; a flat roof can be gravel, a green roof or terrace tiles, with a
@@ -909,7 +913,10 @@ drawing.
 - After the fields, when signed in: where your work stands online (**Saving…**, **Saved · just now**, …; "Accounts"
   below).
 - **Right:** **↶ Undo** / **↷ Redo**, **Auto-trace** (once a plan picture is in), **Preview 3D** (the blue button: your
-  drawing in the 3D view, in a new tab), **Building** (shows / hides the project's column, §6), and **⋯**.
+  drawing in the 3D view, in a new tab — a drawing of a project stands in its building there: **Building** shows the tower
+  with your drawing on its floor, the floor list marks that floor, and Finishes dresses its outside as on **Show building**;
+  a picture you traced on an empty Studio is a one-floor building from the start), **Building** (shows / hides the
+  project's column, §6), and **⋯**.
 - While the Studio is empty, **Choose files…** in the middle is the blue button and Preview 3D is plain: there is
   only ever one blue button. With no wall drawn yet (an empty Studio, or only a 3D model's outside shape), Preview 3D
   says "Nothing drawn yet to show in 3D" instead of opening a 3D page with nothing to build.
@@ -1391,7 +1398,8 @@ brick / Ziegel / tiili / tegel / baksteen / mursten / ladrillo; render / Putz / 
 hout; zinc / Zink / Blech / metal; concrete / Beton / betoni; stone / Stein / Kivi / granit; Eternit / fibre cement / Viroc;
 glass — and dresses the building with Plotline's own finishes: the outer layer of each outer wall is that wall's outside
 finish, the commonest the whole building's (a render takes its colour from the file: beige crépi is Sand render); the
-roof takes the covering its words say (tiles, zinc, slate, shingles, gravel, a green roof, terrace tiles) and its kind
+roof takes the covering its words say (tiles, zinc, slate, shingles, gravel, a green roof, terrace tiles) — a roof that
+names none and that the file leaves pure black (a colour never set, as Revit's "Generic") the plain roof slab — and its kind
 from the file (gable, hip, shed, flat; a freeform roof keeps the file's own shape), its pitch from its slopes; a railing
 (IfcRailing) makes the low wall under it glass, metal or timber (**Made of**), or becomes a low wall of its own along a
 balcony's edge, its **Colour** from its material's words ("Steel, Paint Finish, Dark Gray" anthracite, "Iron, Cast" black,
@@ -2021,5 +2029,5 @@ screen.
 | **This link no longer opens a flat.** | A buyer link (`/s/…`) was turned off, has expired, or never existed. | Buyer: ask your sales contact for a fresh link. Staff: make one with ⋯ → **Share link**. |
 | **The flat could not be fetched.** | A buyer link could not reach the online database: no internet, or the database is not set up on this site. | Check the connection, **Try again**. If it keeps happening: [SETUP_SUPABASE_ON_VERCEL.md](SETUP_SUPABASE_ON_VERCEL.md). |
 | **No 3D on this device**, with the flat's plan | No WebGL 2 in this browser, or the 3D stopped twice even on Lite. | Try another browser (Firefox, Chrome or Edge) or another computer, then **Try again**. The plan beside it is the real plan. |
-| **Something broke here.** | A fault in the page itself (also when the site was updated while the page was open). | **Reload** (usually enough) or **Go back**. Staff: the details are in the browser's console (F12) — send them to the developer. |
+| **Something broke here.** | A fault in the page itself (also when the site was updated while the page was open). The small grey line under it is the fault's own words. | **Reload** (usually enough) or **Go back**. Staff: a screenshot of the page (with that grey line) says which step failed — send it to the developer; the full details are in the browser's console (F12). |
 | **Switched to Lite: the 3D stopped on this device.** (a line on the start screen) | The graphics gave up once; Plotline opened again on Lite. | Nothing — walk on. **Change** beside it picks another quality. |

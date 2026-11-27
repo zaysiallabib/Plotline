@@ -496,7 +496,12 @@ describe('the tower round a walked flat (three/building.ts, session 31)', () => 
     const b = bottoms(B, rb)
     expect(b.filter((y) => Math.abs(y) < 1e-6).length).toBeGreaterThan(b.length / 2)
     expect(b.some((y) => Math.abs(y - 0.1) < 1e-6)).toBe(true)
-    // a lid over the plate's top: nothing over the flat
+    // a lid over the plate's top (the flat's walls reach the slab: the Studio's 10 ft walls): the slab's top skin is left over
+    // it, its roof seen from outside (anybuilding: a Studio-made top floor showed its rooms from the Building view)
+    const skin = plate(A, ra, 0.2, 0.2, A.walls, { ...lid, y: 0.205 }).map((g) => (g.computeBoundingBox(), g.boundingBox!))
+    expect(skin.length).toBe(ra.filter((r) => r.kind !== 'shaft').length + A.walls.length)
+    for (const b of skin) expect([+b.min.y.toFixed(3), +b.max.y.toFixed(3)]).toEqual([0.18, 0.2])
+    // a flat whose walls stand well through the slab (an attic under a pitched roof): nothing over it — a skin would cross its rooms
     expect(plate(A, ra, 0.2, 0.2, A.walls, { ...lid, y: 0.3 })).toHaveLength(0)
   })
 })
@@ -622,6 +627,35 @@ describe('the Building view: rooms behind every window, the picked flat lit (ses
     const { eye, target } = b.view(0)
     const r = core.unitBounds(u)
     expect(eye.distanceTo(target)).toBeGreaterThan(Math.hypot(r.maxX - r.minX, r.maxY - r.minY))
+  })
+
+  test('a one-storey building (its ground floor alone): a roof over it, and the walked level picks in the Building view as a walked flat does — its floor, its outer walls — never drawn twice (anybuilding: no outside card opened, no roof)', async () => {
+    const THREE = await import('three')
+    const u = { ...bti.FLATS['type-a'].unit, id: 'solo' }
+    const t = projectTower(setSlot(newProject('p', 'House', { basements: 0, floors: 0, rooftop: false }), 0, u))
+    expect(t.LEVELS).toEqual({ solo: 0 })
+    const { Building } = await import('./building')
+    const b = new (Building as unknown as new (u: Unit, t: Tower, s: string, k: number, q: string) => Group & { make(): Generator<void>; pickAt(r: unknown): { k: number; wall?: { drawing: string } } | null; frame(m: string, q: string): void; highlight(k: number): void })(t.FLATS.solo.unit, t, 'solo', 0, 'high')
+    for (const _ of b.make()); // eslint-disable-line @typescript-eslint/no-unused-vars
+    ;(b as unknown as { want: () => void }).want = () => {} // (no models loaded here)
+    b.frame('building', 'high')
+    b.updateMatrixWorld(true)
+    const r = core.unitBounds(u)
+    const mid = (y: number) => new THREE.Vector3((r.minX + r.maxX) / 2, y, (r.minY + r.maxY) / 2)
+    expect(b.pickAt(new THREE.Raycaster(mid(30), new THREE.Vector3(0, -1, 0)))?.k).toBe(1) // the roof over it
+    expect(b.pickAt(new THREE.Raycaster(mid(1.5), new THREE.Vector3(0, -1, 0)))?.k).toBe(0) // its floor
+    const walls = Array.from({ length: 12 }, (_, i) => r.minY + ((i + 0.5) * (r.maxY - r.minY)) / 12).map((z) => b.pickAt(new THREE.Raycaster(new THREE.Vector3(r.minX - 20, 0.4, z), new THREE.Vector3(1, 0, 0))))
+    expect(walls.filter((h) => h?.k === 0 && h.wall?.drawing === 'solo').length).toBeGreaterThan(6)
+    // the scene draws the walked level: its proxy is never seen — in any view, nor after a cut is taken away
+    const proxies = b.children.filter((o) => o.userData.proxy && !(o as Mesh).isMesh)
+    expect(proxies).toHaveLength(1)
+    const seen = () => proxies.filter((o) => o.visible).length
+    expect(seen()).toBe(0)
+    b.highlight(-1)
+    b.highlight(0)
+    b.frame('walk', 'high')
+    b.frame('building', 'high')
+    expect(seen()).toBe(0)
   })
 
   test('a floor whose drawing is still a picture to trace stands as a block of the nearest traced floor: one traced floor and three not yet draw four storeys (qa4fix)', async () => {
@@ -1109,8 +1143,8 @@ describe('round the flat the tower is a handful of draws (session 31 perf: the c
   })
 })
 
-/** the tower above, built before this lane (s31/redesign 0382eba): every vertex where it was — and since s31 lowwall with its low walls' caps and balconies' slab edges (558304:74884131.6 without) */
-const UNCHANGED = '565288:76407276.8'
+/** the tower above, built before this lane (s31/redesign 0382eba): every vertex where it was — and since s31 lowwall with its low walls' caps and balconies' slab edges (558304:74884131.6 without), since s31 anybuilding with the slab's top skin over the walked flat (plate's lid: 565288:76407276.8 without) */
+const UNCHANGED = '576928:78304696.6'
 
 describe('the storeys the set prints (session 31 heights: data/building/storeys.ts)', () => {
   const stop = { addColorStop: () => {} }
@@ -1169,6 +1203,19 @@ describe('the storeys the set prints (session 31 heights: data/building/storeys.
       return n
     }
     expect(plaster(b)).toBeLessThan(plaster(solid))
+  })
+
+  test('the roof over a walked top floor of the Studio’s 10 ft walls lies over its own roof: the Building view never looks into its rooms nor sees its wall tops (anybuilding)', async () => {
+    const { ROOF_M } = await import('./render')
+    const u = { ...(await fixture()), floor: 1 }
+    const b = await built(projectTower(makeProject('p', u, 1, 1, 'none')), u, 1)
+    const own = Math.max(...u.walls.map((w) => w.heightM)) + ROOF_M // the walked flat's roof (Look): its walls' tops and the slab on them
+    expect(own).toBeGreaterThan(b.levelOf(2)) // (3.048 + 0.155 over a 3.198 m storey: why it showed)
+    // straight down onto its rooms' middles from the sky: the roof's slab is the first thing, above the flat's own roof
+    const THREE = await import('three')
+    const tops = core.deriveRooms(u).filter((x) => x.kind !== 'shaft' && x.areaSqm > 6).map((x) => new THREE.Raycaster(new THREE.Vector3(x.centroid.x, 50, x.centroid.y), new THREE.Vector3(0, -1, 0)).intersectObject(b, true).find((h) => h.object.visible)?.point.y ?? -1)
+    expect(tops.length).toBeGreaterThan(3)
+    for (const y of tops) expect(y).toBeGreaterThan(own)
   })
 
   test('a project whose set has no section: the very same tower, vertex for vertex, as before this lane', async () => {

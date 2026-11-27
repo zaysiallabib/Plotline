@@ -1684,13 +1684,16 @@ export default function StudioApp() {
   const [previewed, setPreviewed] = useState<Id | null>(null)
   const [sent, setSent] = useState<Id | null>(null)
   const openKey = () => projRef.current?.drawing ?? stateRef.current.unit.id
+  /** the open drawing as the 3D view gets it: by its id in its project (Auto-trace gives the draft a new one), so the preview
+   *  stands in its building — Building view, the outside card, the roof — as Show building's floor does */
+  const previewOf = (u: Unit): Unit => ({ ...u, id: openKey() })
   /** the draft in the 3D view, new tab; `query`: what that tab should do (`?export=glb`: save the 3D model, then stay) */
   const previewWith = useCallback(
     (query: string) => {
       setPreviewed(openKey())
       if (query) setSent(openKey())
       try {
-        localStorage.setItem(PREVIEW_KEY, JSON.stringify(stateRef.current.unit))
+        localStorage.setItem(PREVIEW_KEY, JSON.stringify(previewOf(stateRef.current.unit)))
       } catch {
         return toast('Draft too large to autosave — export your JSON often.')
       }
@@ -1738,7 +1741,7 @@ export default function StudioApp() {
       u = { ...u, floor: from }
     }
     try {
-      localStorage.setItem(PREVIEW_KEY, JSON.stringify(u))
+      localStorage.setItem(PREVIEW_KEY, JSON.stringify(previewOf(u)))
     } catch {
       return toast('Draft too large to autosave — export your JSON often.')
     }

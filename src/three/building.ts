@@ -78,6 +78,11 @@ const DECK_M = 0.03
 const CAP_M = { plaster: 0.06, metal: 0.03, stone: 0.08 }
 /** Look's slab under the current flat (render.ts SLAB_M) */
 const LOOK_SLAB = 0.15
+/** the least of a plate left over the walked flat (plate's lid): the slab's top face, seen from outside */
+const SKIN_M = 0.02
+/** how far the walked flat's own roof may reach past the slab over it and still be roofed by it: the Studio's 10 ft walls under
+ *  a 3.198 m storey reach 5 mm past; farther, its walls stand through the slab (an attic under a pitched roof) and it keeps none */
+const REACH_M = 0.05
 /**
  * A traced level drawn in full stands on a plate whose top is this far under its floors (screed + tile): a plate top in
  * the floors' own plane fought them in stripes from the Building view's distance (the roof deck read as a moiré).
@@ -241,10 +246,12 @@ export type Lid = { over: (p: Pt) => boolean; y: number }
 /**
  * A flat's floor plate, top at `top`, `h` thick: room polygons (not shafts: open to the sky) + a strip under every wall
  * to its faces (`walls`: only those — a rooftop's slab over its closed rooms must not lay a beam over every parapet). A
- * piece over the walked flat (`lid`, by its room's middle or its wall's) starts no lower than the lid; none left: no piece.
+ * piece over the walked flat (`lid`, by its room's middle or its wall's) starts no lower than the lid, but keeps its top
+ * SKIN_M: a flat whose walls reach the slab (the Studio's 10 ft walls under a 3.198 m storey) had no roof over it from outside.
  */
 export function plate(unit: Unit, rooms: Room[], top: number, h: number, walls: Wall[] = unit.walls, lid?: Lid): THREE.BufferGeometry[] {
-  const bottom = (p: Pt) => (lid?.over(p) ? Math.max(top - h, lid.y) : top - h)
+  // (a flat whose walls stand well past the slab — an attic's, under a pitched roof — keeps no piece: a skin would cross its rooms)
+  const bottom = (p: Pt) => (lid?.over(p) ? (lid.y < top + REACH_M ? Math.min(Math.max(top - h, lid.y), top - SKIN_M) : lid.y) : top - h)
   const out: THREE.BufferGeometry[] = []
   for (const r of rooms) {
     const b = r.kind === 'shaft' ? top : bottom(r.centroid)
@@ -577,9 +584,13 @@ export class Building extends THREE.Group {
     const edges = (u: Unit, rooms: Room[]) => balconyEdgeParts(u, rooms).map(([id, g]) => edgeOf(g, id))
 
     // floors 0..top: a shell per flat (and his traced ground floor); the roof (top + 1): the top floor's plates and parapet
-    // (its flats, or the massing standing in for them: a tower of levels and typical shells has no flats)
+    // (its flats, or the massing standing in for them: a tower of levels and typical shells has no flats) — a building that is
+    // its traced ground floor alone (a one-storey house) roofed over that level (its rooms under a roof: roofRooms)
     const topF = FLOORS.find((f) => f.floor === top)
-    const roofOn = topF ? [...topF.flats, ...(topF.standIns ?? []).filter((s) => t.LEVELS?.[s] === undefined)] : []
+    const onTop = topF ? [...topF.flats, ...(topF.standIns ?? [])] : []
+    const roofOn = onTop.some((s) => t.LEVELS?.[s] === undefined) ? onTop.filter((s) => t.LEVELS?.[s] === undefined) : onTop
+    /** what a roof covers of drawing s: a flat's every room, a level's rooms but its open zones (a lawn, a drive, a pool) */
+    const roofRooms = (s: string) => (t.LEVELS?.[s] === undefined ? this.roomsOf(s) : this.roomsOf(s).filter((r) => !core.isOutdoor(r.kind)))
     for (const { floor: k, flats, standIns = [] } of [...FLOORS.filter((f) => f.floor >= 0 && f.floor <= top), { floor: top + 1, flats: [], standIns: roofOn }]) {
       yield
       const y = this.levelOf(k)
@@ -587,10 +598,14 @@ export class Building extends THREE.Group {
       for (const s of [...flats, ...standIns]) {
         const { unit: u } = FLATS[s]
         const at = (g: THREE.BufferGeometry) => g.translate(this.shift(s).x, y, this.shift(s).y)
-        const rooms = this.roomsOf(s)
+        const rooms = roof ? roofRooms(s) : this.roomsOf(s)
         if (roof) {
           if (hasShell) continue
-          for (const [r, gs] of this.edgesBy(s, k, plate(u, rooms, roofLevel.length ? -UNDER_LEVEL_M : 0, PLATE_M, u.walls, this.lid(s, k)).map(at))) put(k, r, ...gs)
+          // (over the walked top floor its own roof — Look's, to its walls' tops — may reach past the roof's datum: the Studio's
+          // 10 ft walls under a 3.198 m storey by 5 mm. The slab then lies a skin over it, or its wall tops drew lines on the roof)
+          const lid = this.lid(s, k)
+          const deckTop = roofLevel.length ? -UNDER_LEVEL_M : !pitched && lid && lid.y < REACH_M ? Math.max(0, lid.y + SKIN_M) : 0
+          for (const [r, gs] of this.edgesBy(s, k, plate(u, rooms, deckTop, PLATE_M, u.walls, lid).map(at))) put(k, r, ...gs)
           if (roofLevel.length) continue
           // parapet: the walls with open air on one side (outside every flat of the floor below), 1.1 m (or as the set prints it), no openings
           const others = standIns.filter((o) => o !== s)
@@ -642,7 +657,9 @@ export class Building extends THREE.Group {
         const skip = k === floor && !mine && !level ? sharedWith(unit, walkedRooms, u, rooms, this.shift(s)) : none
         if (!mine) this.flats.push({ s, k, home: `${s}|${k}`, level, at: this.middleOf(s, k), lamps: lampTable(rooms.length), scale: { value: 0 }, material: null, rooms: null, things: null, skip: skip.rooms })
         if (level) {
-          if (!mine) this.addLevel(s, k) // a traced level (ground, a common floor) in full; the one walked: the scene draws it
+          // a traced level (ground, a common floor) in full; the one walked: the scene draws it, this its pick proxy (the Building
+          // view names its floor and its walls — Finishes' outside card — as a walked flat's proxy does)
+          this.addLevel(s, k, Infinity, mine)
           continue
         }
         const wallH = this.wallsOf(k)
@@ -1129,7 +1146,7 @@ export class Building extends THREE.Group {
    * material in a group at the level's place, cut with its floor (userData.level); its outdoor pieces load later
    * (furnish). `cap`: no wall above it (a basement under the street).
    */
-  private addLevel(s: string, k: number, cap = Infinity): void {
+  private addLevel(s: string, k: number, cap = Infinity, proxy = false): void {
     const top = topFloor(this.t)
     const lid = this.lid(s, k)
     const levels = keptIn(LEVELS, this.t)
@@ -1142,6 +1159,8 @@ export class Building extends THREE.Group {
     const group = new THREE.Group()
     group.position.set(this.shift(s).x, this.levelOf(k), this.shift(s).y)
     group.userData.level = k // a cut at a lower floor hides it (highlight)
+    group.visible = !proxy
+    group.userData.proxy = proxy // (frame and highlight keep it so)
     for (const [m, geo] of parts) {
       const mesh = new THREE.Mesh(geo, m === 'panes' ? this.panes : m instanceof THREE.Material ? m : materialFor(m, false, false, true))
       const flatOnly = m === BAY_PAINT || m === WATER || m === 'panes'
@@ -1152,7 +1171,7 @@ export class Building extends THREE.Group {
     }
     this.add(group)
     // what a buyer sees of it from outside: a ground floor's and a rooftop's outdoor pieces (trees, planters, deck furniture)
-    if (k === 0 || k > top) this.furnishing.push({ s, group })
+    if (!proxy && (k === 0 || k > top)) this.furnishing.push({ s, group })
   }
 
   /** addLevel's meshes' geometry, in the level's own frame, one per material ('panes': the tower's glass) */
@@ -1499,7 +1518,7 @@ export class Building extends THREE.Group {
       if (o === this.street || o.userData.overlay) continue
       const hide = cut && !(typeof o.userData.level === 'number' && o.userData.level <= k)
       if (hide && o.visible) (o.visible = false), (o.userData.cut = true)
-      else if (!hide && o.userData.cut) (o.visible = true), delete o.userData.cut
+      else if (!hide && o.userData.cut) (o.visible = !o.userData.proxy), delete o.userData.cut // (a pick proxy stays unseen)
     }
     this.placeInside()
     const geos = this.skins(k, this.pickedStems, 0.03)
