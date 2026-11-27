@@ -714,7 +714,8 @@ The whole tower, floor by floor: point at a floor to see which it is, open a fla
   list does. The card keeps to the screen at its edges; it goes while you drag the tower round.
 - **Staff, with Edit furniture on:** **Add** a piece from the library's **Outside** group (a sunshade, a canopy, an AC
   unit…) and point at the outside of the open flat's walls: it hangs there as in the Dollhouse (§3), and a click puts it
-  down. While a piece is in your hand, a click on the tower puts the piece down instead of opening a floor; Esc lets it go.
+  down. While a piece is in your hand, a click on the tower puts the piece down instead of opening a floor; Esc lets it go,
+  and so does opening **Finishes** (there a click on an outer wall opens its outside card); picking a piece closes Finishes.
 - **No new page:** the flat or level you click comes into the same 3D, as a stair brings a floor (§2): the tower stays on
   screen, the line at the bottom says where you are going ("Floor 8 …"), and the picture changes in one go — about 2–3
   seconds for a flat, longer the first time you open a ground floor with trees and play things (5 s on Lite, about 10 s
