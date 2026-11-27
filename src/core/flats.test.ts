@@ -181,3 +181,9 @@ describe("a European IFC's core (s31 bigifc): its stair, lift and corridor belon
     expect(flatsOf(u).map(([n]) => n)).toEqual(['Flat 1', 'Flat 2'])
   })
 })
+
+test('railOf: a low wall is what its kind says over a kerb and under 2.4 m; absent, a kerb or a storey wall: solid', () => {
+  const w = (heightM: number, lowKind?: core.LowWallKind) => core.railOf({ heightM, lowKind })
+  expect([w(1.1, 'glass'), w(0.45, 'grille'), w(1.8, 'chainlink'), w(2.39, 'fence')]).toEqual(['glass', 'grille', 'chainlink', 'fence'])
+  expect([w(1.1), w(0.2, 'glass'), w(0, 'glass'), w(2.4, 'railing'), w(3, 'timber')]).toEqual([null, null, null, null, null])
+})
