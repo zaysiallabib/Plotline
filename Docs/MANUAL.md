@@ -572,9 +572,11 @@ block is the roof.
   end of the wall", "Runs into a wall" (a parapet round the corner: above it is fine), or that it overlaps another piece.
   Other pieces (a sofa, a TV, a picture) stay inside: on an outside face they say "Outside the room".
 - **On every floor with this drawing:** a flat whose drawing stands on several floors (Floor plan A on floors 1, 2, 4,
-  6, 8) asks the first time you put down, move or delete one of its outside pieces: "Floor plan A is also on floors 2, 4,
-  6, 8. Put its outside pieces — sunshades, AC units, canopies, planters — on: **This floor only** · **All 5 floors with
-  this drawing**" (Cancel: this time this floor only, asked again next time). **All** puts the same piece in the same place
+  6, 8) asks the first time you pick up one of its outside pieces — from the library (Add → Outside), or with G — before it
+  is put down, so the first one already lands as you answer: "Floor plan A is also on floors 2, 4, 6, 8. Put its outside
+  pieces — sunshades, AC units, canopies, planters — on: **This floor only** · **All 5 floors with this drawing**"
+  (Cancel / Esc: nothing is picked up). A piece dragged, or deleted, asks after (Cancel there: this time this floor only,
+  asked again next time). **All** puts the same piece in the same place
   on every one of those floors — and moves or deletes it there when you move or delete it here — and the Building view shows
   them at once; the answer holds until the tab is closed (the furniture panel says "Outside pieces: every floor with this
   drawing"). Furniture inside never asks: each floor's own. Pieces placed one floor at a time before stay as they are.
@@ -1001,9 +1003,11 @@ had.
   shorter, or split the wall first (W, click on it).
 - A glass wall picked has **Solid band** (0 = glass to the floor): an opaque panel at the foot of its glass on every
   floor it stands on, as an office tower's curtain wall has over each slab — type its height (2'-6" is usual), then
-  **Band of**: **Dark glass** (back-painted, the start), **Metal** (anthracite) or **The outside walls** (the building's
-  outside finish — brick in a brick tower). The 3D card (**Edit ▾ → Openings**, click the glass wall) has the same two.
-  Less daylight comes in where the band is.
+  **Band at**: **Foot** (over the floor, the start), **Head** (under the ceiling, where many curtain walls hide the slab
+  and the ceiling void) or **Foot and head** (a band at each, each at most half the glass), and **Band of**:
+  **Dark glass** (back-painted, the start), **Metal** (anthracite) or **The outside walls** (the building's outside finish —
+  brick in a brick tower). The 3D card (**Edit ▾ → Openings**, click the glass wall) has the same three. Less daylight
+  comes in where a band is.
 - With a door picked: **H** flips the hinge side, **Shift+H** which way it swings.
 - **Curtains:** a window or sliding door in a bed, living, dining or study room gets a pair by itself when the other
   side is outside (a veranda, a shaft, open air); a glass wall never does. Doors and passages get none by themselves.
@@ -1348,7 +1352,7 @@ To see each kind without a file of your own: **Try a sample ▾** in the empty S
 | **DXF** `.dxf`, **SVG** `.svg` (a drawing made of lines) | One floor's walls, openings and room names read from the file, to check and finish as usual (on an empty Studio, a project of one floor: §6). Names in any script come through as written (a Bangla "শয়ন কক্ষ" too, even from a file older than AutoCAD 2007). A DXF's walls may be line pairs, polylines, hatches or multilines, a floor drawn as one outline with its partitions as single lines, or each room as its outline (a partition drawn as one line still splits its room); its doors and windows swings, blocks, glass lines, or a plain line or narrow rectangle on a door / window layer (on a layer of doors and windows, a plain line is a window); a door, window or sliding-door block standing in no wall (a front all of glass) is a wall of that opening; an SVG's groups are its layers ("Walls", "A-WALL"); an SVG with no named groups (a CAD print saved as SVG) has its lines sorted by pen like a PDF — the heaviest pen and grey wall fills are the walls. An SVG has no scale: the printed dimensions give it — check with S |
 | **DWG** `.dwg` (AutoCAD's own) | Once DWG is turned on ([SETUP_FORMATS.md](SETUP_FORMATS.md)): sent to an online converter, back as a DXF ("converting the DWG to DXF"); 10 a day. Not turned on: refused with how to save it as DXF — AutoCAD: type SAVEAS, pick "AutoCAD DXF" under Files of type; DraftSight: File → Save As → DXF; no CAD program: LibreCAD (free) opens the .dwg, then File → Save As → DXF. Drop the .dxf: nothing a plan needs is lost |
 | **PDF** `.pdf` (a brochure, or a print from the drawing program) | One page that is one floor plan opens at once. Several pages (an architect's set, a brochure), a page of several drawings, or an elevation on its own: **What is in this set** lists every drawing by kind (below, "Drop a whole set"); click a drawing's picture there to open it alone. A page whose lines make a clean plan opens as the drawing — a PDF has no layers, so its lines are sorted by pen: the heaviest pen and grey wall fills are the walls ("What was read from the file" names them); the scale printed on the sheet (`1/4" = 1'-0"`, `1:100`) is the scale, else the printed dimensions measured against their lines — check with S; a stair's "UP" / "DN" and a door or window tag ("D-16", "Win-18") never name a room; a page with no scale printed as words (a brochure page whose words are drawn as outlines) opens straight as the plan picture, its lines not read; any other page becomes the **plan picture** for S and Auto-trace. The message offers the other way: **Use it as a picture instead** / **Read its lines instead** |
-| **3D model** `.glb` `.gltf` `.obj` `.fbx` `.dae` `.stl` `.3dm` `.3ds` `.kmz` `.wrl` `.ply` | The building's **outside shape** only (no rooms), attached to the drawing open now, centred on it, its lowest point on the street (on every floor the drawing stands on in a project): the Building view shows it round your flat and the walk sees its facade through the windows. A model far smaller than a building (under 8 m across, or well under the drawing) asks once how big it is — **As it is: 7.8 m** or **78 m across (×10)** … —, the answer kept for the file's name. A material the file made fully see-through (a Collada habit: nothing would show) is drawn solid, and a coloured glass is toned to Plotline's glass (the notes say how many). A model with its pictures (or a `.gltf` with its `.bin`) in other files: drop the whole folder or a `.zip`, or pick the files together |
+| **3D model** `.glb` `.gltf` `.obj` `.fbx` `.dae` `.stl` `.3dm` `.3ds` `.kmz` `.wrl` `.ply` | The building's **outside shape** only (no rooms), attached to the drawing open now, its lowest point on the street (on every floor the drawing stands on in a project): the Building view shows it round your flat and the walk sees its facade through the windows. On a drawing read from a DXF or SVG it stands by the file's own origin — the architect's model and plans share it, so it lands exactly over the plan (the notes say "Stood on the drawing by the file's own origin") — when that puts it over the drawing; else (a drawing traced on a picture, a model placed on a city's survey point) it is centred on the drawing. An `.obj`, `.stl` or `.ply` names no up axis: read upright unless its header says Z up (a GIS export such as 3DBAG's city tiles) or, read so, it would lie on its side (a city tile far wider than tall) — then turned upright (the notes say which). A model far smaller than a building (under 8 m across, or well under the drawing) asks once how big it is — **As it is: 7.8 m** or **78 m across (×10)** … —, the answer kept for the file's name. A material the file made fully see-through (a Collada habit: nothing would show) is drawn solid, and a coloured glass is toned to Plotline's glass (the notes say how many). A model with its pictures (or a `.gltf` with its `.bin`) in other files: drop the whole folder or a `.zip`, or pick the files together |
 | **Locked files** `.rvt` `.pln` `.skp` `.max` `.blend` `.dwf` (and `.dwg` while off) | Refused, with the one-click export to ask for: Revit / ArchiCAD → IFC; SketchUp / 3ds Max / Blender → glTF, OBJ or FBX; AutoCAD → DXF |
 | A **folder**, a **.zip** or several files | The best file opens (an IFC first, then a 3D model, then a DXF / PDF; an architectural IFC before a structural one); the rest are its pictures and data. Several PDFs and nothing better (an architect's set sent as one PDF a sheet): all their pages in **What is in this set**, in the order of their names. A zip of pictures opens its first picture |
 
@@ -1390,8 +1394,10 @@ finish, the commonest the whole building's (a render takes its colour from the f
 roof takes the covering its words say (tiles, zinc, slate, shingles, gravel, a green roof, terrace tiles) and its kind
 from the file (gable, hip, shed, flat; a freeform roof keeps the file's own shape), its pitch from its slopes; a railing
 (IfcRailing) makes the low wall under it glass, metal or timber (**Made of**), or becomes a low wall of its own along a
-balcony's edge; a glass front keeps the file's mullion spacing and frame colour, and its solid panels (a curtain wall's
-spandrels) become its **Solid band** — metal when their material says so, else dark glass; a window's frame takes its colour from
+balcony's edge, its **Colour** from its material's words ("Steel, Paint Finish, Dark Gray" anthracite, "Iron, Cast" black,
+RAL 9016 white, birch light oak; stainless or aluminium stays silver); a glass front keeps the file's mullion spacing and frame colour, and its solid panels (a curtain wall's
+spandrels) become its **Solid band** — metal when their material says so, else dark glass, at the foot or the head of
+each storey's glass (or both) where the file's panels sit; a window's frame takes its colour from
 its names (white, anthracite / RAL 7016, black, timber); a gable wall stops at its eaves (the gable is in the outside
 shape). The outside shape wears the same pictures as Plotline's own walls, and **Finishes** in the 3D view shows each as
 chosen — change the whole building there (it changes the shape's walls too), or one wall, one floor, the frames, the
@@ -1477,7 +1483,10 @@ they make rooms); **Trace it instead** undoes it. The border, the title block an
 read, and so are the sheet's own symbols: the elevation and section markers round the plan (a circle with its number and
 its triangle), grid bubbles, door and window tags, north arrows, the stair's UP / DN arrow and every note's arrow, and the
 zigzag break line where the plan cuts through a stair. A door drawn open at 45° comes in as a door, hinged where it is
-drawn. **The floors stand over each other:** the lowest drawn floor is where the building stands, and every other floor
+drawn. What the architect drew with a wall's pen but is no wall is left out too: stair treads (four or more like lines at
+tread spacing), bath and kitchen fixtures (a tub, a WC, a counter: a closed shape on its own), a porch roof drawn outside
+the outer walls on the floor above (when a roof's words — ROOF, SLOPE, 4/12 — stand out there), and the rest of a lighter
+pen that drew mostly those; the message after the page says how many of each. **The floors stand over each other:** the lowest drawn floor is where the building stands, and every other floor
 read at a known scale is put on the floor it shares the most walls with (outer walls, the stair and lift shafts,
 columns) — the message says how many were stacked. A floor that is a picture to trace is lined up the same way, so what
 you trace on it lands over the floor below. A floor that shares too little with the others (a roof plan of slopes, a
@@ -1493,9 +1502,15 @@ this browser, and online for your company when signed in).
 ("GROUND FLOOR PLAN (LEFT PART)" / "(RIGHT PART)", "PART A" / "PART B") are one drawing, as two halves under one title
 already were; two titled apart ("Ground Floor" and "Ground Floor – Enhanced Accessible") stay two ways to build it. A
 brochure that prints a page a flat for the same floors ("TYPE-A", "TYPE-B" … each "LEVEL 1 to 11") asks in one row at the
-top of Plans: tick it to put those flats **side by side on one floor drawing** (each named by its page; their own lines when
-every one makes a plan, else one picture of them all to trace) — nothing on the pages says where each flat stands, so you
-move each into place in the Studio; left unticked, only the first flat goes on those floors, as before.
+top of Plans. **When every page prints a key plan** — the small drawing of the whole floor in a corner with that flat's
+place filled in (Rangs Torukabbo: dark green in the towers' outlines) — the row says so, and the tick puts the flats **on
+one floor drawing where their key plans show them**: each plan cut from its page and laid where its key marks it, all at
+the brochure's one scale, turned with a tower set at an angle, and a plan its key marks in several places (TYPE-C/G/K: one
+in each of three towers) laid in each — Torukabbo's 6 pages make its whole floor of 14 flats round their cores, ready to
+set the scale (S) once and trace. Otherwise the tick puts them **side by side on one floor drawing** (each named by its
+page; their own lines when every one makes a plan, else one picture of them all to trace) and you move each into place in
+the Studio. Left unticked, only the first flat goes on those floors, as before. The message after Build says which ("14
+flats on one floor where the brochure's key plans show them").
 
 **With a project open,** Build the project asks first: "Add the set's floors (G, 1, 2) to the project open now? Or make
 a new project" — **Add to this project**, **New project** or **Cancel** (Esc). Added, the set's floors stack on the
@@ -1515,7 +1530,9 @@ elevations' outline of the roof: a long side whose ridge runs its whole length i
 the ends a hip's. Levels are shown as the drawing prints them (+6.10 m over the ground floor), heights in metres (each field's name ends in "m": FLOOR TO FLOOR M).
 A mark with no number printed is measured on the drawing at its printed scale (or from a dimension printed between two
 level lines). Click any field and type over it — metres, or feet and inches with their marks (`10'-0"`, `+20'-0"`);
-red when it is no length; the roof's kind in its box. What you type is remembered by the drawing's title, like a kind. A
+red when it is no length; the roof's kind in its box. The roof stays on the top floor: type another floor to floor and
+the Ceiling, Roof level, Eave and Ridge move up or down with the top floor (shown in their fields); one you type over stays
+where you typed it. What you type is remembered by the drawing's title, like a kind. A
 section or elevation with no marks says "No level marks on it" — **Type its heights** opens its fields.
 
 Under the list, **Heights — how tall each storey is built** says what the project will be built to: the sections first,
@@ -1535,6 +1552,16 @@ its Dollhouse — its ceiling is at its storey's height; the drawing itself keep
 stands its storey: a low wall, a parapet, a planter edge keep theirs). The message after the build says "every storey as
 tall as its sections print (7 drawings)". A project with no heights read is drawn exactly as before.
 
+**Changing the heights after Build.** The project's column has a **Heights** line under **Kept from the drawing set**
+("Floor to floor 3.05 m · ceiling +5.79 · slab 0.15 · gable, eave +6.10, ridge +8.89 · from SECTION LOOKING NORTH and 6
+more"; a set with no levels read: "Floor to floor 3.20 m, as usual"). **Change** opens the same fields as under a section
+in the set — Floor to floor, Ceiling, Slab, Roof (Flat / Pitched / Hipped) and its levels — showing what the project is
+built to now. Type over one (another floor to floor moves the ceiling and the roof with the top floor, as in the set): it
+is kept when you press Enter or click away (the roof's kind at once), the line then ends
+"as you typed", and **Show building** draws every storey to the new heights (open a Building view already open again). A
+field in red is no length and keeps nothing. Empty every field and the project goes back to 3.20 m floor to floor.
+The line is not there for a building read from an architect's 3D file (its storeys come from the file).
+
 What it reads today, set by set: [SETS_SCOREBOARD.md](SETS_SCOREBOARD.md).
 
 ### Give the drawing back: DXF, 3D model, printed plan
@@ -1546,8 +1573,9 @@ From the ⋯ menu, what a developer or their architect asks for:
   **DOORS** (leaf, swing and the two jambs; a wide opening with no door is a block of its two jambs), **WINDOWS**,
   **COLUMNS**, **TEXT** (names and sizes; a raised floor's name sits at that height), **PLOTLINE_ZONES** (a level's flush
   lines), **PLOTLINE_KERBS** (walls of 20 cm or less) and **PLOTLINE_AXES_…** (each wall's centre line, one layer per
-  thickness — leave them in the file; a low wall's **Made of** and a wall's outside finish ride in the layer's name,
-  `PLOTLINE_AXES_500_LOW_GLASS`, `PLOTLINE_AXES_2540_OUT_BRICK_RED`, so a glass balustrade comes back glass and a brick
+  thickness — leave them in the file; a low wall's **Made of** (with a railing's **Colour**) and a wall's outside finish
+  ride in the layer's name, `PLOTLINE_AXES_500_LOW_GLASS`, `PLOTLINE_AXES_500_LOW_RAILING_ANTHRACITE`,
+  `PLOTLINE_AXES_2540_OUT_BRICK_RED`, so a glass balustrade comes back glass, an anthracite railing anthracite and a brick
   wall brick, the commonest finish the building's own). Dropped back untouched it opens exactly as it was ("Written by Plotline and not
   changed since"). Saved again by a CAD program it is read from its lines and layers ("… walls read from their centre
   lines, exactly as exported"): all 20 built-in flats and levels come back exactly the same, curved ramps and parking
@@ -1592,7 +1620,8 @@ its name in large type with **Rename**, **Delete** and **Close**; **Show buildin
 from the highest down, **Ground floor**, **Basement 1**, **Basement 2**… each with its drawing's name and, under it, where
 that drawing came from ("from page 7 · 2ND FLOOR PLAN · 1 : 48", "from Internal_Ground.dxf", "from
 LTU_A-House_redesign.ifczip · VÅNING 2", "traced on img_3.webp"); then the open drawing (**Open now**), **Floor plans**,
-**Kept from the drawing set** (a set's elevations, sections, site and schedules by kind), **Site** (where the building
+**Kept from the drawing set** (a set's elevations, sections, site and schedules by kind), **Heights** (how tall each storey is
+built, with **Change**: §5 Changing the heights after Build), **Site** (where the building
 stands: **Open** opens the Site panel, as ⋯ → Site) and, signed in to a company, **Team**: **Members** and **Links** open
 your account card on that list (as ⋯ → your email).
 
@@ -1907,8 +1936,8 @@ Things that are confusing or not finished. Each one is a job on the list.
   whole-floor drawing (the Studio's way) knows its neighbours. In the Building view a piece can be added, not moved or
   deleted (do that in the Dollhouse). On the other floors of the same drawing a flat's outside pieces (put there with
   **All N floors with this drawing**, §3) show only where the Building view draws furniture (by quality), and lit as the inside.
-- A low wall's **Made of** is kept in the drawing, the 3D and the Building view, but not in a DXF given back (it comes back
-  solid), and an architect's file (IFC) brings its railings as its own shape, not as a Made of. With Finishes open, a
+- A low wall's **Made of** and a railing's **Colour** are kept in the drawing, the 3D, the Building view and a DXF given back
+  (in its centre line's layer); an architect's file (IFC) sets them from its railings (IfcRailing). With Finishes open, a
   click on a railing or glass front offers the balcony's wall paint (its own colour is under Edit openings → Colour). The
   daylight lets a glass front, a railing, a grille or a chain-link through (a glass-fronted veranda is nearly as bright as an
   open one, a timber railing a little less, a board fence little); the room behind it was already lit as through an open

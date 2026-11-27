@@ -1333,6 +1333,8 @@ describe("the building's outside (session 31 facade): what the tower's walls and
       t.FLATS['type-b'].unit = glass(save, { spandrelM: 0.9 })
       const b = await tower({ ...A, floor: 2 })
       expect([3, 5, 8].map((k) => count(b, DARK, k) > 0)).toEqual([true, true, true])
+      t.FLATS['type-b'].unit = glass(save, { spandrelM: 0.9, spandrelAt: 'both' })
+      expect(count(await tower({ ...A, floor: 2 }), DARK, 3)).toBeGreaterThan(0) // (a band at the head and the foot)
       t.FLATS['type-b'].unit = glass(save, { spandrelM: 0.9, spandrel: 'outside' })
       expect(count(await tower({ ...A, floor: 2 }, { s_outside: 'fo_out_brick_red' }), DARK)).toBe(0)
       t.FLATS['type-b'].unit = glass(save, {})

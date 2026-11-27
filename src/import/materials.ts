@@ -13,7 +13,7 @@
  * masonry with no other word as brick. Anything else is unknown: the wall
  * keeps the plaster and the name is listed once in "What was read from the file", where a person maps it (remembered).
  */
-import type { LowWallKind } from '../core'
+import { railColors, type LowWallKind, type RailColor } from '../core'
 
 /** what a name is made of; `skip`: never seen on the outside (or names nothing) */
 export type MaterialClass = 'skip' | 'glass' | 'fibre' | 'render' | 'block' | 'timber' | 'brick' | 'stone' | 'metal' | 'concrete' | 'paint'
@@ -184,6 +184,34 @@ export function toneGlass([r, g, b, a]: [number, number, number, number]): [numb
   const k = 0.85
   const [tr, tg, tb] = [0x2f / 255, 0x46 / 255, 0x44 / 255]
   return [r + (tr - r) * k, g + (tg - g) * k, b + (tb - b) * k, Math.min(0.4, Math.max(0.18, a))]
+}
+
+/**
+ * A railing's own colour (core Wall.railColor) from its material, type and style names, as railing `kind` offers it: a
+ * colour said (black, anthracite / dark grey, white — in the corpus's languages, RAL numbers), else what its metal or timber
+ * is (stainless, galvanised, aluminium: silver; cast or wrought iron: black; teak, walnut, oak / birch: light oak). Null: not
+ * told, or its kind's own colour (nothing to keep: drawn as before).
+ */
+export function railColor(names: string[], kind: LowWallKind): RailColor | null {
+  const s = names.map(plain).join(' | ')
+  const black = /black|schwarz|musta|noir|negro|\bnero|zwart|\bsort\b|svart|9005|9011|9004/
+  const timber = kind === 'timber' || kind === 'fence'
+  const c: RailColor | null = WORDS.dark.test(s)
+    ? black.test(s) ? 'black' : 'anthracite'
+    : WORDS.white.test(s)
+      ? 'white'
+      : timber
+        ? /teak|tiikki|\bteck/.test(s) ? 'teak'
+          : /walnut|nussbaum|pahkina|valnot|noyer|nogal|\bnoce/.test(s) ? 'walnut'
+          : /\boak\b|eiche|tammi|\bek\b|\beik\b|eiken|chene|roble|rovere|carvalho|birch|birke|koivu|bjork|\bberk|bouleau|abedul|betulla/.test(s) ? 'oak'
+          : /weather|verwitter|\bgrey|\bgray|\bgrau|harmaa/.test(s) ? 'weathered'
+          : null
+        : /cast ?iron|iron, cast|wrought|gusseisen|schmiedeeisen|valurauta|\bfonte\b|hierro fundido|ghisa/.test(s)
+          ? 'black'
+          : /stainless|edelstahl|rostfrei|inox|ruostumat|rustfri|rostfri|roestvrij|galvan|verzink|sinkit|alumin|\balu\b|silver|silber|hopea|argent|chrom/.test(s)
+            ? 'silver'
+            : null
+  return c && railColors(kind).includes(c) && c !== railColors(kind)[0] ? c : null
 }
 
 /** A window's or a curtain wall's frame (finishes.ts FRAMES_SLOT) from its material / style names; null: not told. */

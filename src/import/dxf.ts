@@ -462,7 +462,7 @@ export async function importDxf(text: string, name: string, { layerRoles: mine, 
     const notes = [`Written by Plotline and not changed since: opened exactly as it was exported (${own.walls.length} walls, ${own.walls.reduce((a, w) => a + w.openings.length, 0)} openings, ${own.roomLabels.length} names). Changed in a CAD program, it would be read from its lines.`]
     // (its outside finishes: in its centre lines' layer names, which the comment copy does not hold)
     const dressed: { pts: Pt[]; thicknessM: number; finish: string }[] = []
-    for (const m of text.matchAll(/POLYLINE\r?\n8\r?\n(PLOTLINE_AXES_(\d+)(?:_LOW_[A-Z]+)?_OUT_([A-Z0-9_]+))\r?\n[\s\S]*?VERTEX\r?\n8\r?\n\1\r?\n10\r?\n(\S+)\r?\n20\r?\n(\S+)[\s\S]*?VERTEX\r?\n8\r?\n\1\r?\n10\r?\n(\S+)\r?\n20\r?\n(\S+)/g))
+    for (const m of text.matchAll(/POLYLINE\r?\n8\r?\n(PLOTLINE_AXES_(\d+)(?:_LOW_[A-Z]+(?:_[A-Z]+)?)?_OUT_([A-Z0-9_]+))\r?\n[\s\S]*?VERTEX\r?\n8\r?\n\1\r?\n10\r?\n(\S+)\r?\n20\r?\n(\S+)[\s\S]*?VERTEX\r?\n8\r?\n\1\r?\n10\r?\n(\S+)\r?\n20\r?\n(\S+)/g))
       dressed.push({ pts: [{ x: +m[4], y: -m[5] }, { x: +m[6], y: -m[7] }], thicknessM: +m[2] / 1e4, finish: `fo_out_${m[3].toLowerCase()}` })
     const outside = dressed.length ? outsideRecordOf(own, finishesOn(own, dressed)) : undefined
     return { format: 'dxf', storeys: [{ name: own.name || 'Floor', elevationM: 0, unit: own }], notes, unitScale: 1, origin: { x: 0, y: 0 }, ...(outside ? { outside } : {}) }

@@ -17,7 +17,7 @@
 import * as THREE from 'three'
 import * as core from '../core'
 import type { Id, LowWallKind, Pt, Room, RoomKind, Unit, Wall } from '../core'
-import { isGlazing, spandrelOf } from './openings'
+import { glassOf, isGlazing } from './openings'
 
 /** plan x, plan y, height */
 type V3 = [number, number, number]
@@ -350,8 +350,8 @@ export function* bakeSteps(unit: Unit, rooms: Room[], cover: Pt[][] = [], blocks
       const through = (tau: number, u0: number, u1: number, z0: number, z1: number) =>
         outdoor(other) ? rect(w, u0, u1, z0, z1, tau * skyOf(other, cover), null, s[0]?.id === r.id ? -1 : 1) : rect(w, u0, u1, z0, z1, tau, other)
       // a glass wall (openings.ts isGlazing) lets more through than a window's sashes and curtains
-      // (a glass wall's spandrel band, openings.ts spandrelOf: opaque)
-      for (const o of w.openings) through(isGlazing(o) ? 0.85 : (TAU[o.kind] ?? 0.5), o.offsetM, o.offsetM + o.widthM, o.sillM + spandrelOf(o), o.sillM + o.heightM)
+      // (a glass wall's spandrel bands, openings.ts glassOf: opaque)
+      for (const o of w.openings) through(isGlazing(o) ? 0.85 : (TAU[o.kind] ?? 0.5), o.offsetM, o.offsetM + o.widthM, o.sillM + glassOf(o)[0], o.sillM + glassOf(o)[1])
       // a parapet / planter wall lower than the room: open above it
       if (w.heightM < h - 0.05) through(TAU.gap, 0, frames.get(id)!.lengthM, w.heightM, h)
       // a railing, a glass front, a fence: through it too, up to its top (its gates, the openings above, are passages already)

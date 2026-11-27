@@ -70,11 +70,12 @@ const NOTE_H = 0.14
 
 /**
  * A wall's centre-line layer (session 31 ifcmap): its thickness in tenths of a millimetre, then what a low wall is made of
- * (core Wall.lowKind) and its outside finish (an outside option id without its fo_out_), so a CAD program's save keeps them:
- * PLOTLINE_AXES_2540, PLOTLINE_AXES_500_LOW_GLASS, PLOTLINE_AXES_2540_OUT_BRICK_RED. Read back by plan2d.ts (AXES).
+ * (core Wall.lowKind) with a railing's own colour (Wall.railColor) and its outside finish (an outside option id without its
+ * fo_out_), so a CAD program's save keeps them: PLOTLINE_AXES_2540, PLOTLINE_AXES_500_LOW_GLASS,
+ * PLOTLINE_AXES_500_LOW_RAILING_ANTHRACITE, PLOTLINE_AXES_2540_OUT_BRICK_RED. Read back by plan2d.ts (AXES).
  */
-export const axisLayer = (w: Pick<Wall, 'thicknessM' | 'lowKind'>, out?: string): string =>
-  `PLOTLINE_AXES_${Math.round(w.thicknessM * 1e4)}${w.lowKind ? `_LOW_${w.lowKind.toUpperCase()}` : ''}${out?.startsWith('fo_out_') ? `_OUT_${out.slice(7).toUpperCase()}` : ''}`
+export const axisLayer = (w: Pick<Wall, 'thicknessM' | 'lowKind' | 'railColor'>, out?: string): string =>
+  `PLOTLINE_AXES_${Math.round(w.thicknessM * 1e4)}${w.lowKind ? `_LOW_${w.lowKind.toUpperCase()}${w.railColor ? `_${w.railColor.toUpperCase()}` : ''}` : ''}${out?.startsWith('fo_out_') ? `_OUT_${out.slice(7).toUpperCase()}` : ''}`
 
 /** `outside`: each wall's outside finish as the building's outside record resolves it (an option id), by wall id — kept in its centre line's layer. */
 export function writeDxf(unit: Unit, outside: Record<Id, string> = {}): string {

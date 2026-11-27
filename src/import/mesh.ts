@@ -7,7 +7,10 @@
  * UNITS. A .3dm says its unit system, an .fbx its UnitScaleFactor (cm × factor), a .dae its <unit meter>, glTF is metres
  * by definition; .obj / .stl say nothing → guessed from the extent (guessUnit): a building reads 6–200 m tall or wide.
  * UP AXIS. glTF / FBX / DAE are Y-up as three loads them (FBX and DAE turn themselves); Rhino is Z-up (turned here); OBJ
- * / STL say nothing → Y-up assumed (the Studio's Turn / Floor height fields fix the rest by hand). The guesses go in `notes`.
+ * / STL / PLY say nothing → Y-up unless their header or their box says Z up (zUpGuess: a city tile, a GIS export); the
+ * Studio's Turn / Floor height fields fix the rest by hand. The guesses go in `notes`.
+ * ORIGIN. The file's own origin is kept beside the centred frame (ImportedShell.at), so the Studio can stand the model on
+ * a CAD drawing by their shared origin (modelOffset).
  * The pure parts (magic check, unit guess, framing) are tested in mesh.test.ts; the loaders run in the browser only.
  */
 import type { ImportResult, ImportedShell } from './types'
@@ -61,6 +64,36 @@ type Box = { min: [number, number, number]; max: [number, number, number] }
 /** The move that puts a box's lowest point on Y = 0 and its footprint's centre on X / Z = 0 (after `scale`). */
 export function framing(b: Box, scale = 1): { dx: number; dy: number; dz: number } {
   return { dx: (-(b.min[0] + b.max[0]) / 2) * scale, dy: -b.min[1] * scale, dz: (-(b.min[2] + b.max[2]) / 2) * scale }
+}
+
+/**
+ * A file that names no up axis (OBJ, STL, PLY), read as Y up: is it really Z up? Its header says so — a GIS export
+ * (3DBAG's Geoflow, CityJSON / CityGML) or "Z up" in its words: yes; Blender's or "Y up": no — else its box: a Z-up model
+ * read as Y up lies on its side, so a city tile (heights ≪ its width and length) comes out as a thin slab standing on
+ * edge: its depth (Z, really its height) under a quarter of both its width and its "height" (Y, really its length).
+ */
+export function zUpGuess(b: Box, header = ''): boolean {
+  if (/geoflow|3dbag|cityjson|citygml|\bz[ -]?up\b|up[ _-]?axis\W+z\b/i.test(header)) return true
+  if (/blender|\by[ -]?up\b|up[ _-]?axis\W+y\b/i.test(header)) return false
+  const [x, y, z] = b.max.map((v, i) => v - b.min[i])
+  return z > 0 && z < 0.25 * Math.min(x, y)
+}
+
+type Rect = { minX: number; minY: number; maxX: number; maxY: number }
+/**
+ * Where a dropped model's centred frame goes on the plan (core Shell.offset): by the file's own origin on the drawing's —
+ * the plan point of its CAD file's 0, 0 (Unit.fileOrigin: a DXF's or SVG's; an architect's model and plans share it) — when
+ * that puts the model over the drawing (at least half of the smaller footprint); else centred on the drawing as before
+ * (a model whose origin is a city's survey point, a drawing traced on a picture). `at`: the file's origin in the frame.
+ */
+export function modelOffset(bounds: Box, at: { x: number; y: number } | undefined, drawing: Rect | null, fileOrigin?: { x: number; y: number }): { x: number; y: number; byOrigin: boolean } {
+  const centred = { x: drawing ? (drawing.minX + drawing.maxX) / 2 : 0, y: drawing ? (drawing.minY + drawing.maxY) / 2 : 0, byOrigin: false }
+  if (!drawing || !at || !fileOrigin) return centred
+  const o = { x: fileOrigin.x - at.x, y: fileOrigin.y - at.y }
+  const m: Rect = { minX: bounds.min[0] + o.x, minY: bounds.min[2] + o.y, maxX: bounds.max[0] + o.x, maxY: bounds.max[2] + o.y }
+  const area = (r: Rect) => Math.max(0, r.maxX - r.minX) * Math.max(0, r.maxY - r.minY)
+  const both = area({ minX: Math.max(m.minX, drawing.minX), minY: Math.max(m.minY, drawing.minY), maxX: Math.min(m.maxX, drawing.maxX), maxY: Math.min(m.maxY, drawing.maxY) })
+  return both > 0 && both >= 0.5 * Math.min(area(m), area(drawing)) ? { ...o, byOrigin: true } : centred
 }
 
 /** Already in frame (within 1 cm): the bytes of a .glb can go through untouched. */
@@ -119,6 +152,8 @@ export async function importMesh(bytes: ArrayBuffer, name: string, siblings: Map
   let object: InstanceType<typeof THREE.Object3D>
   let scale: number | null = null // null = guess
   let zUp = false
+  /** a format that names no up axis (zUpGuess decides once it is read) */
+  let guessUp: string | null = null
   let passThrough = e === 'glb' // the bytes may go to the viewer as they are (in frame, nothing outside them, not compressed)
   const text = () => new TextDecoder().decode(bytes)
   try {
@@ -170,14 +205,15 @@ export async function importMesh(bytes: ArrayBuffer, name: string, siblings: Map
           notes.push(`OBJ: colours and pictures from ${lib}`)
         } else if (lib) notes.push(`OBJ: its colours are in ${lib}, which was not in the drop (drop the folder or a .zip to keep them)`)
         object = loader.parse(text())
-        notes.push('OBJ names no up axis: read as Y up (Turn / Floor height in the Studio fix it; a CAD export is often Z up)')
+        guessUp = 'OBJ'
         break
       }
       case 'stl': {
         const { STLLoader } = await import('three/addons/loaders/STLLoader.js')
         const g = new STLLoader().parse(bytes)
         object = new THREE.Mesh(g, new THREE.MeshStandardMaterial({ color: '#d9d6cf', roughness: 0.8 }))
-        notes.push('STL has no materials or up axis: plain plaster, read as Y up')
+        notes.push('STL has no materials: plain plaster')
+        guessUp = 'STL'
         break
       }
       case 'ply': {
@@ -185,7 +221,8 @@ export async function importMesh(bytes: ArrayBuffer, name: string, siblings: Map
         const g = new PLYLoader().parse(bytes)
         if (!g.index) throw new Error(`${name} is a point cloud (dots, no surfaces): export it as a mesh`)
         object = new THREE.Mesh(g, new THREE.MeshStandardMaterial({ color: g.getAttribute('color') ? '#ffffff' : '#d9d6cf', vertexColors: !!g.getAttribute('color'), roughness: 0.8 }))
-        notes.push('PLY names no unit or up axis: read as Y up')
+        notes.push('PLY names no unit')
+        guessUp = 'PLY'
         break
       }
       case 'fbx': {
@@ -248,6 +285,13 @@ export async function importMesh(bytes: ArrayBuffer, name: string, siblings: Map
     await files.settle()
   } finally {
     files.done()
+  }
+  if (guessUp) {
+    object.updateMatrixWorld(true)
+    const b0 = new THREE.Box3().setFromObject(object)
+    const header = e === 'stl' || e === 'ply' ? new TextDecoder().decode(bytes.slice(0, 400)) : text().slice(0, 4000).split(/\r?\n/).filter((l) => l.startsWith('#')).join(' ')
+    zUp = !b0.isEmpty() && zUpGuess({ min: b0.min.toArray() as Box['min'], max: b0.max.toArray() as Box['max'] }, header)
+    notes.push(zUp ? `${guessUp} names no up axis: its heights run along Z (${/geoflow|3dbag|city/i.test(header) ? 'a GIS export' : 'read as Y up it lies on its side'}) — read as Z up` : `${guessUp} names no up axis: read as Y up (Turn / Floor height in the Studio fix it)`)
   }
   if (zUp) object.rotateX(-Math.PI / 2), notes.push('Z up turned to Y up')
   // a picture the file points to that never came: the exporter must not wait for it
@@ -322,6 +366,6 @@ export async function importMesh(bytes: ArrayBuffer, name: string, siblings: Map
   }
   const size = bounds.max.map((v, i) => v - bounds.min[i])
   notes.push(`Outside shape: ${size[0].toFixed(1)} × ${size[2].toFixed(1)} m, ${size[1].toFixed(1)} m tall, ${triangles.toLocaleString()} triangles`)
-  const shell: ImportedShell = { glb, name: name.replace(/\.[^.]+$/, ''), bounds, triangles }
+  const shell: ImportedShell = { glb, name: name.replace(/\.[^.]+$/, ''), bounds, triangles, at: { x: f.dx, y: f.dz } }
   return { format: 'mesh', storeys: [], shell, notes, unitScale: scale, origin: { x: 0, y: 0 } }
 }

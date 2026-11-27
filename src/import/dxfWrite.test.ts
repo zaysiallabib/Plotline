@@ -103,20 +103,22 @@ describe('what a low wall is made of and the outside finish come back (session 3
   // Type A with its first long outer wall's run in brick and the building in white render, and a glass balustrade on a balcony edge
   const base = units.find(([n]) => n === 'type-a')![1]
   const low = base.walls.find((w) => w.heightM > 0.2 && w.heightM < 2.4) ?? base.walls[0]
-  const u: Unit = { ...base, walls: base.walls.map((w) => (w === low ? { ...w, heightM: Math.min(w.heightM, 1.1), lowKind: 'glass' as const } : w)) }
+  const u: Unit = { ...base, walls: base.walls.map((w) => (w === low ? { ...w, heightM: Math.min(w.heightM, 1.1), lowKind: 'glass' as const, railColor: 'anthracite' as const } : w)) }
   const brick = u.walls.find((w) => w.heightM > 2 && wallFrame(w, u.vertices).lengthM > 3)!
   const outside = Object.fromEntries(u.walls.map((w) => [w.id, w === brick ? 'fo_out_brick_red' : 'fo_out_render_white']))
-  it('the layers name them: PLOTLINE_AXES_<thickness>_LOW_GLASS, …_OUT_BRICK_RED', () => {
+  it('the layers name them: PLOTLINE_AXES_<thickness>_LOW_GLASS_ANTHRACITE (its rails\' colour), …_OUT_BRICK_RED', () => {
     const text = writeDxf(u, outside)
-    expect(text).toMatch(/LAYER\r\n2\r\nPLOTLINE_AXES_\d+_LOW_GLASS/)
+    expect(text).toMatch(/LAYER\r\n2\r\nPLOTLINE_AXES_\d+_LOW_GLASS_ANTHRACITE/)
     expect(text).toMatch(/LAYER\r\n2\r\nPLOTLINE_AXES_\d+_OUT_BRICK_RED/)
     expect(text).toMatch(/LAYER\r\n2\r\nPLOTLINE_AXES_\d+_OUT_RENDER_WHITE/)
   })
   for (const [how, read] of [['untouched', (t: string) => t], ['saved by a CAD program', linesOnly]] as const)
-    it(`${how}: the glass balustrade is glass again, the building white render, the brick wall's run brick`, async () => {
+    it(`${how}: the glass balustrade is glass again with its anthracite rails, the building white render, the brick wall's run brick`, async () => {
       const r = await importDxf(read(writeDxf(u, outside)), 'a.dxf')
       const back = r.storeys[0].unit
-      expect(back.walls.filter((w) => w.lowKind === 'glass').length).toBeGreaterThan(0)
+      const glass = back.walls.filter((w) => w.lowKind === 'glass')
+      expect(glass.length).toBeGreaterThan(0)
+      expect(glass.every((w) => w.railColor === 'anthracite')).toBe(true)
       expect(r.outside?.s_outside).toBe('fo_out_render_white')
       const bricks = Object.entries(r.outside ?? {}).filter(([, v]) => v === 'fo_out_brick_red')
       expect(bricks.length).toBeGreaterThan(0)

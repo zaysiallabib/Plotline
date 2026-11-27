@@ -11,11 +11,11 @@
  */
 import type { ImportResult, ImportedStorey } from './types'
 import { deriveRooms, newId, pointInPolygon, roomPolygon, validate } from '../core'
-import type { Configuration, Id, LowWallKind, Opening, OpeningKind, Pillar, Pt, RoomLabel, Unit, Vertex, Wall } from '../core'
+import type { Configuration, Id, LowWallKind, RailColor, Opening, OpeningKind, Pillar, Pt, RoomLabel, Unit, Vertex, Wall } from '../core'
 import { PARTITION_M, WALL_HEIGHT_M, ZONE_LINE_M, emptyUnit, guessKind, studioIssues } from '../studio/model'
 import { FRAMES_SLOT, OUTSIDE_SLOT, ROOF_COVERINGS, frameKey, outerRuns, outsideKey } from '../furnish/finishes'
 import type { Roof, RoofKind } from '../data/building/roof'
-import { classOf, coveringOption, frameOption, outerOf, outsideOption, plain, railKind, toneGlass } from './materials'
+import { classOf, coveringOption, frameOption, outerOf, outsideOption, plain, railColor, railKind, toneGlass } from './materials'
 import { dressName, writeGlb, type GlbGroup } from './glb'
 import { finishesOn, settleImport } from './plan2d'
 import { unzipSync } from 'three/examples/jsm/libs/fflate.module.js'
@@ -187,8 +187,9 @@ interface WallDraft {
   openings: [number, Opening][]
   /** the outside finish its file's materials say (an outer wall's: materials.ts) */
   finish?: string
-  /** a railing on its line (IfcRailing): what it is made of; `alone`: the railing's own low wall (its loose ends are meant) */
+  /** a railing on its line (IfcRailing): what it is made of, its own colour; `alone`: the railing's own low wall (its loose ends are meant) */
   lowKind?: LowWallKind
+  railColor?: RailColor
   alone?: boolean
 }
 
@@ -1058,12 +1059,13 @@ function readModel(W: WebIfc, api: Api, model: number, fileName: string, t0: num
     on: { s: Storey; bottom: number; top: number }[]
     name: string
     /** a window's frame (FRAMES_SLOT option), a glass front's mullion spacing */
-    holes: { seg: number; kind: OpeningKind; u0: number; u1: number; y0: number; y1: number; frame?: string; bayM?: number; spandrelM?: number; spandrel?: 'dark' | 'metal' }[]
+    holes: { seg: number; kind: OpeningKind; u0: number; u1: number; y0: number; y1: number; frame?: string; bayM?: number; spandrelM?: number; spandrel?: 'dark' | 'metal'; spandrelAt?: 'head' | 'both' }[]
     /** its outside finish (an outer wall's, materials.ts); `outer`: an outer wall's (IsExternal, or every wall when the file does not say) */
     finish?: string
     outer?: boolean
-    /** a railing stands on it (or it is one: `alone`, a low wall of its own on the railing's line) */
+    /** a railing stands on it (or it is one: `alone`, a low wall of its own on the railing's line), and the railing's colour */
     lowKind?: LowWallKind
+    railColor?: RailColor
     alone?: boolean
   }
   const chainsOut: Chain[] = []
@@ -1211,7 +1213,9 @@ function readModel(W: WebIfc, api: Api, model: number, fileName: string, t0: num
     if (!ob.pts.length || ob.maxY - ob.minY < 0.5 || ob.maxY - ob.minY > 1.6) continue
     const band = bands.find((b) => ob.minY + 0.05 >= b.bottom - 0.3 && ob.minY + 0.05 < b.top)
     if (!band) continue
-    const kind = railKind([...materialsOf(id).mats.map((m) => m.name), ...typeNames(id)]) ?? 'railing'
+    const names = [...materialsOf(id).mats.map((m) => m.name), ...typeNames(id)]
+    const kind = railKind(names) ?? 'railing'
+    const color = railColor(names, kind) // (its material / type names: "Steel, Paint Finish, Dark Gray" anthracite, "Iron, Cast" black)
     let on = 0, alone = 0, against = 0
     for (const [a, b] of railRuns(ob.pts, upright)) {
       const L = Math.hypot(b.x - a.x, b.y - a.y)
@@ -1229,12 +1233,15 @@ function readModel(W: WebIfc, api: Api, model: number, fileName: string, t0: num
       })
       if (under) {
         // (a railing against a storey wall — a window's guard rail, a French balcony — is the outside shape's alone)
-        if (under.on.some((o) => o.s === band.s && o.top - o.bottom < 2.4)) (under.lowKind ??= kind), on++
+        if (under.on.some((o) => o.s === band.s && o.top - o.bottom < 2.4)) {
+          if (!under.lowKind && color) under.railColor = color
+          ;(under.lowKind ??= kind), on++
+        }
         else against++
         continue
       }
       const top = Math.min(1.5, Math.max(0.6, ob.maxY - band.bottom))
-      chainsOut.push({ pts: [a, b], thickness: 0.05, on: [{ s: band.s, bottom: band.bottom, top: band.bottom + top }], name: 'Railing', holes: [], lowKind: kind, alone: true })
+      chainsOut.push({ pts: [a, b], thickness: 0.05, on: [{ s: band.s, bottom: band.bottom, top: band.bottom + top }], name: 'Railing', holes: [], lowKind: kind, ...(color ? { railColor: color } : {}), alone: true })
       alone++
     }
     // (counted by railing: one that made a low wall glass or stands as one is read; one only against storey walls is the shape's)
@@ -1246,13 +1253,13 @@ function readModel(W: WebIfc, api: Api, model: number, fileName: string, t0: num
   for (const chain of chainsOut) {
     for (const { s, bottom, top } of chain.on) {
       const heightM = top - bottom > 0.1 ? top - bottom : WALL_HEIGHT_M
-      const draft: WallDraft = { pts: chain.pts, thicknessM: chain.thickness, heightM, openings: [], ...(chain.finish ? { finish: chain.finish } : {}), ...(chain.lowKind ? { lowKind: chain.lowKind } : {}), ...(chain.alone ? { alone: true } : {}) }
+      const draft: WallDraft = { pts: chain.pts, thicknessM: chain.thickness, heightM, openings: [], ...(chain.finish ? { finish: chain.finish } : {}), ...(chain.lowKind ? { lowKind: chain.lowKind } : {}), ...(chain.railColor ? { railColor: chain.railColor } : {}), ...(chain.alone ? { alone: true } : {}) }
       for (const h of chain.holes) {
         const y0 = Math.max(h.y0, bottom) - bottom, y1 = Math.min(h.y1, bottom + heightM) - bottom
         if (y1 - y0 < 0.1) continue
         const sillM = h.kind === 'window' ? y0 : 0
         const L = segLen(chain.pts, h.seg)
-        const o: Opening = { id: newId(), kind: h.kind, offsetM: Math.max(0, Math.min(L - (h.u1 - h.u0), h.u0)), widthM: h.u1 - h.u0, heightM: y1 - sillM, sillM, ...(h.bayM ? { bayM: h.bayM } : {}), ...(h.spandrelM ? { spandrelM: h.spandrelM, spandrel: h.spandrel } : {}) }
+        const o: Opening = { id: newId(), kind: h.kind, offsetM: Math.max(0, Math.min(L - (h.u1 - h.u0), h.u0)), widthM: h.u1 - h.u0, heightM: y1 - sillM, sillM, ...(h.bayM ? { bayM: h.bayM } : {}), ...(h.spandrelM ? { spandrelM: h.spandrelM, spandrel: h.spandrel, ...(h.spandrelAt ? { spandrelAt: h.spandrelAt } : {}) } : {}) }
         if (h.frame) frameOfOpening.set(o.id, h.frame)
         draft.openings.push([h.seg, o])
       }
@@ -1283,24 +1290,33 @@ function readModel(W: WebIfc, api: Api, model: number, fileName: string, t0: num
    * its line, the middle of their gaps — between 0.4 and 4 m, else the glazing's own (≤ 1.4 m bays) — and the frame its
    * members' materials name (FRAMES_SLOT).
    */
-  function glassFront(wall: number, pts: Pt[]): { bayM?: number; frame?: string; spandrelM?: number; spandrel?: 'dark' | 'metal' } {
+  function glassFront(wall: number, pts: Pt[]): { bayM?: number; frame?: string; spandrelM?: number; spandrel?: 'dark' | 'metal'; spandrelAt?: 'head' | 'both' } {
     return { ...mullions(wall, pts), ...spandrels(wall) }
   }
   /**
    * A glass front's spandrel (session 31 outside2: ifcmap left them glass): its panels solid in every piece (no see-through
    * one), their height's middle value between 0.2 and 2 m the band on each storey; metal when their materials say so, else
-   * dark glass. ponytail: the band is drawn at each storey's foot, wherever the file's panels sit (over or under the slab).
+   * dark glass. Where they sit: each panel's middle in the lower half of its storey is a band at the glass's foot (over the
+   * slab), in the upper half at its head (under the next slab); both found: a band at both. ponytail: one height and one place
+   * for the whole front (a panel astride a slab counts where its middle is), per-storey bands if a file needs them.
    */
-  function spandrels(wall: number): { spandrelM?: number; spandrel?: 'dark' | 'metal' } {
+  function spandrels(wall: number): { spandrelM?: number; spandrel?: 'dark' | 'metal'; spandrelAt?: 'head' | 'both' } {
     const hs = [...(parts.get(wall)?.entries() ?? [])]
       .filter(([p]) => solidPanels.has(p) && !clearPanels.has(p))
-      .map(([p, b]) => [p, b.maxY - b.minY] as const)
+      .map(([p, b]) => [p, b.maxY - b.minY, (b.maxY + b.minY) / 2] as const)
       .filter(([, h]) => h >= 0.2 && h <= 2)
       .sort((a, b) => a[1] - b[1])
     if (!hs.length) return {}
     const [p, h] = hs[Math.floor(hs.length / 2)]
     const metal = materialsOf(p).mats.some((m) => /metal|alu|steel|zinc|copper|panel/i.test(m.name))
-    return { spandrelM: Math.round(h * 100) / 100, spandrel: metal ? 'metal' : 'dark' }
+    const at = new Set(
+      hs.map(([, , c]) => {
+        const b = bands.find((x) => c >= x.bottom && c < x.top)
+        const top = b && (Number.isFinite(b.top) ? b.top : b.bottom + WALL_HEIGHT_M)
+        return b && top! > b.bottom && (c - b.bottom) / (top! - b.bottom) >= 0.5 ? 'head' : 'foot'
+      }),
+    )
+    return { spandrelM: Math.round(h * 100) / 100, spandrel: metal ? 'metal' : 'dark', ...(at.has('head') ? { spandrelAt: at.has('foot') ? 'both' : 'head' } : {}) }
   }
   function mullions(wall: number, pts: Pt[]): { bayM?: number; frame?: string } {
     const a = pts[0], b = pts[pts.length - 1]
@@ -1455,11 +1471,11 @@ function readModel(W: WebIfc, api: Api, model: number, fileName: string, t0: num
           if (same) {
             same.heightM = Math.max(same.heightM, wd.heightM)
             same.thicknessM = Math.max(same.thicknessM, wd.thicknessM)
-            if (wd.lowKind) same.lowKind ??= wd.lowKind
+            if (wd.lowKind && !same.lowKind) (same.lowKind = wd.lowKind), wd.railColor && (same.railColor = wd.railColor)
             segs.push(same.a === a ? same : null) // an opening of a reversed twin is left out: its offset would be mirrored
             continue
           }
-          const w: Wall = { id: newId(), a, b, thicknessM: wd.thicknessM, heightM: wd.heightM, openings: [], ...(wd.lowKind ? { lowKind: wd.lowKind } : {}), ...(wd.alone ? { standsAlone: true as const } : {}) }
+          const w: Wall = { id: newId(), a, b, thicknessM: wd.thicknessM, heightM: wd.heightM, openings: [], ...(wd.lowKind ? { lowKind: wd.lowKind } : {}), ...(wd.railColor ? { railColor: wd.railColor } : {}), ...(wd.alone ? { standsAlone: true as const } : {}) }
           byEnds.set(key, w)
           segs.push(w)
           walls.push(w)

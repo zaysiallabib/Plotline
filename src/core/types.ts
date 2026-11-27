@@ -36,9 +36,11 @@ export interface Opening {
   /**
    * A glass wall's opaque band at the foot of each storey (m; absent or 0: glass from floor to top) — the curtain wall's
    * spandrel panel over the slab — and what it is: dark glass (the default), metal, or the building's outside finish.
+   * `spandrelAt`: where the band is — at the head of the glass (under the next floor's slab), or a band at both; absent: the foot.
    */
   spandrelM?: number
   spandrel?: 'dark' | 'metal' | 'outside'
+  spandrelAt?: 'head' | 'both'
   /** door swing/hinge side hint (kind 'door' only; ignored on sliders); purely visual */
   hinge?: 'a' | 'b'
   swing?: 'in' | 'out'
@@ -289,6 +291,11 @@ export interface Unit {
   priceBdt?: number
   /** the source drawing (public/ path) — used by the Studio as a tracing layer */
   planImage?: { src: string; pxPerM: number; originPx: { x: number; y: number } }
+  /**
+   * Where its CAD file's 0, 0 is on the plan (a drawing read from a DXF or SVG, whose plan starts at the walls' corner): an
+   * architect's 3D model of the same building, dropped on it, stands by that shared origin (import/mesh.ts modelOffset).
+   */
+  fileOrigin?: { x: number; y: number }
   /** where the building stands (Studio → Site), with the map's neighbours and the wind, cached: a buyer link never refetches */
   site?: Site
   /**

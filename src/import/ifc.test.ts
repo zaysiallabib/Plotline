@@ -175,6 +175,7 @@ describe('ifc import', () => {
     const o = await glazing(office)
     expect(o.length).toBeGreaterThan(0)
     expect(o.every((x) => x.spandrel === 'metal' && x.spandrelM! > 0.5 && x.spandrelM! < 1)).toBe(true)
+    expect(o.every((x) => x.spandrelAt === 'head')).toBe(true) // (its panels sit in each storey's upper half: under the next slab)
     const h = await glazing(house)
     expect(h.length).toBeGreaterThan(0)
     expect(h.some((x) => x.spandrelM)).toBe(false)

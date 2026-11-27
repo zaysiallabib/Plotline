@@ -74,7 +74,8 @@ reads in Firefox today, with what fails and why: [SAMPLES.md](SAMPLES.md).
   material layer set (a render takes the file's colour: beige crépi is Sand render), the commonest the building's own
   when the named walls make at least 30 % of the outer walls. The outside shape wears the same pictures (its dressed
   surfaces carry texture coordinates in metres); Finishes → Whole building changes it there too. IfcRailing makes the
-  low wall under it glass / metal / timber (Made of) or a low wall of its own on a balcony edge; IfcRoof's kind (or what
+  low wall under it glass / metal / timber (Made of, its Colour from the material's words) or a low wall of its own on a
+  balcony edge; IfcRoof's kind (or what
   its slopes show), pitch and covering are the project's roof setting (a freeform roof keeps the file's own shape); a
   curtain wall keeps its mullion spacing and frame colour; a window's frame colour comes from its names. The street is
   the ground storey — the one named Ground / EG / RDC / 1F, else the storey at the file's elevation 0, else the lowest
@@ -121,7 +122,10 @@ reads in Firefox today, with what fails and why: [SAMPLES.md](SAMPLES.md).
 - A model that keeps its pictures (or a `.gltf` its `.bin`) in other files is dropped as its folder or a `.zip`; dropped
   alone, the notes name what was missing. Compressed models (Draco, meshopt) are unpacked; KTX2 pictures are refused
   with "export it with PNG / JPEG pictures".
-- It stands on the street, centred on the drawing (on every floor the drawing stands on); one far smaller than a
+- It stands on the street (on every floor the drawing stands on), by the file's own origin on a DXF / SVG drawing of the
+  same building (their CAD origin is shared: the model lands over the plan), else centred on the drawing; an OBJ / STL /
+  PLY that names no up axis is turned upright when its header says Z up (3DBAG's Geoflow) or it would lie on its side (the
+  Delft city tile); one far smaller than a
   building (under 8 m across, or well under the drawing — a model made at 1 : 10) asks once how big it is, the answer kept
   for the file's name. A material the file made fully see-through (a Collada habit: the Macky Auditorium vanished) is
   drawn solid; a coloured glass is toned to Plotline's glass.

@@ -3,7 +3,7 @@
  * (src/import/heights.ts reads them from the set's sections and elevations, the Set panel lets a person type them) and the
  * tower the Building view and the walk draw from them. Pure; kept apart from the sheet reader so the viewer never loads it.
  */
-import type { Unit } from '../../core'
+import { parseLength, type Unit } from '../../core'
 
 /** the slab when no drawing prints it: a Dhaka RCC floor slab (and the 3D's own, render.ts SLAB_M) */
 export const SLAB_M = 0.15
@@ -98,3 +98,165 @@ export const storeyUnit = (u: Unit, wallM: number | undefined): Unit =>
             : { ...w, heightM: wallM, openings: w.openings.map((o) => (o.sillM + o.heightM >= Math.min(w.heightM - 0.01, wallM) ? { ...o, heightM: Math.max(0.1, wallM - o.sillM) } : o)) },
         ),
       }
+
+/** floor to floor of the floors listed (k → k + 1, both listed), by k */
+export function storeysOf(h: Heights): Record<number, number> {
+  const out: Record<number, number> = {}
+  for (const k of Object.keys(h.floors).map(Number)) if (h.floors[k + 1] !== undefined) out[k] = h.floors[k + 1] - h.floors[k]
+  return out
+}
+/** floors from floor to floor (k → k + 1), the ground floor at its level (0): a run broken by a missing storey stops there */
+export function floorsOf(storeys: Record<number, number>, ground = 0): Record<number, number> {
+  const out: Record<number, number> = { 0: ground }
+  for (let k = 0; storeys[k] !== undefined; k++) out[k + 1] = out[k] + storeys[k]
+  for (let k = -1; storeys[k] !== undefined; k--) out[k] = out[k + 1] - storeys[k]
+  return out
+}
+
+// ---------- words for the Set panel (and the project's Heights line) ----------
+
+const TOPS = ['ceilingM', 'roofM', 'eaveM', 'ridgeM', 'parapetM', 'slabM'] as const
+
+/** a drawing's heights as the Set panel's fields: floor to floor in short (storeysWords), the tops as levels as printed ("+5.79"), the slab and a parapet as heights */
+export type HeightField = 'storeys' | 'ceiling' | 'slab' | 'roof' | 'parapet' | 'eave' | 'ridge' | 'kind'
+/** the roof's kind as the Set panel's box says it */
+export type RoofKind = 'flat' | 'pitched' | 'hip'
+export function heightFields(h: Heights | null): Record<HeightField, string> {
+  const lv = (m: number | undefined) => (m === undefined ? '' : `${m < 0 ? '−' : '+'}${Math.abs(m).toFixed(2)}`)
+  const ht = (m: number | undefined) => (m === undefined ? '' : m.toFixed(2))
+  return {
+    storeys: h ? storeysWords(storeysOf(h)) : '',
+    ceiling: lv(h?.ceilingM),
+    slab: ht(h?.slabM),
+    roof: lv(h?.roofM),
+    parapet: ht(h?.parapetM),
+    eave: lv(h?.eaveM),
+    ridge: lv(h?.ridgeM),
+    kind: h?.ridgeM !== undefined ? (h.hip ? 'hip' : 'pitched') : 'flat',
+  }
+}
+
+/** a length as typed: metres ("3.05", "+6.10", "−3,05"), or feet and inches with their marks ("10'-0"", "+20'-0""); null else */
+export function parseHeight(raw: string): number | null {
+  const t = raw.trim().replace(/[−–]/g, '-').replace(/^\+\s*/, '')
+  const neg = t.startsWith('-')
+  const body = t.replace(/^-\s*/, '')
+  const v = /^\d+(?:[.,]\d+)?$/.test(body) ? Number(body.replace(',', '.')) : parseLength(body.replace(/[‘’′]/g, "'").replace(/[“”″]/g, '"'))
+  return v === null || !Number.isFinite(v) ? null : neg ? -v : v
+}
+
+/**
+ * A drawing's heights with what the person typed over them (a field as shown changes nothing; an empty one takes the
+ * height away): floor to floor rebuilds the floors from the ground floor's and the tops (ceiling, roof, eave, ridge) move
+ * with the top floor — a top field typed over that is where typed; a pitched roof keeps no flat roof's slab and parapet and
+ * the other way round. `bad`: the fields that do not read as a length.
+ */
+export function typedHeights(read: Heights | null, typed: Partial<Record<HeightField, string>> = {}): { heights: Heights | null; bad: HeightField[] } {
+  let shown = heightFields(read)
+  const bad: HeightField[] = []
+  const h: Heights = read ? { ...read, floors: { ...read.floors } } : { floors: {} }
+  // floor to floor first: the roof stays on the top floor — its ceiling, roof, eave and ridge move with it (else a taller
+  // storey ran into the roof), and a top typed over after that is where it was typed
+  const st = typed.storeys
+  if (st !== undefined && st !== shown.storeys) {
+    const ks = Object.keys(storeysOf(h)).map(Number)
+    const s = parseStoreys(st, ks.length ? ks : [0])
+    if (s === null) bad.push('storeys')
+    else {
+      const top = Math.max(...Object.keys(h.floors).map(Number))
+      const was = h.floors[top]
+      h.floors = floorsOf(s, h.floors[0] ?? 0)
+      const by = was !== undefined && h.floors[top] !== undefined ? h.floors[top] - was : 0
+      for (const k of ['ceilingM', 'roofM', 'eaveM', 'ridgeM'] as const) if (by && h[k] !== undefined) h[k] += by
+      shown = { ...heightFields(h), storeys: st, kind: shown.kind }
+    }
+  }
+  for (const f of Object.keys(typed) as HeightField[]) {
+    const text = typed[f] ?? ''
+    if (text === shown[f] || f === 'kind' || f === 'storeys') continue
+    const key = (f + 'M') as 'ceilingM' | 'slabM' | 'roofM' | 'parapetM' | 'eaveM' | 'ridgeM'
+    if (!text.trim()) {
+      delete h[key]
+      continue
+    }
+    const v = parseHeight(text)
+    if (v === null || ((f === 'slab' || f === 'parapet') && (v < 0 || v > 3))) bad.push(f)
+    else h[key] = v
+  }
+  const kind = typed.kind ?? shown.kind
+  if (kind === 'flat') delete h.eaveM, delete h.ridgeM, delete h.hip
+  else {
+    delete h.roofM, delete h.parapetM
+    if (kind === 'hip') h.hip = true
+    else delete h.hip
+  }
+  const some = Object.keys(h.floors).length > 1 || TOPS.some((k) => h[k] !== undefined)
+  return { heights: some ? h : null, bad }
+}
+
+const floorWord = (k: number) => (k === 0 ? 'G' : k < 0 ? `B${-k}` : String(k))
+
+/** floor to floor in short: "3.05" (one height for every storey), "G 4.50, 1–9 3.05" (runs of one height); '' none */
+export function storeysWords(storeys: Record<number, number>): string {
+  const ks = Object.keys(storeys).map(Number).sort((a, b) => a - b)
+  if (!ks.length) return ''
+  const v = (k: number) => storeys[k].toFixed(2)
+  if (ks.every((k) => v(k) === v(ks[0]))) return v(ks[0])
+  const parts: string[] = []
+  for (let i = 0; i < ks.length; ) {
+    let j = i
+    while (j + 1 < ks.length && ks[j + 1] === ks[j] + 1 && v(ks[j + 1]) === v(ks[i])) j++
+    parts.push(`${j > i ? `${floorWord(ks[i])}–${floorWord(ks[j])}` : floorWord(ks[i])} ${v(ks[i])}`)
+    i = j + 1
+  }
+  return parts.join(', ')
+}
+
+/**
+ * What a person types for floor to floor back to heights by floor: "3.05" (every storey `floors` lists), "G 4.5, 1-9 3.05",
+ * "10'-0"" (feet and inches as parseLength reads them). Null when a piece is no floor or no length.
+ */
+export function parseStoreys(text: string, floors: number[]): Record<number, number> | null {
+  const t = text.trim()
+  if (!t) return {}
+  const len = (s: string) => {
+    // (a bare number is metres here; feet and inches carry their marks)
+    const v = /^\d+(?:[.,]\d+)?$/.test(s.trim()) ? Number(s.trim().replace(',', '.')) : parseLength(s.replace(/[‘’′]/g, "'").replace(/[“”″]/g, '"'))
+    return v !== null && v >= 1.5 && v <= 12 ? v : null
+  }
+  const one = len(t)
+  if (one !== null) return Object.fromEntries(floors.map((k) => [k, one]))
+  const out: Record<number, number> = {}
+  for (const part of t.split(/\s*[,;]\s*/).filter(Boolean)) {
+    const m = /^(G|B\d{1,2}|\d{1,3})(?:\s*[-–]\s*(G|B\d{1,2}|\d{1,3}))?\s+(.+)$/i.exec(part)
+    const k = (s: string) => (/^G$/i.test(s) ? 0 : /^B/i.test(s) ? -Number(s.slice(1)) : Number(s))
+    const v = m ? len(m[3]) : null
+    if (!m || v === null) return null
+    const [a, b] = [k(m[1]), k(m[2] ?? m[1])]
+    for (let f = Math.min(a, b); f <= Math.max(a, b); f++) out[f] = v
+  }
+  return out
+}
+
+/**
+ * A project's heights in one short line, as the Studio's project column says them under the drawings kept from the set:
+ * "Floor to floor 3.05 m · slab 0.15 · gable, eave +6.10, ridge +8.89". A slab or parapet not printed reads as built
+ * (0.15, 1.10); nothing known: every storey `typical` floor to floor, as before.
+ */
+export function heightsLine(h: Heights | null | undefined, typical: number): string {
+  const lv = (m: number) => `${m < 0 ? '−' : '+'}${Math.abs(m).toFixed(2)}`
+  if (!h) return `Floor to floor ${typical.toFixed(2)} m, as usual`
+  const s = storeysWords(storeysOf(h))
+  return [
+    s ? `Floor to floor ${s} m` : `Floor to floor ${typical.toFixed(2)} m`,
+    h.ceilingM !== undefined ? `ceiling ${lv(h.ceilingM)}` : '',
+    `slab ${(h.slabM ?? SLAB_M).toFixed(2)}`,
+    h.ridgeM !== undefined
+      ? `${h.hip ? 'hip' : 'gable'}${h.eaveM !== undefined ? `, eave ${lv(h.eaveM)}` : ''}, ridge ${lv(h.ridgeM)}`
+      : h.roofM !== undefined
+        ? `flat roof ${lv(h.roofM)}, parapet ${(h.parapetM ?? 1.1).toFixed(2)}`
+        : '',
+  ]
+    .filter(Boolean)
+    .join(' · ')
+}

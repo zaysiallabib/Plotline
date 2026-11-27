@@ -40,6 +40,8 @@ export interface ImportedShell {
   triangles: number
   /** its windows' glass is solid in the file (no see-through colour on any window): the 3D draws its own glass there (core Shell.glass) */
   glass?: 'opaque'
+  /** a model's (mesh.ts): where the file's own origin is in this frame, plan x / y (three X / Z) — the Studio stands it there on a CAD drawing (modelOffset) */
+  at?: { x: number; y: number }
 }
 
 export interface ImportResult {

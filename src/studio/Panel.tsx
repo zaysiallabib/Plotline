@@ -11,7 +11,7 @@ import { LOCAL_AI_KEY, START_CMD, START_LINE, isLocalUrl, localAISettings, testL
 import { placementLabel, placementRange, placementSize } from '../furnish/kit'
 import { resizeAxes, surfaceOf } from './furniture'
 import { LibraryPanel } from './LibraryPanel'
-import { EXTERIOR_M, LOW_KINDS, PARTITION_M, RAIL_COLOR_WORDS, SPANDREL_WORDS, WALL_TYPES, findEntity, formatLevel, openingDefaults, parseLevel, rampDirs, selectionText, shared, wallTypeOf, type StudioIssue, type StudioState, type WallType } from './model'
+import { EXTERIOR_M, LOW_KINDS, PARTITION_M, RAIL_COLOR_WORDS, SPANDREL_AT_WORDS, SPANDREL_WORDS, WALL_TYPES, findEntity, formatLevel, openingDefaults, parseLevel, rampDirs, selectionText, shared, wallTypeOf, type StudioIssue, type StudioState, type WallType } from './model'
 import { AI_KEY, LOOKS_RIGHT, SHOW_ME, TRACKER_KEY, answerId, fewRooms, roomCount, type StudioAction as Action } from './review'
 import { groupRows, REVIEW_KIND, type Bulk, type Fix, type Mark, type MarkFixes, type Severity } from './issues'
 import type { AutoTraceStats } from '../trace/types'
@@ -1150,13 +1150,24 @@ function MadeOf({ walls, dispatch }: { walls: Wall[]; dispatch: (a: Action) => v
   )
 }
 
-/** A glass wall's spandrel (Opening.spandrelM): a solid band at the foot of its glass on every floor, and what it is made of. */
+/** A glass wall's spandrel (Opening.spandrelM): a solid band at the foot, the head or both of its glass on every floor, and what it is made of. */
 function Spandrel({ o, patch }: { o: Opening; patch: (p: Partial<Omit<Opening, 'id'>>) => void }) {
   return (
     <>
       <Row label="Solid band">
         <LenInput valueM={o.spandrelM ?? 0} placeholder="0 = glass to the floor" onCommit={(m) => patch({ spandrelM: m > 0.01 ? m : undefined })} />
       </Row>
+      {(o.spandrelM ?? 0) > 0 && (
+        <Row label="Band at">
+          <select value={o.spandrelAt ?? 'foot'} aria-label="Where the solid band is" onChange={(e) => patch({ spandrelAt: e.target.value === 'foot' ? undefined : (e.target.value as 'head' | 'both') })}>
+            {SPANDREL_AT_WORDS.map(([k, w]) => (
+              <option key={k} value={k}>
+                {w}
+              </option>
+            ))}
+          </select>
+        </Row>
+      )}
       {(o.spandrelM ?? 0) > 0 && (
         <Row label="Band of">
           <select value={o.spandrel ?? 'dark'} aria-label="What the solid band is made of" onChange={(e) => patch({ spandrel: e.target.value as NonNullable<Opening['spandrel']> })}>

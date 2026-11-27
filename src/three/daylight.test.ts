@@ -4,6 +4,7 @@ import type { Unit } from '../core'
 import * as THREE from 'three'
 import { MAX_SAMPLES, bakeDaylight, bakeSteps, dayMap, daylightTexture, facing, factorAt, formFactor, HI, isCovered, LAMP_RANGE, lightPiece, LO, mapDaylight, openToSky, pieceDayUv, RANGE, setDaylight, setLampShare, SHORT_WALL_M, zRaise } from './daylight'
 import { batch } from './batch'
+import { glassOf, spandrelBands } from './openings'
 import { GROUND_SAMPLE } from '../data/fixtures/ground-sample'
 import { wallGeometry } from './details'
 import { TEST_UNIT } from './testUnit'
@@ -458,6 +459,20 @@ test("a glass wall's spandrel band is solid to the daylight (session 31 outside2
   const sum = (x: Unit) => Array.from(bakeDaylight(x, core.deriveRooms(x)).regions.get(`floor:${room.id}`)!.E).reduce((a, b) => a + b, 0)
   expect(sum(as({ spandrelM: 1 }))).toBeLessThan(sum(as({})) * 0.95)
   expect(sum(as({ spandrelM: 0 }))).toBeCloseTo(sum(as({})), 6)
+  // a band at the head (under the next slab, as an office's curtain wall has it): as solid, the glass down to the floor
+  const head = sum(as({ spandrelM: 1, spandrelAt: 'head' }))
+  expect(head).toBeLessThan(sum(as({})) * 0.95)
+  expect(Math.abs(head - sum(as({ spandrelM: 1 })))).toBeGreaterThan(1e-6)
+})
+
+test("a glass wall's bands where the file's panels sit: the foot (as before), the head, or both (half the room each at most)", () => {
+  const o: core.Opening = { id: 'g', kind: 'window', offsetM: 0, widthM: 3, heightM: 2.4, sillM: 0, spandrelM: 0.9 }
+  expect([glassOf(o), spandrelBands(o)]).toEqual([[0.9, 2.4], [[0, 0.9]]])
+  expect([glassOf({ ...o, spandrelAt: 'head' }), spandrelBands({ ...o, spandrelAt: 'head' })]).toEqual([[0, 1.5], [[1.5, 2.4]]])
+  expect(spandrelBands({ ...o, spandrelAt: 'both' })).toEqual([[0, 0.9], [1.5, 2.4]])
+  const [[, a], [b]] = spandrelBands({ ...o, spandrelM: 2, spandrelAt: 'both' })
+  expect([a, b - a]).toEqual([1.05, expect.closeTo(0.3, 9)]) // (0.3 m of glass kept)
+  expect([glassOf({ ...o, spandrelM: undefined }), spandrelBands({ ...o, spandrelM: undefined, spandrelAt: 'head' })]).toEqual([[0, 2.4], []])
 })
 
 describe('daylight through a glass front (session 31 outside2: lowwall left a glass or railing low wall solid)', () => {

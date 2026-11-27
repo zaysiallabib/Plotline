@@ -323,7 +323,8 @@ export function forkHere(stem: string, k: number, store?: Store): { stem: string
 // outdoor unit, a canopy, a planter (the library's Outside pieces: kit `outdoor`, or hung on an outer face / a cap) placed,
 // moved or deleted on a floor whose drawing stands on others too: the 3D view asks once a visit "This floor only / All N
 // floors with this drawing"; all = the same change in every other floor's layout (each apartment still its own record).
-const outsideOf = (p: FurniturePlacement): boolean => !!(p.outside || p.onCap || kitAsset(p.assetId)?.outdoor)
+// The question comes when such a piece is picked up (from the library, or with G), so the first one lands as answered.
+export const outsideOf = (p: Pick<FurniturePlacement, 'assetId' | 'outside' | 'onCap'>): boolean => !!(p.outside || p.onCap || kitAsset(p.assetId)?.outdoor)
 /** The answer for drawing `id` this visit (sessionStorage: a reload keeps it, a new tab asks again). */
 export const OUTSIDE_ANSWER_KEY = 'plotline.outsideAnswer'
 export function outsideAnswer(id: Id, store?: Store): FloorAnswer | undefined {

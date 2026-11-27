@@ -23,14 +23,14 @@ import { learnCarried } from '../lib/library'
 import { configured as sharingConfigured, fetchSharedUnit } from '../lib/supabase'
 import { LinkOff, NoPreview, NotFound, Offline, Skeleton, Slate } from '../lib/pages'
 import { pageTitle } from '../lib/route'
-import { LOW_KINDS, RAIL_COLOR_WORDS, SPANDREL_WORDS, WALL_TYPES, findOpening, initialState, isUnit, normalizeUnit, reducer, wallTypeOf, type Action, type StudioState } from '../studio/model'
+import { LOW_KINDS, RAIL_COLOR_WORDS, SPANDREL_AT_WORDS, SPANDREL_WORDS, WALL_TYPES, findOpening, initialState, isUnit, normalizeUnit, reducer, wallTypeOf, type Action, type StudioState } from '../studio/model'
 import { preloadModels } from '../three/furniture'
 import { PlotlineScene, type ArrangeEvent, type OpeningEvent, type PickHit, type SceneMode } from '../three/PlotlineScene'
 import type { TowerHit } from '../three/building'
 import { lightsOn, type LightsMode } from '../three/render'
 import { TEST_UNIT } from '../three/testUnit'
 import type { XRControls } from '../three/xr'
-import { baseOf, deleteHeld, draftState, dropHeld, floorAnswer, forkHere, holdAt, isShareLink, isStaff, keepsFinishes, madeOfOnTower, makeDraft, outsideAnswer, outsideChanges, outsideOnEveryFloor, pickUp, planOf, pushStep, saveFinishes, saveLayout, saveOpenings, setFloorAnswer, setOutsideAnswer, turnHeld, undoStep, wallDrag, type FloorAnswer, type Held, type Steps } from './arrange'
+import { baseOf, deleteHeld, draftState, dropHeld, floorAnswer, forkHere, holdAt, isShareLink, isStaff, keepsFinishes, madeOfOnTower, makeDraft, outsideAnswer, outsideChanges, outsideOf as isOutsidePiece, outsideOnEveryFloor, pickUp, planOf, pushStep, saveFinishes, saveLayout, saveOpenings, setFloorAnswer, setOutsideAnswer, turnHeld, undoStep, wallDrag, type FloorAnswer, type Held, type Steps } from './arrange'
 import FinishesPanel, { type Surface } from './FinishesPanel'
 import Hud, { floorTitle, Grip, lowWallAt, StatsPanel, useFinger, type HandInfo } from './Hud'
 import Minimap, { mapOf } from './Minimap'
@@ -591,7 +591,7 @@ function OpeningPanel(p: {
   refused: boolean
   canUndo: boolean
   onKind: (k: OpeningKind) => void
-  onSize: (patch: Partial<Pick<Opening, 'widthM' | 'heightM' | 'sillM' | 'spandrelM' | 'spandrel'>>) => void
+  onSize: (patch: Partial<Pick<Opening, 'widthM' | 'heightM' | 'sillM' | 'spandrelM' | 'spandrel' | 'spandrelAt'>>) => void
   onWall: (patch: { lengthM?: number; heightM?: number }) => void
   /** what the low wall is made of (model LOW_KINDS), a solid one's cornice */
   onLowKind: (patch: LowPatch) => void
@@ -636,6 +636,18 @@ function OpeningPanel(p: {
           {isGlazing(o) && (
             <div className="arrange-row">
               <FtIn label="Solid band" m={o.spandrelM ?? 0} onSet={(m) => p.onSize({ spandrelM: m > 0.01 ? m : undefined })} />
+              {(o.spandrelM ?? 0) > 0 && (
+                <label className="ftin">
+                  Band at
+                  <select value={o.spandrelAt ?? 'foot'} onChange={(e) => p.onSize({ spandrelAt: e.target.value === 'foot' ? undefined : (e.target.value as 'head' | 'both') })}>
+                    {SPANDREL_AT_WORDS.map(([k, w]) => (
+                      <option key={k} value={k}>
+                        {w}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              )}
               {(o.spandrelM ?? 0) > 0 && (
                 <label className="ftin">
                   Band of
@@ -1153,27 +1165,33 @@ function Viewer({ first }: { first: Shown }) {
     if (STAFF && apt) void outsideFloors(outsideChanges(was, h.pieces))
   }
   /**
-   * A sunshade, AC unit, canopy or planter placed, moved or deleted on a floor whose drawing stands on others too (qa4fix):
-   * asked once this visit "This floor only / All N floors with this drawing"; all = the same change on every other floor
-   * (arrange.ts outsideOnEveryFloor), the tower round the flat made again so they show. The inside never asks.
+   * "This floor only / All N floors with this drawing" for a sunshade, AC unit, canopy or planter on a floor whose drawing
+   * stands on others too (qa4fix): asked once this visit — when such a piece is picked up (polish3: the first one then lands
+   * as answered), else when one is placed, moved or deleted. undefined: nothing to ask (one floor); null: Esc, no answer.
    */
-  const outsideFloors = async (changed: FurniturePlacement[]) => {
+  const outsideFloorsAnswer = async (): Promise<FloorAnswer | null | undefined> => {
     const k = unit.floor
-    const n = tower && k !== undefined && changed.length ? placesIn(tower, unit.id).length : 0
-    if (n < 2) return
-    let a = outsideAnswer(unit.id)
-    if (!a) {
-      document.exitPointerLock?.()
-      const others = placesIn(tower!, unit.id).filter((f) => f !== k)
-      const i = await askChoice(`${unit.name} is also on floor${others.length === 1 ? '' : 's'} ${slotsText(others)}. Put its outside pieces — sunshades, AC units, canopies, planters — on:`, ['This floor only', `All ${n} floors with this drawing`])
-      if (i === null) return // (this time on this floor only; asked again next time)
-      setOutsideAnswer(unit.id, (a = i === 1 ? 'all' : 'one'))
-      showToast(a === 'all' ? `Outside pieces now go on all ${n} floors with ${unit.name} (until this tab closes)` : `Outside pieces stay on floor ${k} only (until this tab closes)`)
-    }
-    if (a !== 'all') return
-    outsideOnEveryFloor(unit, rooms, changed, tower!, k!)
+    const n = tower && k !== undefined ? placesIn(tower, unit.id).length : 0
+    if (n < 2) return undefined
+    const said = outsideAnswer(unit.id)
+    if (said) return said
+    document.exitPointerLock?.()
+    const others = placesIn(tower!, unit.id).filter((f) => f !== k)
+    const i = await askChoice(`${unit.name} is also on floor${others.length === 1 ? '' : 's'} ${slotsText(others)}. Put its outside pieces — sunshades, AC units, canopies, planters — on:`, ['This floor only', `All ${n} floors with this drawing`])
+    if (i === null) return null
+    const a: FloorAnswer = i === 1 ? 'all' : 'one'
+    setOutsideAnswer(unit.id, a)
+    showToast(a === 'all' ? `Outside pieces now go on all ${n} floors with ${unit.name} (until this tab closes)` : `Outside pieces stay on floor ${k} only (until this tab closes)`)
+    return a
+  }
+  /** outside pieces placed, moved or deleted: on every other floor with this drawing too when the answer is All (arrange.ts outsideOnEveryFloor), the tower made again so they show. The inside never asks. */
+  const outsideFloors = async (changed: FurniturePlacement[]) => {
+    if (!changed.length || (await outsideFloorsAnswer()) !== 'all') return // (Esc: this time on this floor only; asked again next time)
+    outsideOnEveryFloor(unit, rooms, changed, tower!, unit.floor!)
     scene?.retower()
   }
+  /** an outside piece about to be picked up (staff, a floor that shares its drawing): the question first — false: he pressed Esc, nothing is picked up */
+  const outsideFirst = async (p: Pick<FurniturePlacement, 'assetId' | 'outside' | 'onCap'> | null) => !(STAFF && apt && p && isOutsidePiece(p) && (await outsideFloorsAnswer()) === null)
   // a piece of the staff's own resized in the library (Edit furniture → Add → ⋯): the ones placed are built again at it
   const ownAt = useRef(ownV)
   useEffect(() => {
@@ -1265,17 +1283,19 @@ function Viewer({ first }: { first: Shown }) {
     held.current = h
     scene?.setHand({ id: h.id, y: surfaceOf(h.assetId ? { assetId: h.assetId } : (pieceOf(h.id) ?? { assetId: '' })) === 'ceiling' ? ceilingM : 0 })
   }
-  const startPlacing = (assetId: string) => {
+  const startPlacing = async (assetId: string) => {
     setFinishesOpen(false) // (placing and Finishes never at once: Finishes' click on an outer wall opens its outside card)
+    if (!(await outsideFirst({ assetId }))) return
     grip({ id: core.newId(), assetId, rot: 0, at: null, move: null })
     setAdding(false)
     setSel(null)
     showSel(null)
   }
   /** G: the piece under the crosshair / pointer into the hand; nothing there says so */
-  const pickUpAtPointer = () => {
+  const pickUpAtPointer = async () => {
     const id = scene?.pieceUnderPointer()
     if (!id) return showToast(`Point ${locked ? 'the dot' : 'the mouse'} at a piece of furniture, then press G`)
+    if (!(await outsideFirst(pieceOf(id)))) return
     if (arranging) setSel(id)
     grip(pickUp(steps.current.pieces, id))
   }

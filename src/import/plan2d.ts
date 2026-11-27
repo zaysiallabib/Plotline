@@ -15,8 +15,8 @@
  *            3600") = printedSize; a flat-name text ("TYPE-A ±2736 SFT") = a label of kind 'other' (core.flatTypeOf).
  * The layer → meaning table (roleOf) is what the notes show staff.
  */
-import { FT, deriveRooms, flatTypeOf, newId, pointInPolygon, roomPolygon, validate } from '../core'
-import type { LowWallKind, Opening, OpeningKind, Pillar, Pt, Room, RoomLabel, Unit, ValidationIssue, Vertex, Wall } from '../core'
+import { FT, deriveRooms, flatTypeOf, newId, pointInPolygon, railColors, roomPolygon, validate } from '../core'
+import type { LowWallKind, RailColor, Opening, OpeningKind, Pillar, Pt, Room, RoomLabel, Unit, ValidationIssue, Vertex, Wall } from '../core'
 import { EXTERIOR_M, PARTITION_M, WALL_HEIGHT_M, ZONE_LINE_M, emptyUnit, guessKind, initialState, normalizeUnit, openingDefaults, reducer } from '../studio/model'
 import { parseArea, parseDims, parseSide } from '../trace/text'
 
@@ -158,6 +158,8 @@ interface Piece {
   h?: number
   /** Plotline's own export (its centre line's layer, dxfWrite.ts axisLayer): what the low wall is made of, its outside finish */
   low?: LowWallKind
+  /** a railing's own colour (Wall.railColor), one its kind offers */
+  color?: RailColor
   out?: string
   dir: Pt
   n: Pt
@@ -524,9 +526,10 @@ function roomPolygons(loops: Pt[][], wallLength: number): RoomMode | null {
 const stripText = (s: string): string => s.replace(/\s+/g, ' ').trim()
 /**
  * Plotline's own export: a wall's centre line, on a layer named for its thickness in tenths of a millimetre, then what a
- * low wall is made of and the wall's outside finish when it has them (dxfWrite.ts axisLayer: PLOTLINE_AXES_2540_OUT_BRICK_RED)
+ * low wall is made of (and a railing's colour) and the wall's outside finish when it has them (dxfWrite.ts axisLayer:
+ * PLOTLINE_AXES_500_LOW_RAILING_ANTHRACITE, PLOTLINE_AXES_2540_OUT_BRICK_RED)
  */
-const AXES = /^PLOTLINE_AXES_(\d+)(?:_LOW_([A-Z]+))?(?:_OUT_([A-Z0-9_]+))?$/i
+const AXES = /^PLOTLINE_AXES_(\d+)(?:_LOW_([A-Z]+)(?:_([A-Z]+))?)?(?:_OUT_([A-Z0-9_]+))?$/i
 const LOW_KINDS: LowWallKind[] = ['glass', 'railing', 'grille', 'timber', 'fence', 'chainlink']
 
 /**
@@ -624,9 +627,11 @@ export function buildPlan(d: Drawing, name: string): Plan2dResult {
   const axes =
     axisLines.length && axesAgree(axisLines, d.loops.filter((l) => role(l) === 'wall' || role(l) === 'kerb'), d.segs.filter((g) => g.inst !== undefined), s)
       ? axisLines.map((g) => {
-          const [, t, low, out] = AXES.exec(g.layer)!
+          const [, t, low, col, out] = AXES.exec(g.layer)!
           const k = low?.toLowerCase() as LowWallKind | undefined
-          return { ...piece(P(g.a), P(g.b), Number(t) / 1e4, heightOf(g)), ...(k && LOW_KINDS.includes(k) ? { low: k } : {}), ...(out ? { out: `fo_out_${out.toLowerCase()}` } : {}) }
+          const kind = k && LOW_KINDS.includes(k) ? k : undefined
+          const c = col?.toLowerCase() as RailColor | undefined
+          return { ...piece(P(g.a), P(g.b), Number(t) / 1e4, heightOf(g)), ...(kind ? { low: kind } : {}), ...(kind && c && railColors(kind).includes(c) ? { color: c } : {}), ...(out ? { out: `fo_out_${out.toLowerCase()}` } : {}) }
         })
       : null
   if (axisLines.length) notes.push(axes ? `${axes.length} walls read from their centre lines, exactly as exported.` : 'Walls were changed in a CAD program since the export: read from their outlines.')
@@ -899,7 +904,7 @@ export function buildPlan(d: Drawing, name: string): Plan2dResult {
         if (t1 - t0 < (o.exact ? 0.01 : MIN_GAP) || (openings.length && openings[openings.length - 1].offsetM + openings[openings.length - 1].widthM > t0 - w.t0)) continue
         openings.push({ id: newId(), kind: o.kind, offsetM: t0 - w.t0, widthM: t1 - t0, heightM: defaults.heightM, sillM: defaults.sillM, ...(o.kind === 'door' ? { hinge: o.hinge, swing: o.swing } : {}) })
       }
-      unit0.walls.push({ id: newId(), a: a.id, b: b.id, thicknessM: w.thick, heightM: w.h ?? usualH, openings, ...(w.low ? { lowKind: w.low } : {}) })
+      unit0.walls.push({ id: newId(), a: a.id, b: b.id, thicknessM: w.thick, heightM: w.h ?? usualH, openings, ...(w.low ? { lowKind: w.low } : {}), ...(w.low && w.color ? { railColor: w.color } : {}) })
     }
   }
   // the Studio's own load path (join walls, drop stubs, heal straight runs), then no wall end left touching another (nodeGraph)
@@ -1185,6 +1190,128 @@ export function penRoles(segs: Seg[], fills: Fills = new Map(), scale: number | 
   for (const [p, L] of length) if (p.startsWith('fill ') && grey(p.slice(5)) && L >= PEN_SHARE * total && thin(p)) walls.add(p)
   const words = [...walls].map((p) => (p.startsWith('fill') ? `filled ${p.split(' ')[1]}` : `${p.split(' ')[1]} ${unit} ${p.split(' ')[2]}`)).join(', ')
   return { walls, words }
+}
+
+/**
+ * Lines drawn with a wall's pen that are not walls (session 31 polish3: the farmhouse's upper floor — its stair treads, bath
+ * fixtures and porch roof drawn with the wall pens made 184 "walls" for 5 rooms). By the index in `segs` (the wall pens'
+ * lines, file units; `scale` m per unit), with why:
+ *  tread    a run of 4 or more parallel lines of one length (0.4–3 m), their ends in line, equally spaced 12–60 cm apart:
+ *           stair treads, a roof's standing seams, a deck's boards (two faces of a wall are two lines, never four alike);
+ *  fixture  a closed shape on its own (its lines meet only each other) 0.35–2.6 m across both ways and full (its area at
+ *           least half its box), not of the heaviest pen when there are lighter ones (that one draws the walls): a bath tub,
+ *           a WC, a basin counter, a shower tray — a wall's outline is thin (an L of walls fills a fifth of its box), a
+ *           wall piece narrower than 0.35 m;
+ *  outside  a roof below drawn on the floor above: a lighter pen's line whose middle lies outside the heaviest pen's
+ *           extent (the outer wall ring, when it spans the wall lines) on a page that prints a roof's words out there
+ *           (ROOF, SLOPE, 4/12) — a porch roof and its slopes; a porch, a balcony, a terrace drawn outside are kept.
+ * Fills (a column's poché) are not looked at.
+ */
+export function notWallLines(segs: Seg[], scale: number, heavy?: string, texts: TextPrim[] = []): Map<number, 'tread' | 'fixture' | 'outside' | 'pen'> {
+  const out = new Map<number, 'tread' | 'fixture' | 'outside' | 'pen'>()
+  const m = segs.map((g) => len(sub(g.b, g.a)) * scale)
+  // tread: by direction (3° buckets, the line's sense ignored), each run of like lines at like spacing
+  const dirOf = (g: Seg) => {
+    const d = sub(g.b, g.a)
+    const L = len(d) || 1
+    return d.x < 0 || (d.x === 0 && d.y < 0) ? { x: -d.x / L, y: -d.y / L } : { x: d.x / L, y: d.y / L }
+  }
+  const groups = new Map<number, number[]>()
+  segs.forEach((g, i) => {
+    if (!g.layer.startsWith('pen ') || m[i] < 0.4 || m[i] > 3) return
+    const u = dirOf(g)
+    const k = Math.round(((Math.atan2(u.y, u.x) * 180) / Math.PI + 180) / 3) % 60
+    ;(groups.get(k) ?? groups.set(k, []).get(k)!).push(i)
+  })
+  for (const ids of groups.values()) {
+    if (ids.length < 4) continue
+    const u = dirOf(segs[ids[0]])
+    const n = { x: -u.y, y: u.x }
+    const at = ids.map((i) => {
+      const g = segs[i]
+      const s0 = dot(g.a, u) * scale, s1 = dot(g.b, u) * scale
+      return { i, c: ((dot(g.a, n) + dot(g.b, n)) / 2) * scale, lo: Math.min(s0, s1), hi: Math.max(s0, s1), L: m[i] }
+    })
+    at.sort((p, q) => p.c - q.c)
+    const like = (p: (typeof at)[0], q: (typeof at)[0]) => Math.abs(p.L - q.L) <= 0.12 * Math.max(p.L, q.L) && Math.min(p.hi, q.hi) - Math.max(p.lo, q.lo) >= 0.8 * Math.min(p.L, q.L)
+    for (let s = 0; s < at.length; s++) {
+      if (out.has(at[s].i)) continue
+      const run = [at[s]]
+      let gap = 0
+      for (let t = s + 1; t < at.length; t++) {
+        const dc = at[t].c - run[run.length - 1].c
+        if (dc < 0.12) continue
+        if (dc > 0.6) break
+        if (!like(run[0], at[t]) || (gap && Math.abs(dc - gap) > 0.25 * gap)) continue
+        gap ||= dc
+        run.push(at[t])
+      }
+      if (run.length >= 4) for (const r of run) out.set(r.i, 'tread')
+    }
+  }
+  // fixture: components of lines joined end to end (within 2 cm), each line's two ends joined: a closed shape on its own
+  const tol = 0.02 / scale
+  const parent = segs.map((_, i) => i)
+  const find = (i: number): number => (parent[i] === i ? i : (parent[i] = find(parent[i])))
+  const cell = (p: Pt) => `${Math.round(p.x / tol)},${Math.round(p.y / tol)}`
+  const ends = new Map<string, { p: Pt; i: number }[]>()
+  segs.forEach((g, i) => {
+    if (!g.layer.startsWith('pen ')) return
+    for (const p of [g.a, g.b]) (ends.get(cell(p)) ?? ends.set(cell(p), []).get(cell(p))!).push({ p, i })
+  })
+  /** how many of each line's two ends meet another line's end */
+  const degree = new Map<number, number>()
+  segs.forEach((g, i) => {
+    if (!g.layer.startsWith('pen ')) return
+    for (const p of [g.a, g.b]) {
+      const [cx, cy] = cell(p).split(',').map(Number)
+      let joined = false
+      for (let dx = -1; dx <= 1; dx++)
+        for (let dy = -1; dy <= 1; dy++)
+          for (const e of ends.get(`${cx + dx},${cy + dy}`) ?? []) if (e.i !== i && len(sub(e.p, p)) <= tol) (parent[find(e.i)] = find(i)), (joined = true)
+      if (joined) degree.set(i, (degree.get(i) ?? 0) + 1)
+    }
+  })
+  const comps = new Map<number, number[]>()
+  segs.forEach((g, i) => g.layer.startsWith('pen ') && (comps.get(find(i)) ?? comps.set(find(i), []).get(find(i))!).push(i))
+  // (the heaviest pen draws the walls themselves when there are lighter ones: never a fixture)
+  const lighter = !!heavy && segs.some((g) => g.layer !== heavy)
+  for (const ids of comps.values()) {
+    if (ids.length < 3 || !ids.every((i) => (degree.get(i) ?? 0) === 2) || (lighter && segs[ids[0]].layer === heavy)) continue
+    const xs = ids.flatMap((i) => [segs[i].a.x, segs[i].b.x]), ys = ids.flatMap((i) => [segs[i].a.y, segs[i].b.y])
+    const w = (Math.max(...xs) - Math.min(...xs)) * scale, h = (Math.max(...ys) - Math.min(...ys)) * scale
+    // (its area by the shoelace over its lines, as drawn: a path's lines run one way round)
+    const area = Math.abs(ids.reduce((acc, i) => acc + crossZ(segs[i].a, segs[i].b), 0) / 2) * scale * scale
+    if (Math.min(w, h) >= 0.35 && Math.max(w, h) <= 2.6 && area >= 0.5 * w * h) for (const i of ids) out.set(i, 'fixture')
+  }
+  // outside: a roof below, when the heaviest pen rings the drawing and a roof's words stand outside it
+  const H = heavy ? segs.filter((g) => g.layer === heavy) : []
+  if (H.length) {
+    const box = (gs: Seg[]) => {
+      const xs = gs.flatMap((g) => [g.a.x, g.b.x]), ys = gs.flatMap((g) => [g.a.y, g.b.y])
+      return { x0: Math.min(...xs), y0: Math.min(...ys), x1: Math.max(...xs), y1: Math.max(...ys) }
+    }
+    const ring = box(H), all = box(segs)
+    const spans = ring.x1 - ring.x0 >= 0.5 * (all.x1 - all.x0) && ring.y1 - ring.y0 >= 0.5 * (all.y1 - all.y0)
+    const pad = 0.05 / scale
+    const outsideRing = (p: Pt) => p.x < ring.x0 - pad || p.x > ring.x1 + pad || p.y < ring.y0 - pad || p.y > ring.y1 + pad
+    const roof = texts.some((x) => outsideRing(x.at) && /\broof\b|\bslope\b|\b\d{1,2}\s*[/:]\s*12\b|\bdach\b|\btecho\b|\btoit\b/i.test(x.text))
+    if (spans && roof)
+      segs.forEach((g, i) => {
+        if (g.layer !== heavy && !out.has(i) && outsideRing({ x: (g.a.x + g.b.x) / 2, y: (g.a.y + g.b.y) / 2 })) out.set(i, 'outside')
+      })
+  }
+  // a lighter pen that was mostly treads, fixtures and a roof below (at least three quarters of its length): the rest of it is the same
+  // kind of drawing (a stair's walking line, a closet's dashed shelf), no walls
+  const length = new Map<string, [number, number]>()
+  segs.forEach((g, i) => {
+    const e = length.get(g.layer) ?? length.set(g.layer, [0, 0]).get(g.layer)!
+    e[0] += m[i]
+    if (out.has(i)) e[1] += m[i]
+  })
+  for (const [pen, [all, not]] of length)
+    if (heavy && pen !== heavy && pen.startsWith('pen ') && not >= 0.75 * all) segs.forEach((g, i) => g.layer === pen && !out.has(i) && out.set(i, 'pen'))
+  return out
 }
 
 // ---------- what PDF and SVG share: a sheet with no scale, door swings drawn as curves ----------
