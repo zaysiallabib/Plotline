@@ -37,7 +37,7 @@ import Minimap, { mapOf } from './Minimap'
 import { NotesList, PinLayer, tagOf, type Draft } from './Notes'
 import { arrivalFace, coreRooms, entrySpawn, listedRooms, roomView, stairView, yawFor } from './spawn'
 import SunPill, { WindChips } from './SunPill'
-import { withDefaults } from './defaults'
+import { drawingTitle, withDefaults } from './defaults'
 import { chosen, KEYS, local, lower, NAME, probeDevice, QUALITIES, read, recommend, tab, write, type Quality } from './quality'
 import { encodeConfig, finishKeys, keepConfig, keepOutside, shareUrl, stairUrl, startFinishes } from './share'
 import { appendPin, readPins, removePin, type Pin } from './storage'
@@ -985,7 +985,8 @@ function Viewer({ first }: { first: Shown }) {
       // of the tower — a wall, a parapet, a ground block (its floor) — the building's outside card; neither a trip
       if (!f && STAFF && finishesRef.current && h.k === roofK && !h.wall) return void (setSurface(null), setRoofOpen(true))
       if (finishesRef.current && KEEP) {
-        const drawn = h.wall && Object.values(tower?.FLATS ?? {}).find((x) => x.unit.id === h.wall!.drawing)?.unit.name.split(' · ')[0]
+        const of = h.wall && Object.values(tower?.FLATS ?? {}).find((x) => x.unit.id === h.wall!.drawing)?.unit
+        const drawn = of ? drawingTitle(of).split(' · ')[0] : undefined
         setRoofOpen(false)
         return setSurface({ outside: outSpot(h.k, h.wall, drawn) })
       }
@@ -2026,7 +2027,7 @@ function Viewer({ first }: { first: Shown }) {
             <MadeOfCard
               w={lowWall}
               lengthM={core.wallFrame(lowWall, lowNow.vertices).lengthM}
-              where={`Floor ${towerLow!.k} · ${lowNow.name}`}
+              where={`Floor ${towerLow!.k} · ${drawingTitle(lowNow)}`}
               floors={tower ? placesIn(tower, lowNow.id).length : 1}
               k={towerLow!.k}
               one={lowOne}

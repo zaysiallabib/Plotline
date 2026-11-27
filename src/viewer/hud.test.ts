@@ -129,6 +129,10 @@ describe('hud', () => {
     expect(towerCard(banani, { k: 0, flat: null }, false)).toEqual({ title: 'Ground floor', line: 'Ground level', act: 'Click to walk it' })
     const own = { ...bti, FLATS: { ...bti.FLATS, 'type-a': { ...bti.FLATS['type-a'], unit: { ...bti.FLATS['type-a'].unit, name: 'Type A' } } } }
     expect(towerCard(own, { k: 2, flat: flat('type-a', 2) }, false).line).toBe('Type A · 2703 sft') // a Studio flat's bare name: its size from the plan
+    // no name typed (a picture traced on an empty Studio): named as the walk names it (defaults.ts titleOf), never " · 2703 sft"
+    const bare = { ...bti, FLATS: { ...bti.FLATS, 'type-a': { ...bti.FLATS['type-a'], unit: { ...bti.FLATS['type-a'].unit, name: '' } } } }
+    expect(towerCard(bare, { k: 2, flat: flat('type-a', 2) }, false).line).toBe('Floor plan A · 2703 sft')
+    expect(floorTitle(bare, 2, 'type-a')).toEqual({ label: 'Floor 2', name: 'Floor plan A', size: '2703 sft' })
     // staff with Finishes open: a click chooses for the building's outside there (session 31 facade) — on the roof, its roof
     expect(towerCard(bti, { k: 4, flat: flat('type-b', 4), wall: { drawing: 'd', run: 'w' } }, false, true).act).toBe('Click to choose its outside')
     expect(towerCard(bti, { k: 0, flat: null }, true, true).act).toBe('Tap again to choose its outside')
