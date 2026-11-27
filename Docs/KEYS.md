@@ -51,6 +51,7 @@ no staff row below shows there. Checked against the product on 2026-11-21; walke
 | **Comment** / **C** | Comment on / off (closes Finishes): click anything to leave a note; in Clean view also brings everything back | the bar | everyone | §2 Notes |
 | **Share** | Copies a link that opens with the finishes you chose; staff with the online database: a buyer link (`/s/…`) of this flat on its floor, with its own finishes and furniture (asks once for the staff key when not signed in); without the database a Studio drawing's link opens only in this browser | the bar | everyone | §2 The bar |
 | **Edit ▾ → Furniture** | Edit furniture: move, turn, resize, delete, add — the **Outside** group also on a wall's outside face | the bar | staff | §3 Edit furniture |
+| **This floor only** · **All N floors with this drawing** · **Cancel** / Esc | An outside piece (sunshade, AC unit, canopy, planter) put down, moved or deleted on this floor only · the same on every floor with this drawing (held until the tab closes) · this time this floor, asked again | the question after the first such change on a floor whose drawing stands on others | staff | §3 Edit furniture |
 | **Edit ▾ → Openings** | Edit openings: doors, windows, sliders, passages, low walls | the bar | staff | §3 Edit openings |
 | **Edit ▾ → Plan (Studio) ↗** | Opens this flat or level in the Studio, in a new tab | the bar | staff | §3 |
 | **Edit ▾ → Download 3D model** | Saves this flat as one `.glb` once every room has arrived | the bar | staff | §3, §5 Give the drawing back |

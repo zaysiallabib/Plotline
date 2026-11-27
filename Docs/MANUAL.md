@@ -557,6 +557,13 @@ block is the roof.
   skirting: it may come down to the floor). It turns red and says why: "Covers the window", "Covers the doorway", "Past the
   end of the wall", "Runs into a wall" (a parapet round the corner: above it is fine), or that it overlaps another piece.
   Other pieces (a sofa, a TV, a picture) stay inside: on an outside face they say "Outside the room".
+- **On every floor with this drawing:** a flat whose drawing stands on several floors (Floor plan A on floors 1, 2, 4,
+  6, 8) asks the first time you put down, move or delete one of its outside pieces: "Floor plan A is also on floors 2, 4,
+  6, 8. Put its outside pieces — sunshades, AC units, canopies, planters — on: **This floor only** · **All 5 floors with
+  this drawing**" (Cancel: this time this floor only, asked again next time). **All** puts the same piece in the same place
+  on every one of those floors — and moves or deletes it there when you move or delete it here — and the Building view shows
+  them at once; the answer holds until the tab is closed (the furniture panel says "Outside pieces: every floor with this
+  drawing"). Furniture inside never asks: each floor's own. Pieces placed one floor at a time before stay as they are.
 - **Over a window or door by design:** a sunshade, canopy or awning never "covers" its opening. Dropped on a window or
   door it fits itself to it: centred on it, 15 cm wider each side, its underside on the opening's top. A louvre, fin or
   jaali screen or a roller shutter fits in front of it: 5 cm wider each side, from just under the sill, as tall as the
@@ -1849,8 +1856,8 @@ Things that are confusing or not finished. Each one is a job on the list.
   several (the built-in Type A, B, C) does not know its neighbour flat, so the wall it shares with the next flat or the
   core counts as outside and a piece hung there stands inside the neighbour — use the building's real outer walls. A
   whole-floor drawing (the Studio's way) knows its neighbours. In the Building view a piece can be added, not moved or
-  deleted (do that in the Dollhouse). On the other floors of the same drawing a flat's outside pieces show only where the
-  Building view draws furniture (by quality), and lit as the inside.
+  deleted (do that in the Dollhouse). On the other floors of the same drawing a flat's outside pieces (put there with
+  **All N floors with this drawing**, §3) show only where the Building view draws furniture (by quality), and lit as the inside.
 - A low wall's **Made of** is kept in the drawing, the 3D and the Building view, but not in a DXF given back (it comes back
   solid), and an architect's file (IFC) brings its railings as its own shape, not as a Made of. With Finishes open, a
   click on a railing or glass front offers the balcony's wall paint (the railing's own colour has no choice yet). The

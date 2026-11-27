@@ -29,7 +29,7 @@ import type { TowerHit } from '../three/building'
 import { lightsOn, type LightsMode } from '../three/render'
 import { TEST_UNIT } from '../three/testUnit'
 import type { XRControls } from '../three/xr'
-import { baseOf, deleteHeld, draftState, dropHeld, floorAnswer, forkHere, holdAt, isShareLink, isStaff, keepsFinishes, makeDraft, pickUp, planOf, pushStep, saveFinishes, saveLayout, saveOpenings, setFloorAnswer, turnHeld, undoStep, wallDrag, type FloorAnswer, type Held, type Steps } from './arrange'
+import { baseOf, deleteHeld, draftState, dropHeld, floorAnswer, forkHere, holdAt, isShareLink, isStaff, keepsFinishes, makeDraft, outsideAnswer, outsideChanges, outsideOnEveryFloor, pickUp, planOf, pushStep, saveFinishes, saveLayout, saveOpenings, setFloorAnswer, setOutsideAnswer, turnHeld, undoStep, wallDrag, type FloorAnswer, type Held, type Steps } from './arrange'
 import FinishesPanel, { type Surface } from './FinishesPanel'
 import Hud, { floorTitle, Grip, StatsPanel, useFinger, type HandInfo } from './Hud'
 import Minimap, { mapOf } from './Minimap'
@@ -43,7 +43,7 @@ import { appendPin, readPins, removePin, type Pin } from './storage'
 import { LibraryPanel } from '../studio/LibraryPanel'
 import { copyPicture } from '../studio/pictures'
 import './viewer.css'
-import { ask } from '../lib/ask'
+import { ask, askChoice } from '../lib/ask'
 
 const files = import.meta.glob('../data/units/*.json', { eager: true, import: 'default' }) as Record<string, Unit>
 const UNITS = Object.entries(files).map(([path, unit]) => ({ stem: path.split('/').pop()!.replace(/\.json$/, ''), unit }))
@@ -1067,11 +1067,35 @@ function Viewer({ first }: { first: Shown }) {
   /** a committed step (drop, turn, undo, reset): kept for this apartment (the Studio's F shows it while the drawing stands in one place), shadows and lights follow */
   const settle = (h: Steps, show = sel) => {
     h = { ...h, pieces: layoutFor({ ...unit, furniture: h.pieces }, rooms) } // curtains on their windows as they are now
+    const was = steps.current.pieces
     steps.current = h
     if (apt) saveLayout(apt, h.pieces, base) // this apartment's own (founder 2026-11-21): never another floor's, never asked
     scene?.setLayout(h.pieces)
     showSel(pieceOf(show))
     redraw()
+    if (STAFF && apt) void outsideFloors(outsideChanges(was, h.pieces))
+  }
+  /**
+   * A sunshade, AC unit, canopy or planter placed, moved or deleted on a floor whose drawing stands on others too (qa4fix):
+   * asked once this visit "This floor only / All N floors with this drawing"; all = the same change on every other floor
+   * (arrange.ts outsideOnEveryFloor), the tower round the flat made again so they show. The inside never asks.
+   */
+  const outsideFloors = async (changed: FurniturePlacement[]) => {
+    const k = unit.floor
+    const n = tower && k !== undefined && changed.length ? placesIn(tower, unit.id).length : 0
+    if (n < 2) return
+    let a = outsideAnswer(unit.id)
+    if (!a) {
+      document.exitPointerLock?.()
+      const others = placesIn(tower!, unit.id).filter((f) => f !== k)
+      const i = await askChoice(`${unit.name} is also on floor${others.length === 1 ? '' : 's'} ${slotsText(others)}. Put its outside pieces — sunshades, AC units, canopies, planters — on:`, ['This floor only', `All ${n} floors with this drawing`])
+      if (i === null) return // (this time on this floor only; asked again next time)
+      setOutsideAnswer(unit.id, (a = i === 1 ? 'all' : 'one'))
+      showToast(a === 'all' ? `Outside pieces now go on all ${n} floors with ${unit.name} (until this tab closes)` : `Outside pieces stay on floor ${k} only (until this tab closes)`)
+    }
+    if (a !== 'all') return
+    outsideOnEveryFloor(unit, rooms, changed, tower!, k!)
+    scene?.retower()
   }
   // a piece of the staff's own resized in the library (Edit furniture → Add → ⋯): the ones placed are built again at it
   const ownAt = useRef(ownV)
@@ -1582,7 +1606,7 @@ function Viewer({ first }: { first: Shown }) {
   const kept = !apt
     ? null
     : apt !== unit.id
-      ? `Kept for ${level !== undefined ? levelName(tower!, level) : `floor ${unit.floor}`} only: it opens like this next time.`
+      ? `Kept for ${level !== undefined ? levelName(tower!, level) : `floor ${unit.floor}`} only: it opens like this next time.${outsideAnswer(unit.id) === 'all' ? ' Outside pieces: every floor with this drawing.' : ''}`
       : tower && placesIn(tower, unit.id).length > 1
         ? 'Kept for the drawing: every floor not changed on its own starts from this.'
         : `Kept for this ${level !== undefined ? 'level' : 'flat'}: it opens like this next time.`

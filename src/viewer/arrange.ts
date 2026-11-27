@@ -5,10 +5,11 @@
  * drag in the 3D view puts a piece.
  */
 import { newId, vertexById, wallFrame, type FurniturePlacement, type Id, type Pt, type Room, type Unit } from '../core'
-import { finishesKey, layoutKey } from '../data/building/apartments'
+import { finishesKey, keptAt, layoutKey, placesIn, saveLayout } from '../data/building/apartments'
+import type { Tower } from '../data/building'
 import { PROJECTS_KEY, forkFloor, keepApartments, parseProjects, sharedAt, stemOf, syncUnit } from '../data/building/projects'
 import { kitAsset, objectKind, placementRange } from '../furnish/kit'
-import { baseOf, deletePiece, hangOn, movePiece, placePiece, surfaceOf, type Move, type WallFace } from '../studio/furniture'
+import { baseOf, deletePiece, hangOn, layoutFor, movePiece, placePiece, surfaceOf, type Move, type WallFace } from '../studio/furniture'
 import { endAlong, isUnit, normalizeUnit, reducer, type StudioState } from '../studio/model'
 import { snapMove } from '../studio/snap'
 import type { OpeningEvent } from '../three/PlotlineScene'
@@ -316,4 +317,61 @@ export function forkHere(stem: string, k: number, store?: Store): { stem: string
   } catch {
     return null
   }
+}
+
+// ── Outside pieces on every floor (qa4fix, problem 5: "Kept for floor 1 only" — nine floors, nine placings). A sunshade, an AC
+// outdoor unit, a canopy, a planter (the library's Outside pieces: kit `outdoor`, or hung on an outer face / a cap) placed,
+// moved or deleted on a floor whose drawing stands on others too: the 3D view asks once a visit "This floor only / All N
+// floors with this drawing"; all = the same change in every other floor's layout (each apartment still its own record).
+const outsideOf = (p: FurniturePlacement): boolean => !!(p.outside || p.onCap || kitAsset(p.assetId)?.outdoor)
+/** The answer for drawing `id` this visit (sessionStorage: a reload keeps it, a new tab asks again). */
+export const OUTSIDE_ANSWER_KEY = 'plotline.outsideAnswer'
+export function outsideAnswer(id: Id, store?: Store): FloorAnswer | undefined {
+  try {
+    const a = (JSON.parse((store ?? sessionStorage).getItem(OUTSIDE_ANSWER_KEY) ?? '{}') as Record<string, unknown>)[id]
+    return a === 'one' || a === 'all' ? a : undefined
+  } catch {
+    return undefined
+  }
+}
+export function setOutsideAnswer(id: Id, a: FloorAnswer, store?: Store): void {
+  try {
+    const s = store ?? sessionStorage
+    s.setItem(OUTSIDE_ANSWER_KEY, JSON.stringify({ ...(JSON.parse(s.getItem(OUTSIDE_ANSWER_KEY) ?? '{}') as object), [id]: a }))
+  } catch {
+    /* storage blocked: it asks again */
+  }
+}
+
+/** The outside pieces a committed step changed (`before` → `after`): added, moved, turned, resized, deleted (a tombstone, or gone — an undone add). */
+export function outsideChanges(before: FurniturePlacement[], after: FurniturePlacement[]): FurniturePlacement[] {
+  const was = new Map(before.map((p) => [p.id, JSON.stringify(p)]))
+  const now = new Set(after.map((p) => p.id))
+  return [
+    ...after.filter((p) => outsideOf(p) && was.get(p.id) !== JSON.stringify(p)),
+    ...before.filter((p) => outsideOf(p) && !p.removed && !now.has(p.id)).map((p) => ({ ...p, removed: true as const })),
+  ]
+}
+
+/** Layout `pieces` with the outside pieces `changed` as they are now: each replaces its own (same id), a new one joins, a deleted one never placed here is not added. */
+export const withOutside = (pieces: FurniturePlacement[], changed: FurniturePlacement[]): FurniturePlacement[] => {
+  const by = new Map(changed.map((p) => [p.id, p]))
+  const have = new Set(pieces.map((p) => p.id))
+  return [...pieces.map((p) => by.get(p.id) ?? p), ...changed.filter((p) => !have.has(p.id) && !p.removed)]
+}
+
+/**
+ * "All N floors with this drawing": drawing `u` (its `rooms`) on every floor of tower `t` but `here` takes the outside pieces
+ * `changed` — into that floor's layout as it opens (its own, else the drawing's, else the presets: layoutFor), kept as that
+ * floor's own. The floors written.
+ */
+export function outsideOnEveryFloor(u: Unit, rooms: Room[], changed: FurniturePlacement[], t: Pick<Tower, 'FLATS' | 'FLOORS' | 'LEVELS'>, here: number, store?: Store): number[] {
+  const floors = placesIn(t, u.id).filter((k) => k !== here)
+  for (const k of floors) {
+    const kept = keptAt(u, k, t, store)
+    const base = layoutFor(kept.base ? { ...u, furniture: kept.base } : u, rooms)
+    const now = kept.layout ? layoutFor({ ...u, furniture: kept.layout }, rooms) : base
+    saveLayout(kept.key, withOutside(now, changed), base, store)
+  }
+  return floors
 }
