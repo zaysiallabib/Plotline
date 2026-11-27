@@ -498,8 +498,10 @@ that flat, open its own address (`/u/…`, or **Preview 3D** in the Studio).
 - **Drag a dot** on a piece to make it bigger or smaller (only pieces that can stretch).
 - **Outside the flat** (the library's **Outside** group): a sunshade (chhajja), a canopy, an awning, louvres, fins, a
   jaali screen, a roller shutter, an AC outdoor unit, a fire escape, an edge planter or a name sign may also hang on the
-  **outside face** of a wall — the side where no room is. In the **Dollhouse** turn round to the flat's outside, pick the
-  piece in **Add** and point at the outside of a wall; on a balcony in **Walk**, point at the balcony's own walls. It goes
+  **outside face** of a wall — the side where no room is. In the **Dollhouse** turn round to the flat's outside (or in the
+  **Building view**, with Edit furniture on, turn the tower), pick the piece in **Add** and point at the outside of one of
+  this flat's walls; on a balcony in **Walk**, point at the balcony's own walls. In the Building view only a new piece is
+  put down this way — to move or delete one, go back to the Dollhouse (a click on the tower opens a floor). It goes
   flat against that face, facing out, and slides along it in 3-inch steps, up and down in 1-inch steps (outside there is no
   skirting: it may come down to the floor). It turns red and says why: "Covers the window", "Covers the doorway", "Past the
   end of the wall", "Runs into a wall" (a parapet round the corner: above it is fine), or that it overlaps another piece.
@@ -650,6 +652,9 @@ The whole tower, floor by floor: point at a floor to see which it is, open a fla
   size from the plan ("Type B · 1747 sft"), then what a click does there. **Click** opens that flat in its Dollhouse,
   walks a ground floor, basement, rooftop or common floor, or — on a floor with nothing to open — picks that floor as the
   list does. The card keeps to the screen at its edges; it goes while you drag the tower round.
+- **Staff, with Edit furniture on:** **Add** a piece from the library's **Outside** group (a sunshade, a canopy, an AC
+  unit…) and point at the outside of the open flat's walls: it hangs there as in the Dollhouse (§3), and a click puts it
+  down. While a piece is in your hand, a click on the tower puts the piece down instead of opening a floor; Esc lets it go.
 - **No new page:** the flat or level you click comes into the same 3D, as a stair brings a floor (§2): the tower stays on
   screen, the line at the bottom says where you are going ("Floor 8 …"), and the picture changes in one go — about 2–3
   seconds for a flat, longer the first time you open a ground floor with trees and play things (5 s on Lite, about 10 s
@@ -1751,7 +1756,7 @@ is a job (hand-tested 2026-10-05, updated since).
 | Parking bay | No | Yes — size, number, add, delete | The painted lines |
 | Wall paint of one room / one wall | Yes — Finishes open, click the wall; kept for that flat | No | The outside and the boundary (no paint choice) |
 | Tree, shrub, plant, furniture, loungers, pergola | Yes — move, turn, resize, delete, add from the library | Yes (F) | Swap a plant for another in one step |
-| Sunshade, canopy, awning, fins, louvres, jaali, roller shutter, AC outdoor unit, fire escape, edge planter, name sign on a wall's outside | Yes — add from **Outside**, move along the outside, up and down, resize, delete (Dollhouse; on a balcony in Walk) | Yes (F: click outside the wall) | Not in the Building view; their colour or material |
+| Sunshade, canopy, awning, fins, louvres, jaali, roller shutter, AC outdoor unit, fire escape, edge planter, name sign on a wall's outside | Yes — add from **Outside**, move along the outside, up and down, resize, delete (Dollhouse; on a balcony in Walk; the Building view adds only) | Yes (F: click outside the wall) | Their colour or material |
 | Solar panels, chimney, flagpole, porch roof | Yes — like any piece, on a rooftop deck or a ground-floor zone | Yes (F) | A roof that is no traced level (the tower's own flat roof) takes none |
 | Your own furniture model | Yes — Add → + Add your own…, then like any piece; ⋯ renames, resizes, removes | Yes (F) | — |
 | A finish option of your own | Yes — Finishes → + Add option (staff); ⋯ changes or removes it | No | — |

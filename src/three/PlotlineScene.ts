@@ -1587,7 +1587,7 @@ export class PlotlineScene {
     if (h && this.finger && !this.plc.isLocked) this.pointerNdc = new THREE.Vector2(0, 0) // a finger has no pointer to follow: a new piece starts mid-view
     this.rebatch('furniture')
     if (!h && this.grab && !this.grab.handle) this.grab = null // Esc mid-drag: the button's release must not pick it up again
-    if (this.hand && this.mode !== 'building') this.aimHand()
+    if (this.hand) this.aimHand() // (also the Building view: a library piece onto the flat's outside, session 31)
   }
 
   /** The piece under the crosshair (mouse locked) or the pointer, as G picks it up; null: none, or something nearer hides it. */
@@ -2530,7 +2530,7 @@ export class PlotlineScene {
 
   private onPointerMove = (e: PointerEvent): void => {
     if (!this.plc.isLocked) this.pointerNdc = this.ndcOf(e) // locked: the client position is frozen, the crosshair aims
-    if (this.mode === 'building' && e.pointerType === 'mouse') {
+    if (this.mode === 'building' && e.pointerType === 'mouse' && !this.hand) {
       if (e.buttons) this.setTowerHover(null) // turning or sliding the tower: no card
       else this.queueHover(e.clientX, e.clientY)
     }
@@ -2563,7 +2563,7 @@ export class PlotlineScene {
       return
     }
     if (this.hand) {
-      if (!e.buttons && this.mode !== 'building') this.aimHand()
+      if (!e.buttons) this.aimHand() // the Building view too: a piece from the library onto the flat's outside (session 31)
       return
     }
     const g = this.grab
@@ -2648,7 +2648,7 @@ export class PlotlineScene {
       else if (!g && click) this.openingCb?.({ kind: 'select', id: null })
       return
     }
-    if (this.hand && this.mode !== 'building') {
+    if (this.hand) {
       this.look2 = null
       if (click) {
         this.aimHand() // where the click is (the crosshair while locked), then drop there
@@ -2870,7 +2870,7 @@ export class PlotlineScene {
     }
     WATER.normalMap!.offset.x += dt * 0.012 // the pools' ripple drifts
     this.wind?.update(dt)
-    if (this.hand && this.mode !== 'building') this.aimHand() // the piece in hand stays under the crosshair / pointer as he walks and looks
+    if (this.hand) this.aimHand() // the piece in hand stays under the crosshair / pointer as he walks and looks (or turns the tower)
     const now = performance.now()
     if (this.veiled) return this.prepare(now)
     const pose = this.poseKey()
