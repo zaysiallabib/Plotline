@@ -498,9 +498,11 @@ describe('the tower round a walked flat (three/building.ts, session 31)', () => 
     expect(b.some((y) => Math.abs(y - 0.1) < 1e-6)).toBe(true)
     // a lid over the plate's top (the flat's walls reach the slab: the Studio's 10 ft walls): the slab's top skin is left over
     // it, its roof seen from outside (anybuilding: a Studio-made top floor showed its rooms from the Building view)
-    const skin = plate(A, ra, 0.2, 0.2, A.walls, { ...lid, y: 0.3 }).map((g) => (g.computeBoundingBox(), g.boundingBox!))
+    const skin = plate(A, ra, 0.2, 0.2, A.walls, { ...lid, y: 0.205 }).map((g) => (g.computeBoundingBox(), g.boundingBox!))
     expect(skin.length).toBe(ra.filter((r) => r.kind !== 'shaft').length + A.walls.length)
     for (const b of skin) expect([+b.min.y.toFixed(3), +b.max.y.toFixed(3)]).toEqual([0.18, 0.2])
+    // a flat whose walls stand well through the slab (an attic under a pitched roof): nothing over it — a skin would cross its rooms
+    expect(plate(A, ra, 0.2, 0.2, A.walls, { ...lid, y: 0.3 })).toHaveLength(0)
   })
 })
 

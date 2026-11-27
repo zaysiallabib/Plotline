@@ -80,6 +80,9 @@ const CAP_M = { plaster: 0.06, metal: 0.03, stone: 0.08 }
 const LOOK_SLAB = 0.15
 /** the least of a plate left over the walked flat (plate's lid): the slab's top face, seen from outside */
 const SKIN_M = 0.02
+/** how far the walked flat's own roof may reach past the slab over it and still be roofed by it: the Studio's 10 ft walls under
+ *  a 3.198 m storey reach 5 mm past; farther, its walls stand through the slab (an attic under a pitched roof) and it keeps none */
+const REACH_M = 0.05
 /**
  * A traced level drawn in full stands on a plate whose top is this far under its floors (screed + tile): a plate top in
  * the floors' own plane fought them in stripes from the Building view's distance (the roof deck read as a moiré).
@@ -247,7 +250,8 @@ export type Lid = { over: (p: Pt) => boolean; y: number }
  * SKIN_M: a flat whose walls reach the slab (the Studio's 10 ft walls under a 3.198 m storey) had no roof over it from outside.
  */
 export function plate(unit: Unit, rooms: Room[], top: number, h: number, walls: Wall[] = unit.walls, lid?: Lid): THREE.BufferGeometry[] {
-  const bottom = (p: Pt) => (lid?.over(p) ? Math.min(Math.max(top - h, lid.y), top - SKIN_M) : top - h)
+  // (a flat whose walls stand well past the slab — an attic's, under a pitched roof — keeps no piece: a skin would cross its rooms)
+  const bottom = (p: Pt) => (lid?.over(p) ? (lid.y < top + REACH_M ? Math.min(Math.max(top - h, lid.y), top - SKIN_M) : lid.y) : top - h)
   const out: THREE.BufferGeometry[] = []
   for (const r of rooms) {
     const b = r.kind === 'shaft' ? top : bottom(r.centroid)
@@ -600,7 +604,7 @@ export class Building extends THREE.Group {
           // (over the walked top floor its own roof — Look's, to its walls' tops — may reach past the roof's datum: the Studio's
           // 10 ft walls under a 3.198 m storey by 5 mm. The slab then lies a skin over it, or its wall tops drew lines on the roof)
           const lid = this.lid(s, k)
-          const deckTop = roofLevel.length ? -UNDER_LEVEL_M : Math.max(0, lid ? lid.y + SKIN_M : 0)
+          const deckTop = roofLevel.length ? -UNDER_LEVEL_M : !pitched && lid && lid.y < REACH_M ? Math.max(0, lid.y + SKIN_M) : 0
           for (const [r, gs] of this.edgesBy(s, k, plate(u, rooms, deckTop, PLATE_M, u.walls, lid).map(at))) put(k, r, ...gs)
           if (roofLevel.length) continue
           // parapet: the walls with open air on one side (outside every flat of the floor below), 1.1 m (or as the set prints it), no openings
