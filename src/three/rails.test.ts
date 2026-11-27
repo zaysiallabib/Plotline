@@ -150,3 +150,31 @@ test('a balcony stands out: its front slab edge BAND_P past the low walls, BAND_
   const plain = { ...u, roomLabels: u.roomLabels.map((l) => ({ ...l, kind: 'bed' as const })) }
   expect(balconyEdges(plain, core.deriveRooms(plain))).toBeNull()
 })
+
+test('a curved balcony (its front: six short walls on an arc) gets one unbroken slab edge round it — no gap, no overlap at a joint', () => {
+  const u0 = balcony()
+  const R = Math.hypot(1.5, 0.5)
+  const a0 = Math.atan2(0.5, -1.5)
+  const a1 = Math.atan2(0.5, 1.5)
+  const arc = [...Array(7)].map((_, i) => ({ id: `c${i}`, x: 1.5 + R * Math.cos(a0 + ((a1 - a0) * i) / 6), y: 1 + R * Math.sin(a0 + ((a1 - a0) * i) / 6) }))
+  arc[0] = { ...arc[0], id: 't' }
+  arc[6] = { ...arc[6], id: 'u' }
+  const front = arc.slice(0, 6).map((p, i): Wall => ({ id: `f${i}`, a: p.id, b: arc[i + 1].id, thicknessM: 0.127, heightM: 1.1, openings: [], lowKind: 'glass' }))
+  const u: Unit = { ...u0, vertices: [...u0.vertices.filter((v) => v.id !== 't' && v.id !== 'u'), ...arc], walls: [...u0.walls.filter((w) => w.id !== 'front'), ...front] }
+  const g = balconyEdges(u, core.deriveRooms(u))!
+  // its top face's area against the exact area of a mitred strip d wide outside the chain s → t → the arc → u → r
+  const d = 0.127 / 2 + BAND_P
+  const chain = ['s', 't', ...arc.slice(1, 6).map((p) => p.id), 'u', 'r'].map((id) => u.vertices.find((v) => v.id === id)!)
+  const dirs = chain.slice(1).map((p, i) => { const L = Math.hypot(p.x - chain[i].x, p.y - chain[i].y); return { x: (p.x - chain[i].x) / L, y: (p.y - chain[i].y) / L, L } })
+  const turns = dirs.slice(1).map((e, i) => Math.acos(Math.min(1, dirs[i].x * e.x + dirs[i].y * e.y)))
+  const want = dirs.reduce((s, e) => s + e.L, 0) * d + d * d * turns.reduce((s, a) => s + Math.tan(a / 2), 0)
+  const p = g.attributes.position
+  const n = g.attributes.normal
+  let area = 0
+  for (let i = 0; i < p.count; i += 3) {
+    if (n.getY(i) < 0.99 || Math.abs(p.getY(i) - BAND_UP) > 1e-6) continue
+    const [ax, az, bx, bz, cx, cz] = [p.getX(i), p.getZ(i), p.getX(i + 1), p.getZ(i + 1), p.getX(i + 2), p.getZ(i + 2)]
+    area += Math.abs((bx - ax) * (cz - az) - (cx - ax) * (bz - az)) / 2
+  }
+  expect(area).toBeCloseTo(want, 6)
+})
