@@ -46,6 +46,10 @@ into a building… → Show building**), the Building view's camera moved round 
 before `E:/dev/plotline-shots/s31/outside/close/<file>-a|b|c.png`, after `E:/dev/plotline-shots/s31/ifcmap/after/<file>-a|b|c.png`,
 side by side `E:/dev/plotline-shots/s31/ifcmap/contact-01…05.png` (harness `E:/dev/tmp/s31/ifcmap/scripts/shots.mjs`,
 `contact.mjs`). The Studio's own lists checked as a person sees them: `E:/dev/plotline-shots/s31/ifcmap/ui/`.
+Read times did not grow: the five biggest samples (LTU, Nordic office, Advanced Project, Nordic housing, Vienna) read in
+19.9 s together against 21.4 s before (the faster of four reads each, `E:/dev/tmp/s31/ifcmap/timing.test.ts`). The rows a
+person checks (the Studio's own list, seven of the buildings) are unchanged but for Longyearbyen 29 → 26 and Advanced
+Project 772 → 773 (a railing closing a balcony: one more room to name).
 
 *Materials known / listed*: the outer-wall material names read (an outer layer of an outer wall), and how many of them
 Plotline knows; one not known keeps the plaster and is listed in **Materials** for a person to map. *Outer walls dressed /
@@ -76,10 +80,10 @@ stay in the shape. *Roof read*: the roof setting (kind, pitch, covering) from If
 | HoloLens flat C | 0 / 0 | 0 / 29 | — | 0 / 0 | flat (file: flat) | Level 1 | sum4re-hololens-apartment-c |
 | HoloLens flat D | 0 / 0 | 0 / 37 | — | 0 / 0 | flat (file: notdefined) | Level 1 | sum4re-hololens-apartment-d |
 | Longyearbyen | 0 / 0 | 0 / 46 | — | 12 / 15 (28 railing) | flat (file: flat, shed) | 01 Ground Floor | sum4re-longyearbyen |
-| Vienna real-world model | 16 / 17 | 116 / 116 | White render | 12 / 25 (30 railing) | flat, gravel (file: notdefined ×18) | **EG** (was UG2) | tuwien-vienna-realworld |
+| Vienna real-world model | 15 / 16 | 116 / 116 | White render | 12 / 25 (30 railing) | flat, gravel (file: notdefined ×18) | **EG** (was UG2) | tuwien-vienna-realworld |
 | Kleine Wohnung | 1 / 1 | 26 / 168 | White render; frames anthracite | 8 / 8 (22 glass) | flat (file: notdefined ×4) | BT-A_0990_UG01_RDOK_0,000 | webifc-kleine-wohnung-r22 |
 | LTU A-House | 1 / 1 | 3 / 2622 | Warm plaster | 1 / 3 (1 railing) | flat (file: notdefined ×14) | VÅNING 1 | webifc-ltu-a-house |
-| **all 21** | **52 / 54** | **1727 / 5144** | | **42 / 97** | **16 of 16 files with a roof** | **8 moved to the right storey** | |
+| **all 21** | **51 / 53** | **1727 / 5144** | | **42 / 97** | **16 of 16 files with a roof** | **8 moved to the right storey** | |
 
 **What the founder sees now, building by building** (after shots; compare the before shots of the same name):
 - **IfcOpenHouse** — red brick walls under its gable roof; the walls stop at the eaves (they stood through the roof as
@@ -92,7 +96,7 @@ stay in the shape. *Roof read*: the roof setting (kind, pitch, covering) from If
 - **Kleine Wohnung** — white render (its walls' type names say WDVS, an ETICS render), anthracite frames, its eight
   glass balustrades read as glass low walls, the saturated blue windows toned to glass.
 - **Vienna real-world model** — white render (Zementputz), zinc sheet metal (Blech), timber parts; the garage levels
-  under the street (they stood above it); a gravel flat roof; 12 of its 25 railings read (made of parts).
+  under the street (they stood above it); a gravel flat roof; 12 of its 25 railings read (made of parts; the rest stand against storey walls).
 - **Advanced Project** — white render (Paint), engineering brick, black frames, terrace tiles on its flat roof; the
   garage under the street.
 - **EDEA, Cáceres** — precast concrete panels, perforated ceramic brick, white aluminium frames, a gravel roof.
