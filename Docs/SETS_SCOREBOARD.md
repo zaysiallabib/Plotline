@@ -196,8 +196,8 @@ Shots: `lboro-set.png`, `lboro-built.png`, `lboro-building.png` (two storeys sta
   wall's pen that are stair treads (4+ like lines at tread spacing), fixtures (a closed shape on its own, 0.35–2.6 m, full),
   a porch roof outside the outer walls (with a roof's words out there) and the rest of a lighter pen mostly made of those are
   no walls. Farmhouse 2ND FLOOR PLAN 184 → 60 walls, 5 rooms, built from its lines (was a picture); every other plan page of
-  the PDF sets (46 views: the farmhouse, the school, Quinta, Casa Steiner, twindo, the six brochures) as many rooms and
-  names as before or more, 7 with fewer walls (White Lake's four typical floors lose 32–33 stair treads each, 88–96 walls
+  the PDF sets (41 views read from their lines: the farmhouse, the school, Quinta, Casa Steiner, twindo, the six brochures) as
+  many rooms and names as before, 8 with fewer walls (White Lake's four typical floors lose 32–33 stair treads each, 88–96 walls
   fewer). Left: its stair hall and the bedroom read as one room (the bedroom door's wall piece is not bridged) and a long
   stray wall crosses the main bedroom (both from before).
 - **Brochure pages are not stacked**: they have no scale; once the person sets each picture's scale (S), lining them up is
