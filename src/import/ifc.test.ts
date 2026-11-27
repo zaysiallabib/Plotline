@@ -7,7 +7,7 @@ import { deflateRawSync } from 'node:zlib'
 import { describe, expect, it } from 'vitest'
 import { deriveRooms, validate, wallFrame } from '../core'
 import { curtainRuns, importIfc, sharedEdges } from './ifc'
-import { readGlbJson, WINDOW } from './glb'
+import { parseDress, readGlbJson, WINDOW } from './glb'
 
 const CERT = 'E:/dev/ALTERNATIVE FORMAT TEST/Certification-datasets-main'
 const BENCH = 'E:/dev/ALTERNATIVE FORMAT TEST/ifc-bench/projects'
@@ -98,7 +98,8 @@ describe('ifc import', () => {
     const mats = (r: Awaited<ReturnType<typeof load>>) => (readGlbJson(r.shell!.glb).json.materials as { name?: string; pbrMetallicRoughness: { baseColorFactor: number[] } }[])
     const solid = await load(WALL_FILE) // its window: plain white, solid
     expect(solid.shell?.glass).toBe('opaque')
-    expect(mats(solid).filter((m) => m.name === WINDOW)).toHaveLength(1)
+    // (its frame dressed in the frame its names say — session 31 ifcmap — is still a window's part: three/shell.ts solidWindowsOut)
+    expect(mats(solid).filter((m) => m.name === WINDOW || parseDress(m.name ?? '')?.slot === 'frame')).toHaveLength(1)
     const clear = await load(`${BENCH}/fzk_house/arc.ifc`) // its glass a see-through green
     expect(clear.shell?.glass).toBeUndefined()
     expect(mats(clear).filter((m) => m.name === WINDOW).some((m) => m.pbrMetallicRoughness.baseColorFactor[3] < 0.99)).toBe(true)
@@ -150,7 +151,7 @@ describe('ifc import', () => {
       // every accessor's bytes match its buffer view; the BIN chunk is the one buffer
       const views = json.bufferViews as { byteLength: number }[]
       for (const a of json.accessors as { bufferView: number; count: number; type: string; componentType: number }[])
-        expect(views[a.bufferView].byteLength).toBe(a.count * (a.type === 'VEC3' ? 3 : 1) * 4)
+        expect(views[a.bufferView].byteLength).toBe(a.count * (({ VEC3: 3, VEC2: 2 } as Record<string, number>)[a.type] ?? 1) * 4) // (VEC2: a dressed surface's texture coordinates)
       expect((json.buffers as { byteLength: number }[])[0].byteLength).toBe(binLength)
       expect(r.shell!.bounds.max[1]).toBeGreaterThan(r.shell!.bounds.min[1])
     })

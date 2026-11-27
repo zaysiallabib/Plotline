@@ -7,9 +7,10 @@
 import DxfParser from 'dxf-parser'
 import type IGeometry from 'dxf-parser/dist/entities/geomtry'
 import type { IArcEntity, ICircleEntity, IDimensionEntity, IDxf, IEllipseEntity, IEntity, IInsertEntity, ILineEntity, ILwpolylineEntity, IMtextEntity, IPolylineEntity, ISolidEntity, ISplineEntity, ITextEntity } from 'dxf-parser'
-import type { Pt } from '../core'
+import type { Configuration, Id, Pt, Unit } from '../core'
+import { outerRuns, outsideKey, OUTSIDE_SLOT } from '../furnish/finishes'
 import { ownDrawingOf } from './dxfWrite'
-import { ROLE_WORDS, bigTexts, buildPlan, guessScale, previewPath, roleOf, type ArcPrim, type Drawing, type LayerRoles, type Loop, type Seg, type TextPrim } from './plan2d'
+import { ROLE_WORDS, bigTexts, buildPlan, finishesOn, guessScale, previewPath, roleOf, type ArcPrim, type Drawing, type LayerRoles, type Loop, type Seg, type TextPrim } from './plan2d'
 import { parseDims } from '../trace/text'
 import type { ImportResult } from './types'
 
@@ -459,7 +460,12 @@ export async function importDxf(text: string, name: string, { layerRoles: mine, 
   const own = ownDrawingOf(text)
   if (own) {
     const notes = [`Written by Plotline and not changed since: opened exactly as it was exported (${own.walls.length} walls, ${own.walls.reduce((a, w) => a + w.openings.length, 0)} openings, ${own.roomLabels.length} names). Changed in a CAD program, it would be read from its lines.`]
-    return { format: 'dxf', storeys: [{ name: own.name || 'Floor', elevationM: 0, unit: own }], notes, unitScale: 1, origin: { x: 0, y: 0 } }
+    // (its outside finishes: in its centre lines' layer names, which the comment copy does not hold)
+    const dressed: { pts: Pt[]; thicknessM: number; finish: string }[] = []
+    for (const m of text.matchAll(/POLYLINE\r?\n8\r?\n(PLOTLINE_AXES_(\d+)(?:_LOW_[A-Z]+)?_OUT_([A-Z0-9_]+))\r?\n[\s\S]*?VERTEX\r?\n8\r?\n\1\r?\n10\r?\n(\S+)\r?\n20\r?\n(\S+)[\s\S]*?VERTEX\r?\n8\r?\n\1\r?\n10\r?\n(\S+)\r?\n20\r?\n(\S+)/g))
+      dressed.push({ pts: [{ x: +m[4], y: -m[5] }, { x: +m[6], y: -m[7] }], thicknessM: +m[2] / 1e4, finish: `fo_out_${m[3].toLowerCase()}` })
+    const outside = dressed.length ? outsideRecordOf(own, finishesOn(own, dressed)) : undefined
+    return { format: 'dxf', storeys: [{ name: own.name || 'Floor', elevationM: 0, unit: own }], notes, unitScale: 1, origin: { x: 0, y: 0 }, ...(outside ? { outside } : {}) }
   }
   progress?.('reading the lines', null)
   const parser = new DxfParser()
@@ -542,5 +548,25 @@ export async function importDxf(text: string, name: string, { layerRoles: mine, 
   notes.push(...plan.notes)
   for (const [what, n] of flat.skipped) notes.push(`Skipped ${n} ${what}.`)
   if (plan.issues.some((i) => i.level === 'error')) notes.push(`${plan.issues.filter((i) => i.level === 'error').length} thing(s) to check in the Studio (loose wall ends, labels outside rooms).`)
-  return { format: 'dxf', storeys: [{ name: 'Floor', elevationM: 0, unit: plan.unit }], notes, unitScale: scale, origin: plan.origin, layers: list, texts: bigTexts(flat.texts), preview: previewPath(flat.segs, flat.arcs, scale, plan.origin) }
+  const outside = plan.outside ? outsideRecordOf(plan.unit, plan.outside) : undefined
+  if (outside) notes.push(`The walls' outside finishes came back from their centre lines' layers (${plan.outside!.size} walls).`)
+  return { format: 'dxf', storeys: [{ name: 'Floor', elevationM: 0, unit: plan.unit }], notes, unitScale: scale, origin: plan.origin, layers: list, texts: bigTexts(flat.texts), preview: previewPath(flat.segs, flat.arcs, scale, plan.origin), ...(outside ? { outside } : {}) }
+}
+
+/**
+ * The building's outside record (furnish/finishes.ts outsideOf) of a drawing whose walls came back with their outside finish
+ * (Plotline's own export, dxfWrite.ts axisLayer): the commonest by wall length is the building's, each other by its run.
+ */
+export function outsideRecordOf(unit: Unit, by: Map<Id, string>): Configuration {
+  const V = new Map(unit.vertices.map((v) => [v.id, v]))
+  const len = new Map<string, number>()
+  for (const w of unit.walls) {
+    const f = by.get(w.id), a = V.get(w.a), b = V.get(w.b)
+    if (f && a && b) len.set(f, (len.get(f) ?? 0) + Math.hypot(b.x - a.x, b.y - a.y))
+  }
+  const main = [...len].sort((p, q) => q[1] - p[1])[0]?.[0]
+  const runs = outerRuns(unit)
+  const rec: Configuration = main && main !== OUTSIDE_SLOT.defaultOptionId ? { [OUTSIDE_SLOT.id]: main } : {}
+  for (const [id, f] of by) if (f !== main) rec[outsideKey(unit.id, runs.get(id) ?? id)] = f
+  return rec
 }

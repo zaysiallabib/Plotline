@@ -73,8 +73,10 @@ export interface ReadOptions {
   siblings?: Map<string, Blob>
   /** the person's corrections of what a DXF / SVG layer holds */
   layerRoles?: LayerRoles
-  /** a DXF read in the unit the person picked (metres per file unit), not the file's own or the guessed one */
+  /** a DXF or a 3D model read in the unit the person picked (metres per file unit), not the file's own or the guessed one */
   unitScale?: number
+  /** an IFC's material names as the person mapped them (the Studio's Materials list): plain name → option id */
+  materials?: Record<string, string>
 }
 
 /** the biggest DXF read (the size Windows shows): a bigger one is refused at once, saying both sizes (from Maheer's Plotline 2.0) */
@@ -87,7 +89,7 @@ const mb = (bytes: number) => (bytes / 2 ** 20).toFixed(1)
  * Node (the tests) and a browser without module workers read it here.
  */
 const workers = typeof Worker !== 'undefined' && typeof window !== 'undefined'
-function inWorker(bytes: ArrayBuffer, name: string, { progress, signal, layerRoles, unitScale }: ReadOptions): Promise<ImportResult> {
+function inWorker(bytes: ArrayBuffer, name: string, { progress, signal, layerRoles, unitScale, materials }: ReadOptions): Promise<ImportResult> {
   return new Promise((ok, no) => {
     const w = new Worker(new URL('./read.worker.ts', import.meta.url), { type: 'module' })
     const end = (fn: () => void) => (w.terminate(), signal?.removeEventListener('abort', abort), fn())
@@ -100,7 +102,7 @@ function inWorker(bytes: ArrayBuffer, name: string, { progress, signal, layerRol
       else end(() => no(new Error(d.error ?? 'the reader stopped')))
     }
     w.onerror = (e) => (e.preventDefault(), end(() => no(new Error(e.message || 'the reader stopped (out of memory?)'))))
-    w.postMessage({ bytes, name, layerRoles, unitScale }, [bytes])
+    w.postMessage({ bytes, name, layerRoles, unitScale, materials }, [bytes])
   })
 }
 
@@ -113,7 +115,7 @@ export async function importFile(file: File, opts: ReadOptions = {}): Promise<Im
   switch (format) {
     case 'ifc':
       if (workers) return inWorker(bytes, file.name, opts)
-      return (await import('./ifc')).importIfc(bytes, file.name, opts.progress)
+      return (await import('./ifc')).importIfc(bytes, file.name, opts.progress, opts.materials)
     case 'dxf': {
       const read = (b: ArrayBuffer, name: string) => (workers ? inWorker(b, name, opts) : import('./dxf').then((m) => m.importDxf(new TextDecoder().decode(b), name, opts)))
       if (extOf(file.name) !== 'dwg') return read(bytes, file.name)
@@ -127,6 +129,6 @@ export async function importFile(file: File, opts: ReadOptions = {}): Promise<Im
     case 'svg':
       return (await import('./svg')).importSvg(new TextDecoder().decode(bytes), file.name, opts.layerRoles)
     case 'mesh':
-      return (await import('./mesh')).importMesh(bytes, file.name, opts.siblings)
+      return (await import('./mesh')).importMesh(bytes, file.name, opts.siblings, opts.unitScale)
   }
 }

@@ -17,7 +17,8 @@
  * "If there is a wall and an outside view then follow the measurements, no need to complicate things" (founder): the
  * file's walls are the draft; the shell is only what is seen from outside.
  */
-import type { Pt, Unit } from '../core'
+import type { Configuration, Pt, Unit } from '../core'
+import type { Roof } from '../data/building/roof'
 import type { Role } from './plan2d'
 
 export type ImportFormat = 'ifc' | 'dxf' | 'pdf' | 'svg' | 'mesh'
@@ -58,4 +59,14 @@ export interface ImportResult {
   texts?: { text: string; height: number }[]
   /** a DXF's / SVG's lines as one SVG path in the plan frame (plan2d previewPath): the set's list draws its picture from it */
   preview?: string
+  /**
+   * An IFC's outside as its materials name it (session 31 ifcmap, import/materials.ts): the building's outside record
+   * (furnish/finishes.ts outsideOf — the building's own finish and frames, an outer wall or a window that differs, keyed by the
+   * storeys' own unit ids), saved for the project the Studio makes of it (data/building/apartments.ts outsideRecord).
+   */
+  outside?: Configuration
+  /** an IFC's roof as its IfcRoof and its slopes say (kind, pitch, ridge, covering): the project's roof setting */
+  roof?: Roof
+  /** every outer material name read, what it became (an option id; null: not known, plaster), on how many elements; `yours`: the person's word */
+  materials?: { name: string; finish: string | null; count: number; yours: boolean }[]
 }

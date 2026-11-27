@@ -423,7 +423,7 @@ export { GLAZING_MIN_H, isGlazing }
 /** Dark anodised aluminium: a glass wall's mullions read as lines against the sky, as on a real lobby. */
 const MULLION: MaterialRef = { kind: 'color', color: '#3b3e42', roughness: 0.4, metalness: 0.3 }
 
-/** Glazing: a 50 mm frame round the opening and a mullion every ≤ 1.4 m (equal bays), 6 mm clear panes between. */
+/** Glazing: a 50 mm frame round the opening and a mullion every ≤ 1.4 m (equal bays; the file's spacing: Opening.bayM), 6 mm clear panes between. */
 function buildGlazing(g: THREE.Group, o: Opening, T2: number): void {
   const u0 = o.offsetM
   const u1 = o.offsetM + o.widthM
@@ -431,7 +431,7 @@ function buildGlazing(g: THREE.Group, o: Opening, T2: number): void {
   const top = o.sillM + o.heightM
   const F = 0.05
   const D = Math.min(0.12, 2 * T2 - 0.02) / 2
-  const n = Math.max(1, Math.ceil((o.widthM - 2 * F) / 1.4))
+  const n = Math.max(1, o.bayM ? Math.round((o.widthM - 2 * F) / o.bayM) : Math.ceil((o.widthM - 2 * F) / 1.4))
   const bay = (o.widthM - 2 * F) / n
   const alu = [slab(u0, u0 + F, s, top, -D, D), slab(u1 - F, u1, s, top, -D, D), slab(u0 + F, u1 - F, top - F, top, -D, D), slab(u0 + F, u1 - F, s, s + F, -D, D)]
   const panes: THREE.BufferGeometry[] = []

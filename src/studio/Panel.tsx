@@ -205,6 +205,9 @@ interface Props {
   /** a DXF's / SVG's layers and what each was taken as; a change ('auto': Plotline decides) reads the file again */
   layers?: ImportResult['layers'] | null
   onLayerRole?: (layer: string, role: LayerRole | 'auto') => void
+  /** an IFC's outer material names and the outside finish each became; a change ('auto': Plotline decides) reads the file again */
+  materials?: ImportResult['materials'] | null
+  onMaterial?: (name: string, option: string | 'auto') => void
   /** a DXF's unit (metres per file unit; `yours`: picked by the person) and its "Read in" pick: a unit, Plotline's, or one known length */
   readIn?: { scale: number; yours: boolean } | null
   onReadIn?: (pick: number | 'auto' | 'length') => void
@@ -216,7 +219,7 @@ interface Props {
   shareActs?: { label: string; title: string; onClick: () => void }[]
 }
 
-export function Panel({ state, dispatch, rooms, flats, issues, marks, bulks = [], openBulk = null, onBulk, fixes, active, picked = null, lit = null, onPick, onHot, onOpen, onFix, onAnswer, ai, pieces, placing, onPlace, notes, onDismissNotes, layers, onLayerRole, readIn, onReadIn, onRetrace, steps, shareActs }: Props) {
+export function Panel({ state, dispatch, rooms, flats, issues, marks, bulks = [], openBulk = null, onBulk, fixes, active, picked = null, lit = null, onPick, onHot, onOpen, onFix, onAnswer, ai, pieces, placing, onPlace, notes, onDismissNotes, layers, onLayerRole, materials, onMaterial, readIn, onReadIn, onRetrace, steps, shareActs }: Props) {
   const piece = pieces?.find((p) => state.selection.length === 1 && p.id === state.selection[0])
   const { unit } = state
   const review = marks.filter((m) => m.review)
@@ -427,6 +430,25 @@ export function Panel({ state, dispatch, rooms, flats, issues, marks, bulks = []
                       {LAYER_PICKS.map(([r, w]) => (
                         <option key={r} value={r}>
                           {w}
+                        </option>
+                      ))}
+                    </select>
+                  </Row>
+                ))}
+              </div>
+            </>
+          )}
+          {!!materials?.length && onMaterial && (
+            <>
+              <p className="muted">Materials — what each outer wall's material is on the outside. A change reads the file again, and is kept for the next file.</p>
+              <div className="props layers">
+                {materials.slice(0, 24).map((m) => (
+                  <Row key={m.name} label={`${m.name} · ${m.count}`}>
+                    <select value={m.yours ? (m.finish ?? 'auto') : 'auto'} aria-label={`What ${m.name} is`} onChange={(e) => onMaterial(m.name, e.target.value)}>
+                      <option value="auto">{m.yours ? 'Plotline decides' : `Plotline decides: ${m.finish ? optionLabel(m.finish) : 'not known (plaster)'}`}</option>
+                      {OUTSIDE_SLOT.options.map((o) => (
+                        <option key={o.id} value={o.id}>
+                          {`${o.brand} · ${o.label}`}
                         </option>
                       ))}
                     </select>
@@ -1165,6 +1187,8 @@ const READ_UNITS: [number, string][] = [
 const unitWord = (k: number) => READ_UNITS.find(([x]) => x === k)?.[1].toLowerCase() ?? `1 unit = ${+k.toPrecision(4)} m`
 
 /** what a person can say a layer holds, in plain words */
+const optionLabel = (id: string) => OUTSIDE_SLOT.options.find((o) => o.id === id)?.label ?? id
+
 const LAYER_PICKS: [LayerRole, string][] = [
   ['wall', 'Walls'],
   ['kerb', 'Kerbs (walls 20 cm or less)'],

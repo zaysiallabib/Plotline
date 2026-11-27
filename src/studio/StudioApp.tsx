@@ -62,8 +62,10 @@ import type { PdfDoc } from '../import/pdf'
 import type { Box } from '../import/sheets'
 import { IMPORT_ACCEPT, expandZips, filesOfDrop, importFile, importFormatOf, lockedFormatOf, mainFile, siblingsOf, type DropFile, type ImportResult, type ImportedStorey, type LayerRole, type LayerRoles } from '../import'
 import { PROJECTS_KEY, drawingName, keepApartments, keepReview, newProject, planOf as planOfProject, projectWith, parseProjects, projectTower, readProjects, saveProjects, setSlot, slotLabel, slotsOf, slotsText, stackFloors, syncUnit, type DrawingSource, type Project, type ProjectPlan, type Slot } from '../data/building/projects'
-import { finishesKey, keptFor, layoutKey, putKept, readFinishes, splitKept } from '../data/building/apartments'
-import { floorIn, roleIn, stemIn } from '../data/building'
+import { buildingOf, finishesKey, keptFor, layoutKey, outsideRecord, putKept, readFinishes, saveFinishes, splitKept } from '../data/building/apartments'
+import { OUTSIDE_SLOT, outerRuns, outsideKey } from '../furnish/finishes'
+import { plain } from '../import/materials'
+import { floorIn, roleIn, stemIn, towerOf } from '../data/building'
 import { HARD, snapMove, snapPoint, type Snap } from './snap'
 import { STAFF_KEY, baseOf, planOf, readLayout, saveLayout } from '../viewer/arrange'
 import { titleOf } from '../viewer/defaults'
@@ -102,6 +104,9 @@ const keep = (key: string, v: object) => {
   }
 }
 const readLayerRoles = () => stored<LayerRoles>(LAYER_ROLES_KEY)
+/** an IFC's material names as the person mapped them (Materials, under What was read): plain name → outside option, kept for every next file */
+const MATERIAL_PICKS_KEY = 'plotline.materialPicks'
+const readMaterialPicks = () => stored<Record<string, string>>(MATERIAL_PICKS_KEY)
 const PREVIEW_KEY = 'plotline.preview'
 /**
  * The project open in the Studio (its id: `plotline.studio.project`) and which of its drawings the Studio holds, whatever
@@ -350,6 +355,9 @@ export default function StudioApp() {
   const [importNotes, setImportNotes] = useState<string[] | null>(null)
   // a DXF's / SVG's layers (the notes' layer list) and the file they came from, read again when a person corrects one
   const [importLayers, setImportLayers] = useState<ImportResult['layers'] | null>(null)
+  const [importMaterials, setImportMaterials] = useState<ImportResult['materials'] | null>(null)
+  /** the project the last whole-building file made: read again (a material mapped), it is made again in its place */
+  const lastImport = useRef<Id | null>(null)
   /** the DXF just read: its unit (metres per file unit) and whether the person picked it ("Read in", Panel) */
   const [readIn, setReadIn] = useState<{ scale: number; yours: boolean } | null>(null)
   const lastRead = useRef<{ file: File; siblings?: Map<string, Blob> } | null>(null)
@@ -1084,7 +1092,7 @@ export default function StudioApp() {
     setReading({ name: file.name, stage: 'starting', fraction: null, stop })
     let r: ImportResult
     try {
-      r = await importFile(file, { siblings, signal: stop.signal, layerRoles: readLayerRoles(), unitScale: stored<Record<string, number>>(READ_IN_KEY)[file.name], progress: (stage, fraction) => setReading((x) => x && x.stop === stop ? { ...x, stage, fraction } : x) })
+      r = await importFile(file, { siblings, signal: stop.signal, layerRoles: readLayerRoles(), materials: readMaterialPicks(), unitScale: stored<Record<string, number>>(READ_IN_KEY)[file.name], progress: (stage, fraction) => setReading((x) => x && x.stop === stop ? { ...x, stage, fraction } : x) })
     } catch (e) {
       setReading(null)
       if (stop.signal.aborted) return toast(`Stopped reading ${file.name}`)
@@ -1100,6 +1108,14 @@ export default function StudioApp() {
     if (role === 'auto') delete mine[layer.toUpperCase()]
     else mine[layer.toUpperCase()] = role
     keep(LAYER_ROLES_KEY, mine)
+    if (lastRead.current) void importArchitect(lastRead.current.file, lastRead.current.siblings, true)
+  }
+  /** a person says what an IFC's material is on the outside ('auto': Plotline decides): kept in this browser for every next file, this one read again */
+  const onMaterial = (name: string, option: string | 'auto') => {
+    const mine = readMaterialPicks()
+    if (option === 'auto') delete mine[plain(name)]
+    else mine[plain(name)] = option
+    keep(MATERIAL_PICKS_KEY, mine)
     if (lastRead.current) void importArchitect(lastRead.current.file, lastRead.current.siblings, true)
   }
   /**
@@ -1436,6 +1452,13 @@ export default function StudioApp() {
     const loose = r.storeys.length > 1 && !projRef.current && hasDrawing(stateRef.current.unit)
     if (loose && !(await ask(`Make a project of ${fileName}'s ${r.storeys.length} floors? The drawing on screen is in no project and is replaced (Export it first to keep a copy).`, 'Make the project', true))) return
     setImportLayers(r.layers ?? null)
+    setImportMaterials(r.materials ?? null)
+    /** the building's outside as the file's materials name it, for the building the drawing now stands in (apartments.ts outsideRecord) */
+    const dress = (u: Unit) => {
+      if (!r.outside) return
+      const building = readProjects().find((x) => x.units[u.id])?.id ?? projRef.current?.id ?? u.id
+      saveFinishes(outsideRecord(building), r.outside)
+    }
     // (a DXF read from its lines; Plotline's own export opens exactly and has no unit to pick)
     setReadIn(r.format === 'dxf' && r.layers ? { scale: r.unitScale, yours: stored<Record<string, number>>(READ_IN_KEY)[fileName] === r.unitScale } : null)
     let shell: Shell | undefined
@@ -1454,14 +1477,39 @@ export default function StudioApp() {
       if (!shell) return showError(`Nothing to use in ${fileName}`)
       const u = stateRef.current.unit
       const b = u.vertices.length ? unitBounds(u) : null
-      dispatch({ type: 'set-shell', shell: { ...shell, offset: b ? { x: (b.minX + b.maxX) / 2, y: (b.minY + b.maxY) / 2 } : { x: 0, y: 0 } } })
+      // a model far smaller than a building (a toy-sized NASA hall, a city tile read as millimetres): asked once, the answer
+      // kept for the file's name (Read in), and the file read again at that size
+      const sz = r.shell ? r.shell.bounds.max.map((v, i) => v - r.shell!.bounds.min[i]) : [0, 0, 0]
+      const across = Math.max(sz[0], sz[2])
+      const drawn = b ? Math.max(b.maxX - b.minX, b.maxY - b.minY) : 0
+      const kept = stored<Record<string, number>>(READ_IN_KEY)[fileName] !== undefined
+      if (!kept && across > 0 && (across < 8 || across < 0.75 * drawn)) {
+        // (the likeliest size last — the card's blue answer: the one nearest a building's 30 m across)
+        const fit = (k: number) => Math.abs(Math.log((across * k) / 30))
+        const ks = [1, 10, 100, 1000].filter((k) => k === 1 || (across * k >= 6 && across * k <= 2000)).sort((a, b) => (a === 1 ? -1 : b === 1 ? 1 : fit(b) - fit(a)))
+        const m = (v: number) => (v < 10 ? v.toFixed(1) : Math.round(v).toLocaleString('en'))
+        const pick = await askChoice(
+          `${fileName} reads ${m(across)} m across and ${m(sz[1])} m tall${drawn ? ` — smaller than the drawing (${m(drawn)} m)` : ''}. How big is it?`,
+          ks.map((k) => (k === 1 ? `As it is: ${m(across)} m` : `${m(across * k)} m across (×${k})`)),
+        )
+        const all = stored<Record<string, number>>(READ_IN_KEY)
+        all[fileName] = r.unitScale * (pick === null ? 1 : ks[pick])
+        keep(READ_IN_KEY, all)
+        if (pick !== null && ks[pick] !== 1 && lastRead.current) return void importArchitect(lastRead.current.file, lastRead.current.siblings, true)
+      }
+      // (its lowest point on the street: on each floor the drawing stands on, Shell.street)
+      dispatch({ type: 'set-shell', shell: { ...shell, street: true, offset: b ? { x: (b.minX + b.maxX) / 2, y: (b.minY + b.maxY) / 2 } : { x: 0, y: 0 } } })
       setImportNotes(r.notes)
       return
     }
     if (r.storeys.length === 1) {
       const s = r.storeys[0]
       // (one file on an empty Studio: a project of one floor — the frame is the project; read again: where it was)
+      const fresh0 = !projRef.current && !hasDrawing(stateRef.current.unit)
       const u = again ? at(s.unit, s.elevationM) : intoProject(at(s.unit, s.elevationM), fileName, { kind: 'file', line: `from ${where}` })
+      // (a project this file just made takes the file's roof; a drawing dropped into a project of its own keeps that project's)
+      if (r.roof && fresh0 && !again) storeProjects(readProjects().map((x) => (x.units[u.id] ? { ...x, roof: r.roof } : x)))
+      dress(u)
       fitOnUnit.current = true // (fitted once the render holds it: this runs after an await, React renders later)
       dispatch({ type: 'load-unit', unit: u })
       setImportNotes(r.notes)
@@ -1476,7 +1524,9 @@ export default function StudioApp() {
     const roof = above.length > 1 && (/roof|terrace/i.test(last.name) || !deriveRooms(last.unit).length) ? last : null
     const floors = above.filter((s) => s !== roof)
     const name = fileName.replace(/\.[^.]+$/, '')
-    let p = newProject(newId(), name, { basements: bases.length, floors: floors.length - 1, rooftop: !!roof })
+    // (read again — a material mapped —: the project the last read made, made again in its place, not a second one)
+    const redo = again && lastImport.current ? fresh().find((x) => x.id === lastImport.current) : undefined
+    let p = newProject(redo?.id ?? newId(), name, { basements: bases.length, floors: floors.length - 1, rooftop: !!roof })
     const elevations: Record<string, number> = {}
     const from: Record<Id, DrawingSource> = {}
     const place = (slot: Slot, s: ImportedStorey) => {
@@ -1487,8 +1537,10 @@ export default function StudioApp() {
     bases.forEach((s, i) => place(-(bases.length - i), s))
     floors.forEach((s, i) => place(i, s))
     if (roof) place('R', roof)
-    p = { ...p, elevations, from, ...(shell ? { shell } : {}) }
-    const ps = fresh()
+    p = { ...p, elevations, from, ...(shell ? { shell } : {}), ...(r.roof ? { roof: r.roof } : {}) }
+    const ps = fresh().filter((x) => x.id !== p.id)
+    lastImport.current = p.id
+    if (r.outside) saveFinishes(outsideRecord(p.id), r.outside)
     setActive({ id: p.id })
     setListOpen(true)
     openDrawing([...ps, p], (floors[1] ?? floors[0]).unit.id)
@@ -1602,7 +1654,12 @@ export default function StudioApp() {
     if (!u.walls.length) return toast('Nothing drawn yet to export')
     const { writeDxf } = await import('../import/dxfWrite')
     const name = nameOf(u)
-    download(`${slug(name)}.dxf`, writeDxf(u), 'application/dxf')
+    // (each wall's outside finish as its building wears it — the whole building's, else its own — kept in its centre line's layer)
+    const rec = readFinishes(outsideRecord(buildingOf(towerOf(u), u.id))) ?? {}
+    const runs = outerRuns(u)
+    const dressed = Object.keys(rec).some((k) => k === OUTSIDE_SLOT.id || k.startsWith(`out:${u.id}:`))
+    const outside = dressed ? Object.fromEntries(u.walls.map((w) => [w.id, rec[outsideKey(u.id, runs.get(w.id) ?? w.id)] ?? rec[OUTSIDE_SLOT.id] ?? OUTSIDE_SLOT.defaultOptionId])) : {}
+    download(`${slug(name)}.dxf`, writeDxf(u, outside), 'application/dxf')
     setSent(openKey())
     toast(`Saved ${slug(name)}.dxf — metres, layers WALLS, DOORS, WINDOWS, COLUMNS, TEXT, PLOTLINE_ZONES, PLOTLINE_KERBS`)
   }
@@ -3265,8 +3322,10 @@ export default function StudioApp() {
           placing={placing?.assetId ?? null}
           onPlace={(assetId) => hold(assetId ? { id: newId(), assetId, rot: 0 } : null)}
           notes={importNotes}
-          onDismissNotes={() => (setImportNotes(null), setImportLayers(null), setReadIn(null))}
+          onDismissNotes={() => (setImportNotes(null), setImportLayers(null), setImportMaterials(null), setReadIn(null))}
           layers={importLayers}
+          materials={importMaterials}
+          onMaterial={onMaterial}
           readIn={readIn}
           onReadIn={(pick) => void onReadIn(pick)}
           onLayerRole={onLayerRole}
