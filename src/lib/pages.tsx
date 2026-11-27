@@ -84,16 +84,26 @@ export const Offline = () => (
  * Round each app: a render error (or an app's code that failed to download, after a new release) shows the card instead
  * of a white screen, and the stack goes to the console.
  */
-export class ErrorCard extends Component<{ children: ReactNode }, { broke: boolean }> {
-  state = { broke: false }
-  static getDerivedStateFromError = () => ({ broke: true })
+export class ErrorCard extends Component<{ children: ReactNode }, { broke: boolean; why: string }> {
+  state = { broke: false, why: '' }
+  // what broke, in its own words under the line: a screenshot sent to us says which step failed
+  static getDerivedStateFromError = (e: unknown) => ({ broke: true, why: e instanceof Error ? e.message : String(e) })
   componentDidCatch(error: unknown, info: ErrorInfo) {
     console.error('[plotline] the page broke:', error, info.componentStack)
   }
   render() {
     if (!this.state.broke) return this.props.children
     return (
-      <Slate eyebrow="Error" title="Something broke here." line="Reload, or go back.">
+      <Slate
+        eyebrow="Error"
+        title="Something broke here."
+        line={
+          <>
+            Reload, or go back.
+            {this.state.why && <span className="slate-why">{this.state.why}</span>}
+          </>
+        }
+      >
         <button className="btn primary" onClick={reload}>
           Reload
         </button>
