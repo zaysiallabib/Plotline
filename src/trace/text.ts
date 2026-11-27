@@ -1314,8 +1314,6 @@ export async function ocrEngines(n: number, opts: Pick<ReadTextOptions, 'langPat
   })
   return {
     PSM: T.PSM,
-    /** how many engines are up now */
-    up: () => up.length,
     read: (image: Uint8Array | Blob, output?: Parameters<OcrEngine['recognize']>[2]) => scheduler.addJob('recognize', image as unknown as Blob, {}, output),
     set: (params2: Record<string, string>) => (Object.assign(params, params2), Promise.all(up.map((w) => w.setParameters(params2)))),
     end: async () => {

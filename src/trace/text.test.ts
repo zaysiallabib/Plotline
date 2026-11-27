@@ -869,7 +869,6 @@ describe('OCR engines (s31 hang lane: one engine that never starts held the whol
     await ocr.set({ tessedit_pageseg_mode: '7' })
     const reads = await Promise.all([1, 2, 3, 4].map((b) => ocr.read(new Uint8Array([b]))))
     expect(reads.map((r) => r.data.text)).toEqual(['1', '2', '3', '4'])
-    expect(ocr.up()).toBe(2)
     await ocr.end()
     expect(log.filter((l) => l === 'end')).toHaveLength(2)
   })
