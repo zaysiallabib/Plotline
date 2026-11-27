@@ -132,6 +132,15 @@ const towerStem = (u: Unit) => {
   return t ? stemIn(t, u) : undefined
 }
 /**
+ * The floor the unit stands on in its tower, by the scene's own rule (floorIn): a Studio preview with no floor typed stands
+ * on its drawing's first floor there, as the Building view draws it; a unit in no tower: its own floor, else 0.
+ */
+const floorOf = (u: Unit): number => {
+  const t = towerOf(u)
+  const s = t && stemIn(t, u)
+  return t && s ? floorIn(t, s, u.floor) : (u.floor ?? 0)
+}
+/**
  * Floor `n` (`?floor=N`: a flat picked in the Building view, or reached by a stair) puts the flat on floor N if the tower has it there; the JSON
  * keeps its own (no `?floor=` is no floor: never the ground, where a flat with no columns stands in as the tower's base). A level (ground,
  * basement, rooftop) stands on its tower's floor for it.
@@ -787,7 +796,7 @@ function Viewer({ first }: { first: Shown }) {
   const [toast, setToast] = useState<string | null>(null)
   const [pins, setPins] = useState<Pin[]>(() => readPins(unit.id))
   const [draft, setDraft] = useState<(Draft & { hit: PickHit }) | null>(null)
-  const [picked, setPicked] = useState(unit.floor ?? 0)
+  const [picked, setPicked] = useState(() => floorOf(unit))
   /** Building view: what the mouse is over on the tower (the card beside it), and the floor list's row under the mouse */
   const [towerHover, setTowerHover] = useState<(TowerHit & { x: number; y: number }) | null>(null)
   const [railHover, setRailHover] = useState<number | null>(null)
@@ -829,8 +838,8 @@ function Viewer({ first }: { first: Shown }) {
   const outSlots = useMemo(() => withOwnOptions([OUTSIDE_SLOT, FRAMES_SLOT, EDGES_SLOT]), [ownV]) // eslint-disable-line react-hooks/exhaustive-deps
   // the outside into the 3D: before the unit (setUnit builds the tower with it), then each change (the tower built again)
   useEffect(() => scene?.setOutside(outsideOf(outside, outSlots)), [scene, outside, outSlots])
-  /** the floor the walked flat stands on in its tower: the outside card's "This floor" */
-  const outFloor = tower && stem ? floorIn(tower, stem, unit.floor) : unit.floor
+  /** the floor the walked flat stands on in its tower (the outside card's "This floor", the floor list's own row, a trip's start) */
+  const myFloor = floorOf(unit)
   /** an outside spot clicked (a wall of drawing `drawing`, its run, on floor k; a ground block: no wall) and its name for a person */
   const outSpot = (k: number | undefined, wall?: { drawing: Id; run: Id }, what?: string): NonNullable<Surface['outside']> => ({
     ...wall,
@@ -913,7 +922,7 @@ function Viewer({ first }: { first: Shown }) {
       if (!going.current) return
       going.current = null // "Floor 3 …" and the room's name he left stood there until now: the floor is ready, its first frame comes next
       if (a && a.view !== modeRef.current) setMode(a.view) // (the scene is in it already: arrive)
-      setPicked(given.floor ?? 0)
+      setPicked(floorOf(given))
       redraw()
     }
     // a floor a trip reaches: made ready while the one he leaves stays on screen (no freeze), then shown in one frame
@@ -944,7 +953,7 @@ function Viewer({ first }: { first: Shown }) {
       // staff: a wall's side outside (toward no room, a balcony, an outdoor zone) also opens the building's outside card
       const out =
         finishesRef.current && KEEP && hit.kind === 'wall' && (!r || r.kind === 'balcony' || core.isOutdoor(r.kind)) && unit.walls.some((w) => w.id === hit.id)
-          ? outSpot(outFloor, { drawing: unit.id, run: outerRuns(unit).get(hit.id) ?? hit.id }, r?.name)
+          ? outSpot(myFloor, { drawing: unit.id, run: outerRuns(unit).get(hit.id) ?? hit.id }, r?.name)
           : undefined
       // a pin or a finish uses the click: the walker stays where he is (a floor tap under a finger must not walk onto the pin)
       if (commentingRef.current) {
@@ -985,7 +994,7 @@ function Viewer({ first }: { first: Shown }) {
       const low = STAFF && tower ? lowWallAt(tower, h) : null
       if (low) return void (setLowOne(false), setTowerLow({ stem: low.stem, k: h.k, wallId: low.wall.id }))
       if (!f) return levelAt(h.k) ? walkLevel(h.k) : (setPicked(h.k), s.showFloor(h.k))
-      if (f.stem !== stem || f.floor !== unit.floor) {
+      if (f.stem !== stem || f.floor !== myFloor) {
         if (!travel({ stem: f.stem, floor: f.floor, view: 'orbit' }, here())) location.assign(`/u/${f.stem}?floor=${f.floor}&view=dollhouse`)
         return
       }
@@ -1072,7 +1081,7 @@ function Viewer({ first }: { first: Shown }) {
     if (m === modeRef.current) return // setMode('walk') again would snap the view back to the last saved heading
     setMode(m)
     scene?.setMode(m)
-    setPicked(unit.floor ?? 0)
+    setPicked(myFloor)
   }
   const toggleMode = () => go(mode === 'walk' ? 'orbit' : 'walk')
   // a flat picked in the Building view opens straight into its dollhouse once loaded; the Studio's building into the tower
@@ -1352,8 +1361,7 @@ function Viewer({ first }: { first: Shown }) {
   // the floor above (or down to the one below; PlotlineScene.toNextFloor), or the Up / Down button in a stair room. Session
   // 31: that floor loads into this same 3D (no new page) and he stands at its stair, the walk going on — and a flat or a
   // level picked in the Building view comes in the same way (qa3 P12: a new page took 13–19 s before its Dollhouse showed)
-  const myFloor = tower && stem ? (unit.floor ?? floorIn(tower, stem)) : 0
-  const floorLabel = level !== undefined ? levelName(tower!, level) : unit.floor !== undefined ? `Floor ${unit.floor}` : undefined
+  const floorLabel = level !== undefined ? levelName(tower!, level) : stem || unit.floor !== undefined ? `Floor ${myFloor}` : undefined
   /** where he is now, as a trip's way back */
   const here = (): Trip => ({ stem: stem!, floor: myFloor, view: modeRef.current })
   /** the floor a stair reaches, as the buttons and the loading line say it */
@@ -1817,7 +1825,7 @@ function Viewer({ first }: { first: Shown }) {
             room={going.current ? going.current.room : room}
             rooms={listed}
             mode={mode}
-            floor={unit.floor}
+            floor={stem ? myFloor : unit.floor}
             floorLabel={going.current ? going.current.floorLabel : floorLabel}
             roomNote={windOn && room ? core.windSentence(windRooms.find((w) => w.roomId === room.id), unit.northDeg) : null}
             pickedFloor={tower && stem ? floorTitle(tower, picked, stem) : null}
