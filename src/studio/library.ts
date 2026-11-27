@@ -16,6 +16,8 @@ const KIND_LABEL: Record<string, string> = {
   bench: 'Benches', lounger: 'Loungers', 'table-set': 'Table sets', pergola: 'Pergolas', play: 'Play', gym: 'Gym', 'reception-desk': 'Reception',
   car: 'Cars', clock: 'Clocks', lamp: 'Lamps', appliance: 'Appliances', 'prayer-mat': 'Prayer mats', dresser: 'Chests of drawers',
   console: 'Console tables', 'shoe-rack': 'Shoe racks', crib: 'Cribs', 'drying-rack': 'Drying racks',
+  canopy: 'Canopies and porch roofs', sunshade: 'Sunshades', awning: 'Awnings', screen: 'Screens and fins', shutter: 'Shutters',
+  'ac-outdoor': 'AC outdoor units', 'fire-escape': 'Fire escapes', solar: 'Solar panels', chimney: 'Chimneys', flagpole: 'Flagpoles', sign: 'Signs',
 }
 
 /** Words a kind is also found by (Dhaka words too: almirah, chula, jaynamaz). */
@@ -31,13 +33,17 @@ const KIND_WORDS: Record<string, string> = {
   cushions: 'pillows', ottoman: 'pouf stool', clock: 'time', lamp: 'light', 'prayer-mat': 'namaz jaynamaz prayer mat',
   appliance: 'appliance', dresser: 'drawers chest dresser storage', console: 'table', 'shoe-rack': 'shoes', crib: 'baby cot',
   'drying-rack': 'laundry clothes',
+  canopy: 'porch portico shelter entrance door roof', sunshade: 'chhajja chajja shade overhang lintel sun window', awning: 'canvas shade window',
+  screen: 'louvre louver fins jaali lattice perforated brise soleil privacy', shutter: 'rolling roller security shop window',
+  'ac-outdoor': 'air conditioner aircon compressor condenser outdoor', 'fire-escape': 'stair stairs emergency', solar: 'pv photovoltaic energy roof',
+  chimney: 'flue roof', flagpole: 'flag mast', sign: 'nameplate name board signage entrance',
 }
 
 /** Room words per group, matched only whole: "bed" finds the beds, not every bedroom piece. */
 const ROOM_WORDS: Record<string, string> = {
   Living: 'living drawing lounge', Dining: 'dining', Bedroom: 'bedroom', Office: 'office study', Kitchen: 'kitchen',
   Bath: 'bath bathroom toilet washroom', 'Lights & AC': 'lights lighting ac', Greenery: 'greenery garden balcony',
-  Outdoor: 'outdoor balcony garden rooftop roof terrace', 'Lobby & gym': 'lobby gym common', Decor: 'decor',
+  Outdoor: 'outdoor balcony garden rooftop roof terrace', Outside: 'outside facade exterior roof balcony', 'Lobby & gym': 'lobby gym common', Decor: 'decor',
 }
 
 /** Words a piece is also found by, beyond its name and kind. */

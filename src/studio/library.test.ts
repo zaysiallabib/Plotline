@@ -70,3 +70,23 @@ describe('nothing only in a built-in file (CLAUDE.md "Nothing only Claude can do
     for (const u of units) for (const s of u.finishSlots) for (const o of s.options) expect(options.has(JSON.stringify(o))).toBe(true)
   })
 })
+
+describe('the Outside group (session 31): what hangs on a building or stands on its roof', () => {
+  it('lists every piece made for the outside, by kind; the edge planter also under Greenery, the porch roof under Outdoor', () => {
+    const outside = listing('').find((g) => g.name === 'Outside')!
+    const ids = outside.kinds.flatMap((k) => k.items.map((i) => i.id))
+    expect(ids).toEqual(expect.arrayContaining(['canopy_glass', 'canopy_slab', 'porch_roof', 'sunshade', 'awning_fabric', 'fins_vertical', 'louvre_screen', 'jaali_screen', 'planter_edge', 'fire_escape', 'solar_panel', 'chimney', 'flagpole', 'name_sign']))
+    for (const id of ids.filter((id) => kitAsset(id)?.mount === 'wall')) expect(kitAsset(id)!.outdoor, id).toBe(true) // each one may go on an outer face
+    expect(entry('planter_edge')!.rooms).toEqual(['Greenery', 'Outside'])
+    expect(entry('porch_roof')!.rooms).toEqual(['Outdoor', 'Outside'])
+    expect(outside.kinds.map((k) => k.name)).toEqual(expect.arrayContaining(['Sunshades', 'Canopies and porch roofs', 'Screens and fins', 'Solar panels']))
+  })
+
+  it('found by the words people use: chhajja, louver, jaali, aircon, PV', () => {
+    expect(firstMatch('chhajja')!.id).toBe('sunshade')
+    expect(ids('louver')).toContain('louvre_screen')
+    expect(ids('jaali')).toContain('jaali_screen')
+    expect(ids('facade')).toEqual(expect.arrayContaining(['sunshade', 'canopy_glass']))
+    expect(ids('pv')).toContain('solar_panel')
+  })
+})

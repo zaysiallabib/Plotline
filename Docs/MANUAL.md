@@ -496,6 +496,18 @@ that flat, open its own address (`/u/…`, or **Preview 3D** in the Studio).
   down it, in 1-inch steps, never below the skirting or through the ceiling. It turns red over a window ("Covers the
   window") or in a doorway ("Covers the doorway"); above a door's head it may hang.
 - **Drag a dot** on a piece to make it bigger or smaller (only pieces that can stretch).
+- **Outside the flat** (the library's **Outside** group): a sunshade (chhajja), a canopy, an awning, louvres, fins, a
+  jaali screen, a fire escape, an edge planter or a name sign may also hang on the
+  **outside face** of a wall — the side where no room is. In the **Dollhouse** turn round to the flat's outside, pick the
+  piece in **Add** and point at the outside of a wall; on a balcony in **Walk**, point at the balcony's own walls. It goes
+  flat against that face, facing out, and slides along it in 3-inch steps, up and down in 1-inch steps (outside there is no
+  skirting: it may come down to the floor). It turns red and says why: "Covers the window", "Covers the doorway", "Past the
+  end of the wall", "Runs into a wall" (a parapet round the corner: above it is fine), or that it overlaps another piece.
+  Other pieces (a sofa, a TV, a picture) stay inside: on an outside face they say "Outside the room".
+- **Over a window or door by design:** a sunshade, canopy or awning never "covers" its opening. Dropped on a window or
+  door it fits itself to it: centred on it, 15 cm wider each side, its underside on the opening's top. A louvre, fin or
+  jaali screen fits in front of it: 5 cm wider each side, from just under the sill, as tall as the
+  opening. Dragged later, a sunshade within 20 cm of an opening's top sits on it exactly. Drag a dot to change the size.
 - **Curtains** are a piece of their own, hung on their opening. Drag them (or **G**) and they slide along their wall in
   3-inch steps; they cannot be pushed into another pair ("Overlaps the curtains"). Drag the dot on one side to make them
   wider or narrower on that side (5 cm steps from the opening's edge, 0.4 to 6 m, never round a corner). They follow
@@ -527,10 +539,19 @@ The same list in the 3D view (**Edit ▾ → Furniture → Add**) and in the Stu
   *jaynamaz*, *geyser*), or a room (*balcony*, *kitchen*, *office*); plurals work. **Enter** takes the first piece. One
   **Esc** empties the box and leaves it (in the 3D view it also closes the library, as its **×** does).
 - **Without a search:** **Recent** (your last six), then the groups with how many pieces each holds — **Living** 28,
-  **Dining** 15, **Bedroom** 32, **Office** 6, **Kitchen** 16, **Bath** 8, **Lights & AC** 9, **Greenery** 17,
-  **Outdoor** 11, **Lobby & gym** 6, **Decor** 28 — 154 pieces in all (some are in two groups: the hand-wash basin under
-  Dining and Bath, as a Dhaka dining space has one; desks and office chairs under Bedroom and Office). Inside a group the
-  pieces stand by kind with a count (Sofas 5, Armchairs 3, …).
+  **Dining** 15, **Bedroom** 32, **Office** 6, **Kitchen** 16, **Bath** 8, **Lights & AC** 9, **Greenery** 18,
+  **Outdoor** 12, **Outside** 14, **Lobby & gym** 6, **Decor** 28 — 168 pieces in all (some are in two groups: the
+  hand-wash basin under Dining and Bath, as a Dhaka dining space has one; desks and office chairs under Bedroom and Office;
+  the edge planter under Greenery and Outside). Inside a group the pieces stand by kind with a count (Sofas 5, Armchairs
+  3, …).
+- **Outside** is what goes on a building rather than in a room: **Canopies and porch roofs** (a glass canopy on steel rods,
+  a concrete slab canopy, a porch roof on posts), **Sunshades** (the chhajja over a window), **Awnings** (fabric),
+  **Screens and fins** (vertical fins, a louvre screen, a perforated jaali screen), a **planter box on a balcony edge**
+  (with plants), a **fire escape** (a steel landing with a stair up to the floor above: put one on each floor and they
+  make the whole stair), a **name sign** (a blank brushed-steel plate), **solar panels**, a **chimney** and a **flagpole**.
+  The last three and the porch roof stand on a floor: a rooftop's deck, a ground floor's paving or lawn. All are built by
+  Plotline and get more fins, slats, modules or balusters as they grow, never stretched ones. Words that find them:
+  *chhajja*, *louver*, *jaali*, *aircon*, *PV*, *facade*, *outside*.
 - **Each row:** the name, its footprint in feet (width × depth), and a mark — **built** (drawn by Plotline; resizing
   builds it again at the new size: more shelves, drawers, doors or seats, never stretched), **scan** (a photo-real
   scanned model from Poly Haven, loaded when placed; resizing stretches it a little) or **yours** (your staff's own, with
@@ -901,6 +922,10 @@ had.
   TV is picked within a few pixels of its line.
 - **A wall piece** (TV, picture, AC, clock, mirror) shows **Height from floor (m)** on the right: type its bottom edge's
   height (1-inch steps; refused over a window or in a doorway). On the plan dragging moves it along the wall.
+- **Outside a wall:** a piece of the library's **Outside** group (a sunshade, a canopy, a sign…) can go on the
+  outer side of a wall: pick it, click just outside the wall on the plan (within about a metre of it). Over a window it
+  fits itself to the window, as in 3D (§3). Drag it along the outside, or round a corner onto the next wall; drag it into a
+  room and it is an ordinary wall piece of that room again.
 - **Curtains** show as a thin strip along their opening: drag it along its wall, drag an end dot to widen one side, type
   **W** on the right for an exact width (both sides move), **Del** removes it.
 - **Add a piece** (on the right while F is on) is the library (§3): search or open a group, click a piece, click the plan
@@ -1723,6 +1748,8 @@ is a job (hand-tested 2026-10-05, updated since).
 | Parking bay | No | Yes — size, number, add, delete | The painted lines |
 | Wall paint of one room / one wall | Yes — Finishes open, click the wall; kept for that flat | No | The outside and the boundary (no paint choice) |
 | Tree, shrub, plant, furniture, loungers, pergola | Yes — move, turn, resize, delete, add from the library | Yes (F) | Swap a plant for another in one step |
+| Sunshade, canopy, awning, fins, louvres, jaali, fire escape, edge planter, name sign on a wall's outside | Yes — add from **Outside**, move along the outside, up and down, resize, delete (Dollhouse; on a balcony in Walk) | Yes (F: click outside the wall) | Not in the Building view; their colour or material |
+| Solar panels, chimney, flagpole, porch roof | Yes — like any piece, on a rooftop deck or a ground-floor zone | Yes (F) | A roof that is no traced level (the tower's own flat roof) takes none |
 | Your own furniture model | Yes — Add → + Add your own…, then like any piece; ⋯ renames, resizes, removes | Yes (F) | — |
 | A finish option of your own | Yes — Finishes → + Add option (staff); ⋯ changes or removes it | No | — |
 | Curtains | Yes — slide, widen one side, delete, add onto any opening | Yes (F) — plus a typed width | Fabric and colour, drawn closed |

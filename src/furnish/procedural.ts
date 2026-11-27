@@ -19,7 +19,7 @@ import { TEXTURES } from './textures'
 import type { ObjectKind } from './kit'
 import {
   ART, ART_H, ART_PHOTO, ART_W, BED_STYLES, CURTAINS, BOX_PLANTS, MAST_TREE, parsePlanter, PERGOLA_POST, PLANTER, PLANTER_BOX_D, PLANTER_BOX_H, PLANTER_BOXES, PLANTER_KERB, POTTED, PROCEDURAL, PLANTER_TOP,
-  SCANS, SHRUBS, STAIR_D, STAIR_RISE, STAIR_W, stairId, TREES, wardrobeDoors, type Scan, type ScanId, type TreeId,
+  SCANS, SHRUBS, SOLAR, STAIR_D, STAIR_RISE, STAIR_W, stairId, TREES, wardrobeDoors, type Scan, type ScanId, type TreeId,
 } from './procedural.meta'
 
 export { PROCEDURAL } from './procedural.meta'
@@ -2353,6 +2353,310 @@ function washBasin(): THREE.Object3D[] {
 }
 
 /** id → builder at size s (its kit size unless resized); the kit.ts REBUILD ones rebuild at any size in their limits, the rest are scaled. */
+// ───────────────────────────── the outside (session 31 pieces) ─────────────────────────────
+
+/** Materials of the pieces that hang outside, made once. */
+let outMats: ReturnType<typeof makeOutMats> | null = null
+function makeOutMats() {
+  const twoSided = (m: THREE.MeshStandardMaterial) => {
+    m.side = THREE.DoubleSide
+    samePictures(m)
+    return m
+  }
+  return {
+    // the tower's own outside plaster (three/materials.ts EXTERIOR_PLASTER): a sunshade or slab canopy reads as the facade's
+    render: pbr('plaster_white', { tint: '#dbd3c6' }),
+    concrete: pbr('plaster_white', { tint: '#a9a59d', scale: 0.5 }),
+    alu: flat('#c4c6c4', 0.38, 0.55), // anodised aluminium: louvres, frames, the awning's cassette
+    charcoal: flat('#3b3d3f', 0.5, 0.35), // powder-coated aluminium: fins
+    canvas: twoSided(pbr('fabric_curtain', { tint: '#4c6a5c' })), // awning canvas, deep sage; boxUV (not drape's own UVs)
+    flagGreen: twoSided(flat('#006a4e', 0.85)),
+    flagRed: twoSided(flat('#f42a41', 0.85)),
+    jaali: jaaliMat(),
+    solar: solarMat(),
+  }
+}
+const O = () => (outMats ??= makeOutMats())
+
+/**
+ * The jaali's cut-out: one 15 cm tile of an eight-point star lattice (a square over a diamond), as a cut-out picture (alpha
+ * test, both faces): one panel in code, no download. Powder-coated warm white.
+ */
+const JAALI_M = 0.15
+function jaaliMat(): THREE.MeshStandardMaterial {
+  const n = 32
+  const d = new Uint8Array(n * n * 4)
+  for (let y = 0; y < n; y++)
+    for (let x = 0; x < n; x++) {
+      const [dx, dy] = [Math.abs(x + 0.5 - n / 2), Math.abs(y + 0.5 - n / 2)]
+      const v = dx + dy < 11 || Math.max(dx, dy) < 7.5 ? 0 : 255
+      d.set([v, v, v, 255], (y * n + x) * 4)
+    }
+  const t = new THREE.DataTexture(d, n, n)
+  t.wrapS = t.wrapT = THREE.RepeatWrapping
+  t.repeat.set(1 / JAALI_M, 1 / JAALI_M)
+  t.magFilter = THREE.LinearFilter
+  t.minFilter = THREE.LinearMipmapLinearFilter
+  t.generateMipmaps = true
+  t.needsUpdate = true
+  const m = new THREE.MeshStandardMaterial({ color: '#ece6da', roughness: 0.55, metalness: 0.1, alphaMap: t, alphaTest: 0.5, side: THREE.DoubleSide })
+  samePictures(m)
+  return m
+}
+
+/** A solar module's face: dark cells 15.6 cm square with a thin silver line between them (one tile, repeated in metres). */
+const CELL_M = 0.166
+function solarMat(): THREE.MeshStandardMaterial {
+  const n = 16
+  const d = new Uint8Array(n * n * 4)
+  for (let y = 0; y < n; y++)
+    for (let x = 0; x < n; x++) d.set(x === 0 || y === 0 ? [138, 144, 152, 255] : y === 8 ? [40, 48, 66, 255] : [18, 26, 44, 255], (y * n + x) * 4)
+  const t = new THREE.DataTexture(d, n, n)
+  t.colorSpace = THREE.SRGBColorSpace
+  t.wrapS = t.wrapT = THREE.RepeatWrapping
+  t.repeat.set(1 / CELL_M, 1 / CELL_M)
+  t.magFilter = THREE.LinearFilter
+  t.minFilter = THREE.LinearMipmapLinearFilter
+  t.generateMipmaps = true
+  t.needsUpdate = true
+  const m = new THREE.MeshStandardMaterial({ color: '#ffffff', map: t, roughness: 0.12, metalness: 0.15 })
+  samePictures(m)
+  return m
+}
+
+/** Sunshade (chhajja) W × 0.1 × D: a plastered slab 75 mm thick, 100 mm at the wall (its haunch), back at −z. */
+function sunshade({ x: W, y: H, z: D }: Size3): THREE.Mesh[] {
+  const m = O()
+  return [box(W, 0.075, D, m.render, 0, 0.0375, 0), box(W, H, 0.15, m.render, 0, H / 2, -D / 2 + 0.075)]
+}
+
+/** Slab canopy W × 0.14 × D: a 100 mm plastered slab with a 140 mm upstand along its front edge (the drip), back at −z. */
+function canopySlab({ x: W, y: H, z: D }: Size3): THREE.Mesh[] {
+  const m = O()
+  return [box(W, 0.1, D, m.render, 0, 0.05, 0), box(W, H, 0.06, m.render, 0, H / 2, D / 2 - 0.03)]
+}
+
+/**
+ * Glass canopy W × 0.6 × D: a 24 mm laminated pane in a steel wall channel at the bottom, held at its front corners by
+ * stainless tie rods up to brackets 0.6 m up the wall (one more rod every ~1.5 m across).
+ */
+function canopyGlass({ x: W, y: H, z: D }: Size3): THREE.Mesh[] {
+  const m = M()
+  const out: THREE.Mesh[] = [box(W, 0.024, D, m.glass, 0, 0.012, 0), box(W, 0.08, 0.06, m.steel, 0, 0.04, -D / 2 + 0.03), box(W, 0.03, 0.02, m.steel, 0, 0.015, D / 2 - 0.01)]
+  const n = Math.max(2, Math.ceil(W / 1.5) + 1)
+  for (let i = 0; i < n; i++) {
+    const x = -W / 2 + 0.1 + ((W - 0.2) * i) / (n - 1)
+    out.push(rod([x, 0.03, D / 2 - 0.05], [x, H - 0.03, -D / 2 + 0.04], 0.01, m.steel), box(0.06, 0.06, 0.04, m.steel, x, H - 0.03, -D / 2 + 0.02))
+  }
+  return out
+}
+
+/** Fabric awning W × 0.6 × D: a cassette on the wall, canvas sloping to a front bar 0.2 m up with a 0.2 m valance, two folding arms. */
+function awning({ x: W, y: H, z: D }: Size3): THREE.Mesh[] {
+  const o = O()
+  const [z0, y0, z1, y1] = [-D / 2 + 0.12, H - 0.09, D / 2 - 0.03, 0.22]
+  const g = new THREE.BufferGeometry()
+  const v = [[-W / 2, y0, z0], [W / 2, y0, z0], [W / 2, y1, z1], [-W / 2, y0, z0], [W / 2, y1, z1], [-W / 2, y1, z1]].flat()
+  g.setAttribute('position', new THREE.Float32BufferAttribute(v, 3))
+  g.computeVertexNormals()
+  const out: THREE.Mesh[] = [
+    box(W, 0.12, 0.14, o.alu, 0, H - 0.06, -D / 2 + 0.07),
+    mesh(g, o.canvas),
+    box(W, 0.045, 0.045, o.alu, 0, y1, z1),
+    box(W, y1, 0.006, o.canvas, 0, y1 / 2, D / 2 - 0.003), // the valance, its hem the piece's bottom
+  ]
+  for (const s of [-1, 1]) out.push(rod([s * (W / 2 - 0.08), H - 0.32, -D / 2 + 0.03], [s * (W / 2 - 0.08), y1 - 0.02, z1 - 0.03], 0.014, o.alu))
+  return out
+}
+
+/** Vertical fins W × H × 0.3: 50 mm aluminium blades every ~0.3 m off the wall, on a top and a bottom rail at the back. */
+function fins({ x: W, y: H, z: D }: Size3): THREE.Mesh[] {
+  const o = O()
+  const out: THREE.Mesh[] = [box(W, 0.05, 0.06, o.charcoal, 0, 0.025, -D / 2 + 0.03), box(W, 0.05, 0.06, o.charcoal, 0, H - 0.025, -D / 2 + 0.03)]
+  const n = Math.max(2, Math.round((W - 0.05) / 0.3) + 1)
+  for (let i = 0; i < n; i++) out.push(box(0.05, H, D, o.charcoal, -W / 2 + 0.025 + ((W - 0.05) * i) / (n - 1), H / 2, 0))
+  return out
+}
+
+/** Louvre screen W × H × 0.12: aluminium blades 100 mm wide every 80 mm, tilted 35° to shed rain and sun, in a 50 mm frame. */
+function louvres({ x: W, y: H, z: D }: Size3): THREE.Mesh[] {
+  const o = O()
+  const out: THREE.Mesh[] = [
+    ...[-1, 1].map((s) => box(0.05, H, D, o.alu, s * (W / 2 - 0.025), H / 2, 0)),
+    ...[0.025, H - 0.025].map((y) => box(W - 0.1, 0.05, D, o.alu, 0, y, 0)),
+  ]
+  for (let y = 0.1; y <= H - 0.09; y += 0.08) out.push(tilt(box(W - 0.1, 0.012, 0.1, o.alu, 0, y, 0), (35 * Math.PI) / 180))
+  return out
+}
+
+/** Perforated screen (jaali) W × H × 0.06: a powder-coated panel cut in a star lattice (jaaliMat) in a 50 mm frame. */
+function jaali({ x: W, y: H, z: D }: Size3): THREE.Mesh[] {
+  const o = O()
+  return [
+    ...[-1, 1].map((s) => box(0.05, H, D, o.alu, s * (W / 2 - 0.025), H / 2, 0)),
+    ...[0.025, H - 0.025].map((y) => box(W - 0.1, 0.05, D, o.alu, 0, y, 0)),
+    box(W - 0.1, H - 0.1, 0.004, o.jaali, 0, H / 2, 0),
+  ]
+}
+
+/** Planter box on a balcony edge W × 0.7 × 0.3: a 0.32 m fibre-cement trough on two wall straps, BOX_PLANTS along it. */
+function planterEdge({ x: W, y: H, z: D }: Size3): THREE.Object3D[] {
+  const m = M()
+  const [h, t] = [0.32, 0.025]
+  const out: THREE.Object3D[] = [
+    ...[-1, 1].map((s) => box(W, h, t, m.fibreCement, 0, h / 2, s * (D / 2 - t / 2))),
+    ...[-1, 1].map((s) => box(t, h, D - 2 * t, m.fibreCement, s * (W / 2 - t / 2), h / 2, 0)),
+    box(W - 2 * t, 0.02, D - 2 * t, m.soil, 0, h - 0.05, 0),
+    ...[-1, 1].map((s) => box(0.04, h, 0.006, m.blackSteel, s * (W / 2 - 0.2), h / 2, -D / 2 + 0.003)),
+  ]
+  const n = Math.max(2, Math.round(W / 0.35))
+  for (let i = 0; i < n; i++) {
+    const id = BOX_PLANTS[(i + 2) % BOX_PLANTS.length]
+    const s = SCANS[id]
+    const k = Math.min(0.75, (D + 0.1) / (s.max[2] - s.min[2]), (W / n + 0.15) / (s.max[0] - s.min[0]))
+    out.push(plant(id, [-W / 2 + ((i + 0.5) * W) / n - ((s.min[0] + s.max[0]) / 2) * k, h - 0.05, -((s.min[2] + s.max[2]) / 2) * k], i % 2 ? Math.PI : 0, k))
+  }
+  out.push(layoutBox([-W / 2, 0, -D / 2], [W / 2, H, D / 2]))
+  return out
+}
+
+/**
+ * Fire escape W × H × 1.2, one storey of it (H = the storey it climbs; stacked one a floor, they make the whole stair): a
+ * black steel landing at its floor along the wall, a steep stair in its outer half from the left end up to the landing of
+ * the floor above, guard rails 1 m high round both, balusters every 12 cm.
+ */
+function fireEscape({ x: W, y: H, z: D }: Size3): THREE.Mesh[] {
+  const m = M()
+  const s = m.blackSteel
+  const half = D / 2
+  const x0 = -W / 2 + 0.7 // the stair's foot: past the end landing
+  const x1 = W / 2 - 0.05
+  const out: THREE.Mesh[] = [box(W, 0.05, half, s, 0, 0.025, -half / 2), box(0.7, 0.05, half, s, -W / 2 + 0.35, 0.025, half / 2)]
+  const rail = (a: [number, number, number], b: [number, number, number], posts = true) => {
+    out.push(rod(a, b, 0.02, s), rod([a[0], a[1] - 0.5, a[2]], [b[0], b[1] - 0.5, b[2]], 0.012, s))
+    const len = Math.hypot(b[0] - a[0], b[2] - a[2])
+    const n = posts ? Math.max(1, Math.round(len / 0.12)) : 0
+    for (let i = 0; i <= n; i++) {
+      const t = i / n
+      const [x, y, z] = [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t]
+      out.push(box(0.016, y - 0.05, 0.016, s, x, (y + 0.05) / 2, z))
+    }
+  }
+  rail([-W / 2 + 0.02, 1.0, -half + 0.02], [-W / 2 + 0.02, 1.0, half - 0.02]) // the left end
+  rail([W / 2 - 0.02, 1.0, -half + 0.02], [W / 2 - 0.02, 1.0, -0.02]) // the right end of the landing
+  rail([-W / 2 + 0.02, 1.0, half - 0.02], [x0, 1.0, half - 0.02]) // the outer edge of the end landing
+  rail([x0, 1.0, 0], [x1, 1.0, 0]) // between the landing and the stair's well
+  // the stair: two stringers, treads every ~0.2 m of rise, a handrail 0.9 m over its nosings until it meets the top
+  const steps = Math.max(8, Math.round(H / 0.2))
+  for (const z of [0.04, half - 0.04]) out.push(rod([x0, 0.05, z], [x1, H - 0.02, z], 0.025, s))
+  for (let i = 1; i <= steps; i++) {
+    const t = i / steps
+    out.push(box(0.16, 0.03, half - 0.12, s, x0 + (x1 - x0) * t - 0.04, t * H - 0.015, half / 2))
+  }
+  const tTop = 1 - 0.95 / H
+  out.push(rod([x0, 0.95, half - 0.02], [x0 + (x1 - x0) * tTop, H - 0.02, half - 0.02], 0.02, s))
+  // brackets to the wall under the landing's back edge
+  for (const x of [-W / 2 + 0.3, W / 2 - 0.3]) out.push(box(0.08, 0.12, 0.04, s, x, 0.06, -half + 0.02))
+  return out
+}
+
+/** Name sign W × H × 0.06: a brushed steel plate 12 mm thick on four stand-offs, 48 mm off the wall (blank: the developer's name goes on later). */
+function nameSign({ x: W, y: H, z: D }: Size3): THREE.Mesh[] {
+  const m = M()
+  const out: THREE.Mesh[] = [box(W, H, 0.012, m.steel, 0, H / 2, D / 2 - 0.006)]
+  for (const x of [-W / 2 + 0.06, W / 2 - 0.06]) for (const y of [0.06, H - 0.06]) out.push(rod([x, y, -D / 2], [x, y, D / 2 - 0.012], 0.012, m.nickel))
+  return out
+}
+
+/** Porch roof on posts W × 2.75 × D: the pergola's stained timber posts (no more than 3 m apart) and beams under a 150 mm plastered roof slab. */
+function porchRoof({ x: W, y: H, z: D }: Size3): THREE.Mesh[] {
+  const [m, o] = [M(), O()]
+  const out: THREE.Mesh[] = [box(W, 0.15, D, o.render, 0, H - 0.075, 0)]
+  const at = (L: number) => {
+    const n = Math.max(1, Math.ceil((L - 0.3) / 3))
+    return Array.from({ length: n + 1 }, (_, i) => -L / 2 + 0.15 + PERGOLA_POST / 2 + ((L - 0.3 - PERGOLA_POST) * i) / n)
+  }
+  const top = H - 0.15
+  const zs = at(D)
+  for (const z of [zs[0], zs[zs.length - 1]]) {
+    for (const x of at(W)) out.push(box(PERGOLA_POST, top - 0.22, PERGOLA_POST, m.timberDark, x, (top - 0.22) / 2, z))
+    out.push(box(W - 0.2, 0.22, 0.1, m.timberDark, 0, top - 0.11, z))
+  }
+  for (const z of zs.slice(1, -1)) for (const x of at(W)) out.push(box(PERGOLA_POST, top - 0.22, PERGOLA_POST, m.timberDark, x, (top - 0.22) / 2, z))
+  return out
+}
+
+/**
+ * Solar panels W × 0.75 × D: modules 1.0 × 1.7 m (portrait, cells in their glass: solarMat) in an aluminium rim, tilted 15°
+ * up to the back on legs and ground rails; as many across as fit W, rows back every ~2 m (no row shading the next at noon).
+ */
+function solarPanels({ x: W, y: H, z: D }: Size3): THREE.Mesh[] {
+  const o = O()
+  const { w, l, gap, tiltDeg } = SOLAR
+  const a = (tiltDeg * Math.PI) / 180
+  const t = 0.035
+  const depth = l * Math.cos(a) + t * Math.sin(a)
+  const yc = H - (l * Math.sin(a) + t * Math.cos(a)) / 2
+  const n = Math.max(1, Math.floor((W - 0.04 + gap) / (w + gap)))
+  const rows = Math.max(1, 1 + Math.floor((D - depth - 0.15) / 2))
+  const out: THREE.Mesh[] = [...[-1, 1].map((s) => box(0.04, 0.04, D, o.alu, s * (W / 2 - 0.02), 0.02, 0))]
+  // a point on a module (its own frame: v up through it, u back to front) in the piece
+  const on = (zc: number, v: number, u: number): [number, number] => [yc + v * Math.cos(a) - u * Math.sin(a), zc + v * Math.sin(a) + u * Math.cos(a)]
+  for (let r = 0; r < rows; r++) {
+    const zc = rows === 1 ? 0 : -D / 2 + depth / 2 + 0.05 + ((D - depth - 0.1) * r) / (rows - 1)
+    for (let i = 0; i < n; i++) {
+      const x = -((n - 1) * (w + gap)) / 2 + i * (w + gap)
+      out.push(tilt(box(w, t, l, o.alu, x, yc, zc), a))
+      const [gy, gz] = on(zc, t / 2 + 0.001, 0)
+      out.push(tilt(box(w - 0.03, 0.002, l - 0.03, o.solar, x, gy, gz), a))
+    }
+    for (const u of [l / 2 - 0.15, -(l / 2 - 0.15)]) {
+      const [y, z] = on(zc, -t / 2, u)
+      for (const s of [-1, 1]) out.push(box(0.04, y, 0.04, o.alu, s * (W / 2 - 0.02), y / 2, z))
+      out.push(box(W - 0.08, 0.04, 0.04, o.alu, 0, y - 0.02, z))
+    }
+  }
+  return out
+}
+
+/** Chimney stack 0.6 × 1.5 × 0.6: rendered masonry, a projecting band under a concrete cap, two clay pots. */
+function chimney(): THREE.Mesh[] {
+  const [m, o] = [M(), O()]
+  return [
+    box(0.56, 1.24, 0.56, o.render, 0, 0.62, 0),
+    box(0.6, 0.06, 0.6, o.render, 0, 1.27, 0),
+    box(0.6, 0.06, 0.6, o.concrete, 0, 1.33, 0),
+    ...[-0.12, 0.12].map((x) => cyl(0.07, 0.14, m.terracotta, x, 1.43, 0, 0.06)),
+  ]
+}
+
+/**
+ * Flagpole 6 m on a concrete plinth with the national flag (bottle green, the red disc a fifth of its length across, its
+ * centre 45 % of the way out from the pole). The piece is centred on its whole width: the pole stands left.
+ */
+function flagpole(): THREE.Mesh[] {
+  const [m, o] = [M(), O()]
+  const px = -0.6
+  const L = 1.36
+  const Hf = L * 0.6
+  const geo = new THREE.PlaneGeometry(L, Hf)
+  const fy = 5.85 - Hf / 2
+  const fx = px + 0.04 + L / 2
+  const disc = (s: number) => {
+    const d = mesh(new THREE.CircleGeometry(L / 5, 40), o.flagRed, px + 0.04 + 0.45 * L, fy, s * 0.004)
+    d.rotation.y = s > 0 ? 0 : Math.PI
+    return d
+  }
+  return [
+    box(0.4, 0.3, 0.4, o.concrete, px, 0.15, 0),
+    cyl(0.04, 5.65, m.steel, px, 0.3 + 5.65 / 2, 0, 0.03),
+    mesh(new THREE.SphereGeometry(0.05, 16, 12), m.brass, px, 5.95, 0),
+    mesh(geo, o.flagGreen, fx, fy, 0),
+    disc(1),
+    disc(-1),
+  ]
+}
+
 const BUILDERS: Record<string, (s: Size3) => THREE.Object3D[]> = {
   // mattress = width − the headboard's 16 cm
   ...Object.fromEntries(BED_STYLES.flatMap((st) => [`bed_queen${st}`, `bed_single${st}`].map((id) => [id, (s: Size3) => bed(s.x - 0.16, st)]))),
@@ -2451,6 +2755,21 @@ const BUILDERS: Record<string, (s: Size3) => THREE.Object3D[]> = {
   dining_table_4: diningTable,
   dining_table_8: diningTable,
   wash_basin: washBasin,
+  // the outside (session 31 pieces)
+  canopy_glass: canopyGlass,
+  canopy_slab: canopySlab,
+  sunshade,
+  awning_fabric: awning,
+  fins_vertical: fins,
+  louvre_screen: louvres,
+  jaali_screen: jaali,
+  planter_edge: planterEdge,
+  fire_escape: fireEscape,
+  name_sign: nameSign,
+  porch_roof: porchRoof,
+  solar_panel: solarPanels,
+  chimney,
+  flagpole,
   ...Object.fromEntries(ART.map((id) => [id, () => artFrame(ART_PHOTO.includes(id.slice(0, -2)) ? print(`/assets/art/${id}.jpg`) : painted(id))])),
 }
 

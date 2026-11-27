@@ -202,6 +202,41 @@ export const PERGOLA_POST = 0.12
 export const CURTAINS = 'curtains'
 export const CURTAIN_D = 0.16
 
+/**
+ * Pieces that hang on the outside (session 31 pieces, Docs/review/outside/INVENTORY.md §3 items 13, 15, 17, 18, 22 and the
+ * Dhaka covers): code-built, each rebuilt at its size (kit.ts REBUILD). `outdoor`: also on a wall's outer face (studio/
+ * furniture.ts hangOutside); `overOpening`: on an opening's head ('head') or in front of it ('cover'), fitted to it when
+ * dropped on one. Bottom heights: a 2.1 m door / window head (a Dhaka lintel); the fire escape's landing at its floor.
+ */
+const OUT = (id: string, label: string, kind: KitAsset['kind'], x: number, y: number, z: number, mountY: number, over?: KitAsset['overOpening']): KitAsset => ({
+  ...P(id, label, 'other', x, y, z, mountY),
+  mount: 'wall',
+  kind,
+  outdoor: true,
+  ...(over ? { overOpening: over } : {}),
+})
+export const OUTSIDE_PIECES: Record<string, KitAsset> = {
+  canopy_glass: OUT('canopy_glass', 'Canopy over a door, glass + steel rods (1.8 m)', 'canopy', 1.8, 0.6, 1.0, 2.1, 'head'),
+  canopy_slab: OUT('canopy_slab', 'Canopy over a door, concrete slab (1.8 m)', 'canopy', 1.8, 0.14, 0.9, 2.1, 'head'),
+  sunshade: OUT('sunshade', 'Sunshade (chhajja) over a window (1.5 m)', 'sunshade', 1.5, 0.1, 0.6, 2.1, 'head'),
+  awning_fabric: OUT('awning_fabric', 'Fabric awning over a window (1.5 m)', 'awning', 1.5, 0.6, 0.9, 2.1, 'head'),
+  fins_vertical: OUT('fins_vertical', 'Vertical fins, aluminium (1.5 m)', 'screen', 1.5, 1.6, 0.3, 0.85, 'cover'),
+  louvre_screen: OUT('louvre_screen', 'Louvre screen, aluminium slats (1.5 m)', 'screen', 1.5, 1.4, 0.12, 0.85, 'cover'),
+  jaali_screen: OUT('jaali_screen', 'Perforated screen (jaali), powder-coated (1.5 m)', 'screen', 1.5, 1.4, 0.06, 0.85, 'cover'),
+  planter_edge: OUT('planter_edge', 'Planter box on a balcony edge, with plants (1.5 m)', 'plant', 1.5, 0.7, 0.3, 0.62),
+  fire_escape: OUT('fire_escape', 'Fire escape, steel: landing + stair to the floor above (2.4 m)', 'fire-escape', 2.4, 3.2, 1.2, 0),
+  name_sign: OUT('name_sign', 'Name sign on stand-offs, brushed steel (1.2 m)', 'sign', 1.2, 0.4, 0.06, 2.4),
+  // on the floor: a roof deck, a ground-floor zone (walk under the porch roof: category 'rug' like the pergola)
+  porch_roof: { ...P('porch_roof', 'Porch roof on posts, solid roof (3 × 3 m)', 'rug', 3.0, 2.75, 3.0), kind: 'canopy' },
+  solar_panel: { ...P('solar_panel', 'Solar panels on a tilted frame (2 modules)', 'other', 2.1, 0.75, 1.8), kind: 'solar' },
+  chimney: { ...P('chimney', 'Chimney stack, rendered, two clay pots', 'other', 0.6, 1.5, 0.6), kind: 'chimney' },
+  flagpole: { ...P('flagpole', 'Flagpole with the national flag (6 m)', 'other', 1.6, 6.0, 0.4), kind: 'flagpole' },
+}
+/** The solar panel's modules (portrait, m) and their tilt toward the front. */
+export const SOLAR = { w: 1.0, l: 1.7, gap: 0.03, tiltDeg: 15 }
+/** The fire escape's landing depth is fixed (its stair runs along the outer half). */
+export const FIRE_ESCAPE_D = 1.2
+
 /** Top of modern_wooden_cabinet (the TV unit), where tv_55's stand sits. */
 export const TV_UNIT_TOP = 0.68
 /** Worktop height; upper cabinets and the hood start here (splashback) and their boxes at 1.45. */
@@ -320,6 +355,7 @@ export const PROCEDURAL: Record<string, KitAsset> = {
   dining_table_4: P('dining_table_4', 'Dining table, oak, 4 seats', 'dining-table', 1.2, 0.75, 0.8),
   dining_table_8: P('dining_table_8', 'Dining table, oak, 8 seats', 'dining-table', 2.0, 0.75, 1.0),
   wash_basin: { ...P('wash_basin', 'Hand-wash basin + mirror (dining)', 'bath', 0.5, 1.09, 0.43, 0.67), kind: 'basin' }, // rim 0.83, mirror to 1.76
+  ...OUTSIDE_PIECES,
   ...Object.fromEntries(
     ART_SETS.flatMap((s) =>
       (['l', 'r'] as const).map((k) => [

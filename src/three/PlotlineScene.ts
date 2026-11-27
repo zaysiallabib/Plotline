@@ -1661,6 +1661,7 @@ export class PlotlineScene {
       o.userData.floorM = floor
       o.rotation.set(0, -THREE.MathUtils.degToRad(p.rotationDeg), 0) // about the vertical only (fitSelection)
       o.userData.roomId = p.roomId
+      o.userData.outside = p.outside
       this.readDaylight(o) // moved to a darker or a brighter spot, another room: lit as it, at once
       o.visible = !p.removed
     }
@@ -1668,9 +1669,9 @@ export class PlotlineScene {
 
   /** the unit's daylight bake (setUnit): the furniture reads it (readDaylight) */
   private day: Daylight | null = null
-  /** A piece is lit as the room its middle stands in (daylight.ts pieceDayUv / lightPiece), wherever it is put. */
+  /** A piece is lit as the room its middle stands in (daylight.ts pieceDayUv / lightPiece), wherever it is put; one hung outside the flat as the open air. */
   private readDaylight(o: THREE.Object3D): void {
-    if (this.day && this.unit) lightPiece(o, pieceDayUv(this.day, this.rooms, this.unit, { x: o.position.x, y: o.position.z }, o.userData.roomId))
+    if (this.day && this.unit) lightPiece(o, pieceDayUv(this.day, this.rooms, this.unit, { x: o.position.x, y: o.position.z }, o.userData.outside ? '' : o.userData.roomId))
   }
 
   /** the whole layout as last placed (placePieces `all`, loadFurniture): what a table lamp stands on */
