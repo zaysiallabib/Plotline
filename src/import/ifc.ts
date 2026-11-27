@@ -440,8 +440,8 @@ function readModel(W: WebIfc, api: Api, model: number, fileName: string, t0: num
     const up = aggregateParent.get(id)
     return up !== undefined && depth < 4 ? isExternal(up, depth + 1) : undefined
   }
-  /** the file says which elements are outside (16 of the 21 samples): only those are dressed; else every wall is */
-  const fileSaysOutside = external.size > 0
+  /** the file says which walls are outside (16 of the 21 samples): only those are dressed; else every wall is */
+  const fileSaysOutside = [...external.keys()].some((id) => isA(id, W.IFCWALL)) // (a file that says it of its railings only says nothing of its walls)
   type Mat = { name: string; id: number }
   const matsOf = new Map<number, { mats: Mat[]; layered: boolean }>()
   /** a material select as its materials, a layer set's in the file's order (outside → inside, as CAD programs write it) */
@@ -550,7 +550,10 @@ function readModel(W: WebIfc, api: Api, model: number, fileName: string, t0: num
     return f
   }
   const roofIds = idsOfSet(W.IFCROOF)
-  const predefinedOf = (id: number): string => String(val(line(id)?.PredefinedType) ?? '') || String(val(typeOf.has(id) ? line(typeOf.get(id)!).PredefinedType : '') ?? '')
+  const predefinedOf = (id: number): string => {
+    const e = line(id)
+    return String(val(e?.PredefinedType) ?? val(e?.ShapeType) ?? '') || String(val(typeOf.has(id) ? line(typeOf.get(id)!).PredefinedType : '') ?? '')
+  }
   const inRoof = (id: number): boolean => roofIds.has(id) || roofIds.has(aggregateParent.get(id) ?? -1) || (isA(id, W.IFCSLAB) && predefinedOf(id) === 'ROOF')
   /** a roof's covering (an option of ROOF_COVERINGS): its materials, its type's or own name; null: as the file colours it */
   const roofCovering = (id: number, pitched: boolean): string | null => {
@@ -601,10 +604,10 @@ function readModel(W: WebIfc, api: Api, model: number, fileName: string, t0: num
   }
   const named = (s: Storey) => plain(s.name).replace(/^[\d\s._-]+(?=[a-z])/, '').trim()
   const GROUND = /^(ground( floor| level)?|eg|erdgeschoss|rdc|rez[- ]de[- ]chaussee|planta baja|pb|begane grond|bg|stueetage|stueplan|stue|pohjakerros|maantaso|bottenvaning|entreplan|piano terra|pt|1f|1\/f|gf|g\/f|l0|level 0+|niveau 0)$/
-  const BELOW = /basement|cellar|keller|\bug\d*\b|\bkg\b|kellari|kallare|kjeller|kaelder|sous-sol|sotano|souterrain|kelder|\bb-?\d\b|^-\d|garage under|tiefgarage/
+  const BELOW = /basement|cellar|keller|\bug\d*\b|\bkg\b|kellari|kallare|kjeller|kaelder|sous-sol|sotano|souterrain|kelder|\bb-?\d\b|^k-?\d\b|^-\d|garage under|tiefgarage/
   const groundStorey =
     storeys.find((s) => GROUND.test(named(s)) && held(s)) ??
-    storeys.find((s) => s.elev !== undefined && Math.abs(s.elev) < 0.05 && held(s)) ??
+    storeys.find((s) => s.elev !== undefined && Math.abs(s.elev) < 0.25 && held(s)) ??
     storeys.find((s) => held(s) && !BELOW.test(plain(s.name))) ??
     storeys[0]
   const emptyBelow = groundStorey ? storeys.filter((s) => s.z < groundStorey.z - 0.01 && !held(s) && !holds.get(s)?.walls) : []
@@ -993,8 +996,9 @@ function readModel(W: WebIfc, api: Api, model: number, fileName: string, t0: num
     name: string
     /** a window's frame (FRAMES_SLOT option), a glass front's mullion spacing */
     holes: { seg: number; kind: OpeningKind; u0: number; u1: number; y0: number; y1: number; frame?: string; bayM?: number }[]
-    /** its outside finish (an outer wall's, materials.ts) */
+    /** its outside finish (an outer wall's, materials.ts); `outer`: an outer wall's (IsExternal, or every wall when the file does not say) */
     finish?: string
+    outer?: boolean
     /** a railing stands on it (or it is one: `alone`, a low wall of its own on the railing's line) */
     lowKind?: LowWallKind
     alone?: boolean
@@ -1021,6 +1025,9 @@ function readModel(W: WebIfc, api: Api, model: number, fileName: string, t0: num
     return Number.isFinite(t0) && Number.isFinite(t1) && Math.max(t0, t1) < b.maxY - 0.3 ? Math.min(t0, t1) : null
   }
   let gables = 0
+  /** outer walls (IsExternal, or every wall when the file does not say), and those whose materials name a finish */
+  let outerWalls = 0
+  let dressedWalls = 0
   /** each opening's frame as its window's names say (FRAMES_SLOT option): the record's `frame:` keys */
   const frameOfOpening = new Map<Id, string>()
   const segLen = (pts: Pt[], i: number) => Math.hypot(pts[i + 1].x - pts[i].x, pts[i + 1].y - pts[i].y)
@@ -1096,12 +1103,15 @@ function readModel(W: WebIfc, api: Api, model: number, fileName: string, t0: num
     thickness = thickness && thickness > 0.02 ? thickness : PARTITION_M
     const wallName = String(val(w.Name) ?? id)
     // (an outer wall whose names say nothing keeps the plaster: said so in the record when the building wears something else)
-    const finish = !curtain && outerEl(id, typeName(id)) ? (wallFinish(id) ?? (unknownOuter(id) ? OUTSIDE_SLOT.defaultOptionId : null)) : null
+    const outer = !curtain && outerEl(id, typeName(id))
+    const named = outer ? wallFinish(id) : null
+    if (outer) (outerWalls++, named && dressedWalls++)
+    const finish = outer ? (named ?? (unknownOuter(id) ? OUTSIDE_SLOT.defaultOptionId : null)) : null
     for (const pts of chains) {
       const top = endsTop(pts, body)
       const capped = top !== null && body ? on.map((b) => (b.top >= body.maxY - 0.01 && top < b.top - 0.3 && top > b.bottom + 1.5 ? { ...b, top } : b)) : on
       if (capped.some((b, i) => b !== on[i])) gables++
-      const chain: Chain = { pts, thickness, on: capped, name: wallName, holes: [], ...(finish ? { finish } : {}) }
+      const chain: Chain = { pts, thickness, on: capped, name: wallName, holes: [], ...(finish ? { finish } : {}), ...(outer ? { outer } : {}) }
       if (curtain && body) chain.holes.push({ seg: 0, kind: 'window', u0: 0, u1: segLen(pts, 0), y0: body.minY, y1: body.maxY, ...glassFront(id, pts) })
       for (const op of voidsOf.get(id) ?? []) {
         const fill = fillOf.get(op)
@@ -1131,29 +1141,35 @@ function readModel(W: WebIfc, api: Api, model: number, fileName: string, t0: num
   // ---------- railings (IfcRailing): what the low wall under each is made of, else a low wall of its own on its line ----------
   let railsOn = 0
   let railsAlone = 0
+  let railsAgainst = 0
   for (const id of idsOf(W.IFCRAILING)) {
-    // its body: footprint, height range and its upright triangles in plan (railRuns: which sides of its outline it stands on)
+    // its body: footprint, height range and its upright triangles in plan (railRuns: which sides of its outline it stands on) —
+    // its own, else its parts' (Vienna's railings are posts, rails and panes aggregated under the railing)
     const ob: Body = { pts: [], minY: Infinity, maxY: -Infinity }
     const upright: [Pt, Pt, Pt][] = []
-    try {
-      const fm = api.GetFlatMesh(model, id)
-      for (let i = 0; i < fm.geometries.size(); i++) {
-        const wm = worldMesh(fm.geometries.get(i))
-        if (!wm) continue
-        takeBody(ob, wm.P, wm.N, wm.I, false)
-        for (let t = 0; t < wm.I.length; t += 3) {
-          const [a, b, c] = [wm.I[t] * 3, wm.I[t + 1] * 3, wm.I[t + 2] * 3]
-          if (Math.abs(wm.N[a + 1]) < 0.3) upright.push([planOfWorld(wm.P[a], wm.P[a + 2]), planOfWorld(wm.P[b], wm.P[b + 2]), planOfWorld(wm.P[c], wm.P[c + 2])])
+    for (const part of [id, ...(childrenOf.get(id) ?? []).flatMap((c) => [c, ...(childrenOf.get(c) ?? [])])]) {
+      try {
+        const fm = api.GetFlatMesh(model, part)
+        for (let i = 0; i < fm.geometries.size(); i++) {
+          const wm = worldMesh(fm.geometries.get(i))
+          if (!wm) continue
+          takeBody(ob, wm.P, wm.N, wm.I, false)
+          for (let t = 0; t < wm.I.length; t += 3) {
+            const [a, b, c] = [wm.I[t] * 3, wm.I[t + 1] * 3, wm.I[t + 2] * 3]
+            if (Math.abs(wm.N[a + 1]) < 0.3) upright.push([planOfWorld(wm.P[a], wm.P[a + 2]), planOfWorld(wm.P[b], wm.P[b + 2]), planOfWorld(wm.P[c], wm.P[c + 2])])
+          }
         }
+      } catch {
+        /* a part web-ifc cannot build: the rest */
       }
-    } catch {
-      continue
+      if (part === id && ob.pts.length) break
     }
     // (a stair's handrail climbs a storey; a stub of rail is no balcony front)
     if (!ob.pts.length || ob.maxY - ob.minY < 0.5 || ob.maxY - ob.minY > 1.6) continue
     const band = bands.find((b) => ob.minY + 0.05 >= b.bottom - 0.3 && ob.minY + 0.05 < b.top)
     if (!band) continue
     const kind = railKind([...materialsOf(id).mats.map((m) => m.name), ...typeNames(id)]) ?? 'railing'
+    let on = 0, alone = 0, against = 0
     for (const [a, b] of railRuns(ob.pts, upright)) {
       const L = Math.hypot(b.x - a.x, b.y - a.y)
       const d = { x: (b.x - a.x) / L, y: (b.y - a.y) / L }
@@ -1170,14 +1186,18 @@ function readModel(W: WebIfc, api: Api, model: number, fileName: string, t0: num
       })
       if (under) {
         // (a railing against a storey wall — a window's guard rail, a French balcony — is the outside shape's alone)
-        if (under.on.some((o) => o.s === band.s && o.top - o.bottom < 2.4)) under.lowKind ??= kind
-        railsOn++
+        if (under.on.some((o) => o.s === band.s && o.top - o.bottom < 2.4)) (under.lowKind ??= kind), on++
+        else against++
         continue
       }
       const top = Math.min(1.5, Math.max(0.6, ob.maxY - band.bottom))
       chainsOut.push({ pts: [a, b], thickness: 0.05, on: [{ s: band.s, bottom: band.bottom, top: band.bottom + top }], name: 'Railing', holes: [], lowKind: kind, alone: true })
-      railsAlone++
+      alone++
     }
+    // (counted by railing: one that made a low wall glass or stands as one is read; one only against storey walls is the shape's)
+    if (alone) railsAlone++
+    else if (on) railsOn++
+    else if (against) railsAgainst++
   }
   // one draft per storey the wall stands on, its height and openings cut to that storey's band
   for (const chain of chainsOut) {
@@ -1240,9 +1260,22 @@ function readModel(W: WebIfc, api: Api, model: number, fileName: string, t0: num
   // ---------- the outside shape, dressed ----------
   /** the building's own option per slot: the outer walls' commonest finish by length on the plans; else the commonest by area in the shape */
   const mainOf = (slot: string): string | undefined => [...dressedArea].filter(([k]) => k.startsWith(`${slot}|`)).sort((a, b) => b[1] - a[1])[0]?.[0].split('|')[1]
+  // (named over 30 % of the outer walls' length; else the plaster: LTU's three brick walls of 2 622 are no brick building)
   const byLength = new Map<string, number>()
-  for (const c of chainsOut) if (c.finish) byLength.set(c.finish, (byLength.get(c.finish) ?? 0) + c.pts.slice(1).reduce((s, _, i) => s + segLen(c.pts, i), 0) * c.on.length)
-  const mains = { out: [...byLength].sort((a, b) => b[1] - a[1])[0]?.[0] ?? mainOf('out'), frame: mainOf('frame'), roof: mainOf('roof') }
+  let outerLength = 0
+  for (const c of chainsOut) {
+    if (!c.outer) continue
+    const L = c.pts.slice(1).reduce((s, _, i) => s + segLen(c.pts, i), 0) * c.on.length
+    outerLength += L
+    if (c.finish && c.finish !== OUTSIDE_SLOT.defaultOptionId) byLength.set(c.finish, (byLength.get(c.finish) ?? 0) + L)
+  }
+  const ranked = [...byLength].sort((a, b) => b[1] - a[1])
+  const namedLength = ranked.reduce((s, [, L]) => s + L, 0)
+  const mains = {
+    out: outerLength ? (namedLength >= 0.3 * outerLength ? ranked[0][0] : OUTSIDE_SLOT.defaultOptionId) : mainOf('out'),
+    frame: mainOf('frame'),
+    roof: mainOf('roof'),
+  }
   const glbGroups: GlbGroup[] = [...groups.values()].map((g) => ({
     ...(g.window ? { window: true } : {}),
     ...(g.look ? { dress: dressName(g.look.slot, g.look.option, mains[g.look.slot] === g.look.option) } : {}),
@@ -1519,7 +1552,8 @@ function readModel(W: WebIfc, api: Api, model: number, fileName: string, t0: num
   const unknown = materials.filter((m) => !m.finish && classOf(m.name) === null)
   if (unknown.length) notes.push(`${unknown.length} material${unknown.length === 1 ? '' : 's'} not known (${unknown.length === 1 ? 'it keeps' : 'they keep'} the plaster): ${unknown.slice(0, 4).map((m) => `"${m.name}"`).join(', ')}${unknown.length > 4 ? ', …' : ''} — Materials, below: say what each is, and it is kept for the next file.`)
   if (!fileSaysOutside && known.length) notes.push('The file does not say which walls are outside (IsExternal): every wall whose material is known wears it.')
-  if (railsOn + railsAlone) notes.push(`${railsOn + railsAlone} railings read (IfcRailing): ${[railsOn && `${railsOn} on the low wall under them`, railsAlone && `${railsAlone} as low walls of their own on their line (a balcony front)`].filter(Boolean).join(', ')}; what each is made of is under the wall's Made of.`)
+  if (railsOn + railsAlone) notes.push(`${railsOn + railsAlone} railings read (IfcRailing): ${[railsOn && `${railsOn} on the low wall under them`, railsAlone && `${railsAlone} as low walls of their own on their line (a balcony front)`].filter(Boolean).join(', ')}; what each is made of is under the wall's Made of${railsAgainst ? `; ${railsAgainst} against a storey wall (a window's guard) stay in the outside shape` : ''}.`)
+  if (outerWalls) notes.push(`${dressedWalls} of ${outerWalls} outer walls wear the finish their materials name${dressedWalls < outerWalls ? '; the others keep the plaster' : ''}.`)
   if (gables) notes.push(`${gables} walls stop at their eaves: the gable over them is in the outside shape.`)
   const bays = chainsOut.filter((c) => c.holes.some((h) => h.bayM)).length
   if (bays) notes.push(`${bays} glass fronts keep the file's mullion spacing.`)
