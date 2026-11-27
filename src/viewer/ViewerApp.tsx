@@ -1857,6 +1857,7 @@ function Viewer({ first }: { first: Shown }) {
               <div className="panel-body">
                 {TOKEN && <BuyerName />}
                 <FinishesPanel
+                  outsideFirst={mode === 'building'}
                   staff={STAFF}
                   kept={KEEP ? kept : null}
                   roof={

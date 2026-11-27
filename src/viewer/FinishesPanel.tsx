@@ -52,6 +52,8 @@ interface Props {
   outside?: OutsideProps
   /** staff, the flat in a building that draws its own roof: the roof as drawn, whether its block is open, and changing it */
   roof?: { value: Roof | undefined; read: boolean; open: boolean; onOpen: (open: boolean) => void; onChange: (r: Roof) => void } | null
+  /** the Building view (qa4fix): the building's outside — its walls, window frames, the roof — comes first, the flat's groups after */
+  outsideFirst?: boolean
 }
 
 /** The roof of the whole building (staff): its covering as swatches, then its kind, pitch, eaves, edge and roof windows. */
@@ -213,7 +215,7 @@ function OutsideBlock({ spot, outside, onClose }: { spot: NonNullable<Surface['o
   )
 }
 
-export default function FinishesPanel({ slots, cfg, keys, surface, onSelect, onCloseSurface, onReset, staff, kept, outside, roof }: Props) {
+export default function FinishesPanel({ slots, cfg, keys, surface, onSelect, onCloseSurface, onReset, staff, kept, outside, roof, outsideFirst }: Props) {
   /** the Add option form open under this slot, or one of the staff's own options being changed */
   const [form, setForm] = useState<{ slotId: string; edit?: OwnFinish } | null>(null)
   const outSlots = outside?.slots ?? NONE
@@ -282,42 +284,9 @@ export default function FinishesPanel({ slots, cfg, keys, surface, onSelect, onC
         return what && o ? [{ key, what, label: o.label }] : []
       })
     : []
-  return (
-    <section className="finishes">
-      {roof?.open ? (
-        <RoofBlock roof={roof} />
-      ) : surface ? (
-        <>
-          {surface.roomKey && <SurfaceBlock key={`${surface.roomKey}|${surface.wallKey}`} surface={surface} keys={keys} cfg={cfg} onSelect={onSelect} onClose={onCloseSurface} />}
-          {surface.outside && outside && <OutsideBlock key={`${surface.outside.drawing}|${surface.outside.run}|${surface.outside.floor}`} spot={surface.outside} outside={outside} onClose={onCloseSurface} />}
-        </>
-      ) : (
-        <p className="muted small">
-          {finger ? 'Tap' : 'Click'} a floor, a wall or a ceiling to choose for that room or that wall alone{roof ? ', or the roof in the Building view' : ''}.{outside ? ' An outside wall: for that wall, its floor or the whole building.' : ''} Each block below covers a group of rooms.
-        </p>
-      )}
-      {slots.map((slot) => block(slot, chosen(slot, cfg)?.id, true))}
-      {ones.length > 0 && (
-        <div className="slot">
-          <div className="label">Chosen for one room or wall</div>
-          {ones.map((x) => (
-            <div key={x.key} className="small">
-              {x.scope}: <b>{x.label}</b>{' '}
-              <button className="link" onClick={() => onSelect(x.key, null)}>
-                undo
-              </button>
-            </div>
-          ))}
-        </div>
-      )}
-      <div className="panel-footer">
-        <span className="label">Options total</span>
-        <span className="total">{total ? formatDelta(total) : `৳${formatTaka(0)}`}</span>
-      </div>
-      <button className="link" onClick={onReset}>
-        Reset to included
-      </button>
-      {kept && <p className="muted small">{kept}</p>}
+  // the building's outside (staff): at the end in Walk and Dollhouse, first in the Building view, where the tower is what is seen
+  const building = (
+    <>
       {outside && (
         <>
           <p className="muted small">The building's outside — every flat and floor of it; a buyer link shows what you choose here.</p>
@@ -348,6 +317,48 @@ export default function FinishesPanel({ slots, cfg, keys, surface, onSelect, onC
           </div>
         </div>
       )}
+    </>
+  )
+  const first = outsideFirst && (!!outside || !!roof)
+  return (
+    <section className="finishes">
+      {roof?.open ? (
+        <RoofBlock roof={roof} />
+      ) : surface ? (
+        <>
+          {surface.roomKey && <SurfaceBlock key={`${surface.roomKey}|${surface.wallKey}`} surface={surface} keys={keys} cfg={cfg} onSelect={onSelect} onClose={onCloseSurface} />}
+          {surface.outside && outside && <OutsideBlock key={`${surface.outside.drawing}|${surface.outside.run}|${surface.outside.floor}`} spot={surface.outside} outside={outside} onClose={onCloseSurface} />}
+        </>
+      ) : (
+        <p className="muted small">
+          {finger ? 'Tap' : 'Click'} a floor, a wall or a ceiling to choose for that room or that wall alone{roof ? ', or the roof in the Building view' : ''}.{outside ? ' An outside wall: for that wall, its floor or the whole building.' : ''}{first ? '' : ' Each block below covers a group of rooms.'}
+        </p>
+      )}
+      {first && building}
+      {first && <p className="muted small">The open flat's rooms, group by group:</p>}
+      {slots.map((slot) => block(slot, chosen(slot, cfg)?.id, true))}
+      {ones.length > 0 && (
+        <div className="slot">
+          <div className="label">Chosen for one room or wall</div>
+          {ones.map((x) => (
+            <div key={x.key} className="small">
+              {x.scope}: <b>{x.label}</b>{' '}
+              <button className="link" onClick={() => onSelect(x.key, null)}>
+                undo
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+      <div className="panel-footer">
+        <span className="label">Options total</span>
+        <span className="total">{total ? formatDelta(total) : `৳${formatTaka(0)}`}</span>
+      </div>
+      <button className="link" onClick={onReset}>
+        Reset to included
+      </button>
+      {kept && <p className="muted small">{kept}</p>}
+      {!first && building}
     </section>
   )
 }

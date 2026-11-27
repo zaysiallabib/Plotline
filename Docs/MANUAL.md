@@ -247,7 +247,9 @@ Finishes is open: then the click picks that floor's finish).
 
 **The building's outside** (staff, session 31). What the outer walls are clad in and the colour of the window frames —
 chosen once for the whole building, not flat by flat.
-- At the end of Finishes: **Outside walls** — Warm plaster (what every building was drawn in before), White, Sand,
+- In the **Building view** Finishes starts with the building — **Outside walls**, **Window frames**, **The roof** — and the
+  open flat's seven groups follow ("The open flat's rooms, group by group"); in Walk and the Dollhouse the flat's groups
+  come first and the building's at the end. **Outside walls** — Warm plaster (what every building was drawn in before), White, Sand,
   Terracotta and Charcoal render, Red brick, White painted brick, Grey brick, Stone blocks, Timber slats, Timber
   clapboard, Zinc panels, Dark metal panels, Corrugated metal, Fair-faced concrete, Precast concrete panels, Fibre-cement
   panels, Charcoal and Rust composite panels — and **Window frames**: Silver (as before), White, Anthracite, Black,
