@@ -8,7 +8,7 @@
  * Slot and option ids are fixed strings (invariant 4): a buyer's choice (`?c=`, an events row) means the same thing
  * after the plan is edited and re-published.
  */
-import { isOutdoor, roomPolygon, type FinishSlot, type Id, type Room, type RoomKind, type Unit } from '../core'
+import { isOutdoor, roomPolygon, type FinishOption, type FinishSlot, type Id, type Room, type RoomKind, type Unit } from '../core'
 
 export type CatalogSlot = Omit<FinishSlot, 'roomIds'> & {
   /** the room kinds this slot covers on a unit without slots of its own; 'all' = every room */
@@ -142,6 +142,28 @@ export const FINISH_CATALOG: CatalogSlot[] = [
     ],
   },
 ]
+
+/**
+ * A roof's coverings (data/building/roof.ts Roof.covering): finish options over the roof texture sets, chosen by staff for the
+ * whole building (Studio → Building → Roof; the 3D view's Finishes → click the roof). A flat roof's deck and a pitched roof's
+ * slopes take their own; the first of each is the roof as it was drawn before any was chosen (the plaster slab, the grey sheet).
+ */
+export const ROOF_COVERINGS: { flat: FinishOption[]; pitched: FinishOption[] } = {
+  flat: [
+    { id: 'rc_slab', brand: 'Generic', sku: 'ROOF-SLAB', label: 'Plain roof slab', priceDeltaBdt: 0, material: { kind: 'pbr', textureId: 'plaster_white', tint: '#dbd3c6' } },
+    { id: 'rc_gravel', brand: 'Generic', sku: 'ROOF-GRAVEL-16', label: 'Gravel', priceDeltaBdt: 0, material: { kind: 'pbr', textureId: 'roof_gravel' } },
+    { id: 'rc_green', brand: 'Generic', sku: 'ROOF-GREEN-SEDUM', label: 'Green roof', priceDeltaBdt: 0, material: { kind: 'pbr', textureId: 'turf', tint: '#c9cf9a' } },
+    { id: 'rc_terrace', brand: 'Mir Ceramic', sku: 'MIR-TERRA-300', label: 'Terracotta terrace tiles', priceDeltaBdt: 0, material: { kind: 'pbr', textureId: 'tile_floor_terracotta' } },
+  ],
+  pitched: [
+    { id: 'rc_sheet', brand: 'Generic', sku: 'ROOF-SHEET-GREY', label: 'Grey metal sheet', priceDeltaBdt: 0, material: { kind: 'color', color: '#6b6660', roughness: 0.75 } },
+    { id: 'rc_clay', brand: 'Generic', sku: 'ROOF-CLAY-TILE', label: 'Clay tiles', priceDeltaBdt: 0, material: { kind: 'pbr', textureId: 'roof_clay' } },
+    { id: 'rc_slate', brand: 'Generic', sku: 'ROOF-SLATE', label: 'Slate', priceDeltaBdt: 0, material: { kind: 'pbr', textureId: 'roof_slate' } },
+    { id: 'rc_zinc', brand: 'Generic', sku: 'ROOF-ZINC-SEAM', label: 'Zinc standing seam', priceDeltaBdt: 0, material: { kind: 'pbr', textureId: 'roof_seam', tint: '#c3c8cc' } },
+    { id: 'rc_shingles', brand: 'Generic', sku: 'ROOF-SHINGLE-TIMBER', label: 'Timber shingles', priceDeltaBdt: 0, material: { kind: 'pbr', textureId: 'roof_shingles' } },
+    { id: 'rc_corrugated', brand: 'Generic', sku: 'ROOF-CORRUGATED', label: 'Corrugated metal', priceDeltaBdt: 0, material: { kind: 'pbr', textureId: 'roof_corrugated' } },
+  ],
+}
 
 /**
  * The slots a unit offers: its own when it has any, else the catalog by room kind over `rooms` (core.deriveRooms of the
