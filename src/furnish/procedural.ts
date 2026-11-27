@@ -2372,8 +2372,8 @@ function makeOutMats() {
     canopyGlass: flat('#bcd2cc', 0.06, 0, { transparent: true, opacity: 0.42, depthWrite: false }),
     charcoal: flat('#3b3d3f', 0.5, 0.35), // powder-coated aluminium: fins
     canvas: twoSided(pbr('fabric_curtain', { tint: '#4c6a5c' })), // awning canvas, deep sage; boxUV (not drape's own UVs)
-    flagGreen: twoSided(flat('#006a4e', 0.85)),
-    flagRed: twoSided(flat('#f42a41', 0.85)),
+    flagGreen: twoSided(flat('#005a42', 0.9)), // bottle green, a shade deeper: the day's exposure lifts it
+    flagRed: twoSided(flat('#d8243a', 0.9)),
     jaali: jaaliMat(),
     solar: solarMat(),
   }

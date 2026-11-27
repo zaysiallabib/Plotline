@@ -163,12 +163,13 @@ export function RoofFields({ roof, read, covering, onChange }: Props) {
         </div>
         {ps.map((p, i) => (
           <div key={i} className="roof-window">
-            <span className="muted">{p.kind === 'solar' ? 'Solar' : 'Chimney'}</span>
-            {sides && (
+            {sides ? (
               <select aria-label="Which slope" value={p.side} onChange={(e) => setPieces(spread(ps.map((x, j) => (j === i ? { ...x, side: Number(e.target.value) as 0 | 1 } : x)), Number(e.target.value) as 0 | 1))}>
-                <option value={0}>Front</option>
-                <option value={1}>Back</option>
+                <option value={0}>{p.kind === 'solar' ? 'Solar' : 'Chimney'} · front</option>
+                <option value={1}>{p.kind === 'solar' ? 'Solar' : 'Chimney'} · back</option>
               </select>
+            ) : (
+              <span className="muted">{p.kind === 'solar' ? 'Solar' : 'Chimney'}</span>
             )}
             <Along value={p.along} onCommit={(v) => setPieces(ps.map((x, j) => (j === i ? { ...x, along: v } : x)))} />
             <button className="link" aria-label={`Take ${p.kind === 'solar' ? 'the solar panels' : 'the chimney'} ${i + 1} away`} title="Take it away" onClick={() => setPieces(spread(ps.filter((_, j) => j !== i), p.side))}>

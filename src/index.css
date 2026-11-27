@@ -225,5 +225,5 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .roof-fields input[type='range'] { width: 100%; min-width: 0; margin: 0; accent-color: var(--accent); }
 .roof-windows { grid-column: 1 / -1; display: flex; flex-direction: column; gap: var(--s-2); }
 .roof-windows .name { display: flex; justify-content: space-between; align-items: baseline; }
-.roof-window { display: grid; grid-template-columns: 84px minmax(0, 1fr) auto; align-items: center; gap: var(--s-3); }
+.roof-window { display: grid; grid-template-columns: 112px minmax(0, 1fr) auto; align-items: center; gap: var(--s-3); }
 .roof-window > .muted { font-size: var(--fs-sm); }

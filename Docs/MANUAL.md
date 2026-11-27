@@ -1760,6 +1760,12 @@ Things that are confusing or not finished. Each one is a job on the list.
   floor's own, press **Share** in that floor's 3D view (staff, with the online database).
 - In 3D, walls higher than 1.2 m cannot be moved; sliding a low wall whose end meets the middle of another wall slides
   that piece's doors and windows with it.
+- **Outside pieces** (sunshades, canopies, AC units…): "outside" is outside the drawing. A one-flat drawing in a tower of
+  several (the built-in Type A, B, C) does not know its neighbour flat, so the wall it shares with the next flat or the
+  core counts as outside and a piece hung there stands inside the neighbour — use the building's real outer walls. A
+  whole-floor drawing (the Studio's way) knows its neighbours. In the Building view a piece can be added, not moved or
+  deleted (do that in the Dollhouse). On the other floors of the same drawing a flat's outside pieces show only where the
+  Building view draws furniture (by quality), and lit as the inside.
 - Two different "share" buttons: **Share** in the 3D view (staff with the online database: a buyer link of that floor's
   flat as it stands; otherwise a link with your finishes) and **⋯ → Share link** in the Studio (a buyer link of the floor
   plan as Preview 3D shows it). Both feed the change list. The same thing has two names in places: "Slider" (3D) /
