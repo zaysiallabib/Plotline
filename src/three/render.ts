@@ -29,6 +29,7 @@ import { dayMix, isCovered, LAMP_RANGE, lampBake, lampOut, nightOut, openToSky, 
 import { carriesRoof, junctionShade, roomCeiling, storeyTop, wallLift } from './details'
 import { EXTERIOR_PLASTER, isBlank, materialFor } from './materials'
 import { meterUVs, PANES, setGlassSky } from './openings'
+import { balconyEdges } from './rails'
 
 /**
  * high: GTAO + 4× MSAA buffer, up to 2× pixels, 2048 shadow map, 12 lamps (3 casting). low: 1× pixels with MSAA, no AO,
@@ -805,7 +806,11 @@ export class Look {
     })
     // (a drawing with nothing traced yet — a set's floor still a picture to trace — has no parts: an empty slab, not a crash)
     const merged = (gs: THREE.BufferGeometry[]) => (gs.length ? mergeGeometries(gs) : new THREE.BufferGeometry())
-    const slabGeo = merged([...underFloors, ...footParts])
+    // its balconies' slab edges standing out past their fronts (rails.ts; not under an architect's shape: its own slabs show)
+    const edges = unit.shell ? null : balconyEdges(unit, rooms)
+    edges?.setIndex([...Array(edges.attributes.position.count).keys()]) // (the slab's parts are indexed)
+    const slabGeo = merged([...underFloors, ...footParts, ...(edges ? [edges] : [])])
+    edges?.dispose()
     // the roof's room undersides (single planes the shadow map stores) sit ROOF_LIFT higher than its wall boxes: 5 mm over
     // the wall tops, the shadow biases reached past them and lit the top few mm of every wall facing the sun — a thin sun
     // streak at the ceiling (founder, 2026-10-04). The boxes still close the wall tops, so no low sun gets in between.

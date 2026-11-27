@@ -199,7 +199,7 @@ export async function roomsGeometry(u: Unit, rooms: Room[], wallM: number, floor
   })
   const lined = { vertices: u.vertices, walls: u.walls.map((w) => ({ ...w, thicknessM: w.thicknessM + 2 * LINING_M })) }
   for (const w of lined.walls) {
-    if (!(w.heightM > KERB_M)) continue
+    if (!(w.heightM > KERB_M) || core.railOf(w)) continue // (a railing, a glass front: nothing to line)
     const f = core.wallFrame(w, u.vertices)
     const off = w.thicknessM / 2 + 0.05
     const mid = { x: f.origin.x + (f.dir.x * f.lengthM) / 2, y: f.origin.y + (f.dir.y * f.lengthM) / 2 }

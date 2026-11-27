@@ -287,6 +287,6 @@ describe('a project’s roof: the set’s gable, with the person’s setting ove
   })
 })
 
-/** the demo tower round Type A on floor 2 as it was before the roof lane (s31/redesign e9ecd3e) */
-const BTI_UNCHANGED = '682418:120722159.0'
-const SHELTECH_UNCHANGED = '511354:46972180.7'
+/** the demo tower round Type A on floor 2 as it was before the roof lane (s31/redesign e9ecd3e) — since s31 lowwall with its low walls' caps and balconies' slab edges (682418:120722159.0 and 511354:46972180.7 without) */
+const BTI_UNCHANGED = '694910:123835670.6'
+const SHELTECH_UNCHANGED = '522622:47935718.0'
