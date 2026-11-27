@@ -79,6 +79,17 @@ describe('outside.ifc: a storey of timber-clad walls over an empty datum storey'
     expect(mats.every((m) => m.uv)).toBe(true)
   })
 
+  test("a roof its file leaves black and names no covering of (Revit's Generic: Try a sample → the 7-room flat) wears the plain roof slab, never black", async () => {
+    const b = readFileSync(new URL('../../public/samples/flat-7-rooms.ifc', import.meta.url))
+    const r = await importIfc(b.buffer.slice(b.byteOffset, b.byteOffset + b.byteLength), 'flat-7-rooms.ifc')
+    const { json } = readGlbJson(r.shell!.glb)
+    const mats = json.materials as { name?: string; pbrMetallicRoughness?: { baseColorFactor?: number[] } }[]
+    expect(mats.some((m) => parseDress(m.name ?? '')?.slot === 'roof' && parseDress(m.name ?? '')?.option === 'rc_slab')).toBe(true)
+    // what stays black is not the roof (a door handle the file colours black keeps it)
+    const prims = (json.meshes as { primitives: { material: number }[] }[]).flatMap((m) => m.primitives.map((p) => mats[p.material]))
+    expect(prims.filter((m) => !m.name && (m.pbrMetallicRoughness?.baseColorFactor ?? [1]).slice(0, 3).every((c) => c === 0)).length).toBeLessThan(prims.length)
+  })
+
   test('a material name the person mapped is read their way', async () => {
     const b = readFileSync(new URL('./fixtures/outside.ifc', import.meta.url))
     const r = await importIfc(b.buffer.slice(b.byteOffset, b.byteOffset + b.byteLength), 'outside.ifc', () => {}, { puuverhous: 'fo_out_clapboard' })

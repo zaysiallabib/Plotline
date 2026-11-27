@@ -796,6 +796,9 @@ function readModel(W: WebIfc, api: Api, model: number, fileName: string, t0: num
       const pitched = sloped > flat
       const o = roofCovering(id, pitched) ?? (up !== null ? roofCovering(up, pitched) : null) ?? roofCovering(id, !pitched) ?? (up !== null ? roofCovering(up, !pitched) : null)
       if (o) look = { slot: 'roof', option: o }
+      // a roof that names no covering and that its file leaves pure black (a colour never set: Revit's "Generic", the 7-room
+      // sample's slabs drew black in the Building view) wears its kind's plain covering — and the building's, once staff choose one
+      else if (wms.length && wms.every(({ g }) => g.color.x === 0 && g.color.y === 0 && g.color.z === 0)) look = { slot: 'roof', option: (pitched ? ROOF_COVERINGS.pitched : ROOF_COVERINGS.flat)[0].id }
     } else if (shell && win) {
       const o = windowFrame(id)
       if (o) look = { slot: 'frame', option: o }

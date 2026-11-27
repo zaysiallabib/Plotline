@@ -1396,7 +1396,8 @@ brick / Ziegel / tiili / tegel / baksteen / mursten / ladrillo; render / Putz / 
 hout; zinc / Zink / Blech / metal; concrete / Beton / betoni; stone / Stein / Kivi / granit; Eternit / fibre cement / Viroc;
 glass — and dresses the building with Plotline's own finishes: the outer layer of each outer wall is that wall's outside
 finish, the commonest the whole building's (a render takes its colour from the file: beige crépi is Sand render); the
-roof takes the covering its words say (tiles, zinc, slate, shingles, gravel, a green roof, terrace tiles) and its kind
+roof takes the covering its words say (tiles, zinc, slate, shingles, gravel, a green roof, terrace tiles) — a roof that
+names none and that the file leaves pure black (a colour never set, as Revit's "Generic") the plain roof slab — and its kind
 from the file (gable, hip, shed, flat; a freeform roof keeps the file's own shape), its pitch from its slopes; a railing
 (IfcRailing) makes the low wall under it glass, metal or timber (**Made of**), or becomes a low wall of its own along a
 balcony's edge, its **Colour** from its material's words ("Steel, Paint Finish, Dark Gray" anthracite, "Iron, Cast" black,
