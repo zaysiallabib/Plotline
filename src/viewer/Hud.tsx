@@ -222,6 +222,15 @@ export function lowWallAt(t: Tower, h: TowerHit): { stem: string; wall: Wall } |
   return w && takesLowKind(w) && t.FLOORS.some((f) => f.floor === h.k && f.flats.includes(s!)) ? { stem: s!, wall: w } : null
 }
 
+/**
+ * The card's top so it never covers `keep` (the Sun & wind pill, or its card: bottom centre, qa4fix): a card at (left, top),
+ * w × h, that would overlap it sits just over it instead (8 px clear); else its top as it was.
+ */
+export function clearOf(left: number, top: number, w: number, h: number, keep: { left: number; top: number; right: number; bottom: number } | null): number {
+  if (!keep || left >= keep.right || left + w <= keep.left || top >= keep.bottom || top + h <= keep.top) return top
+  return keep.top - 8 - h
+}
+
 /** The card beside the pointer on the tower (towerCard): it follows the mouse while it shows; a tap puts it by the finger, beside it where it fits, else over it. */
 function TowerCard({ t, hover, finger, outside, staff }: { t: Tower; hover: TowerHit & { x: number; y: number }; finger: boolean; outside?: boolean; staff?: boolean }) {
   const ref = useRef<HTMLDivElement>(null)
@@ -233,7 +242,9 @@ function TowerCard({ t, hover, finger, outside, staff }: { t: Tower; hover: Towe
       // beside it, kept on the screen as a note by its pin is — and off the floor list: left of it, the list's edge is the screen's
       const rail = document.querySelector('.floor-rail')?.getBoundingClientRect()
       const { dx, dy } = noteAt(x, y, rail && x < rail.left ? rail.left : innerWidth, innerHeight, el.offsetWidth, el.offsetHeight)
-      el.style.transform = `translate(${x + dx}px, ${y + dy}px)`
+      // ... and off the Sun & wind pill (or its open card) at the bottom
+      const sun = document.querySelector('.sun-card, .sun-pill')?.getBoundingClientRect() ?? null
+      el.style.transform = `translate(${x + dx}px, ${clearOf(x + dx, y + dy, el.offsetWidth, el.offsetHeight, sun)}px)`
     }
     place(hover.x, hover.y)
     const move = (e: PointerEvent) => e.pointerType === 'mouse' && place(e.clientX, e.clientY)

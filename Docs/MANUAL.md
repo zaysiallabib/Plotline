@@ -350,7 +350,9 @@ the panel's **×**) stops Comment. On a buyer link **Your name** is here too.
 the corner is softly shaded (every quality). Painted walls have a faint hand-plastered cloudiness and keep exactly the
 colour you chose (Low and High; Lite shows the plain colour); up close at night they are smooth, with no specks. Window
 glass has the faint green-grey of real glass and mirrors the sky; the neighbours' windows read as glass, and in the
-Building view every window of the tower is real glass with that flat's own rooms and furniture behind it (§4).
+Building view every window of the tower is real glass with that flat's own rooms and furniture behind it (§4). The other
+flats' furniture is shown in the Building view only: back in Walk or the Dollhouse it is put away, so the walk is as
+quick as before you looked at the tower (Type A on High: 147 draws, 0.95 M triangles, after a visit too).
 
 **Furniture is as bright as the room it stands in** (every quality). A piece takes the light of the floor under its
 middle: a wardrobe in a windowless closet or the basin in a windowless toilet is as dim as the walls round it, a sofa by
@@ -727,7 +729,8 @@ The whole tower, floor by floor: point at a floor to see which it is, open a fla
   floor in large letters ("Floor 4", "Ground floor", "Basement 1", "Rooftop") and, over a flat, the flat's name and its
   size from the plan ("Type B · 1747 sft"), then what a click does there. **Click** opens that flat in its Dollhouse,
   walks a ground floor, basement, rooftop or common floor, or — on a floor with nothing to open — picks that floor as the
-  list does. The card keeps to the screen at its edges; it goes while you drag the tower round.
+  list does. The card keeps to the screen at its edges and never covers the Sun & wind pill at the bottom (near it, it sits
+  just over it); it goes while you drag the tower round.
 - **Staff, with Edit furniture on:** **Add** a piece from the library's **Outside** group (a sunshade, a canopy, an AC
   unit…) and point at the outside of the open flat's walls: it hangs there as in the Dollhouse (§3), and a click puts it
   down. While a piece is in your hand, a click on the tower puts the piece down instead of opening a floor; Esc lets it go,

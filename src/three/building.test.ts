@@ -661,6 +661,27 @@ describe('the Building view: rooms behind every window, the picked flat lit (ses
     expect(topFloor(ht)).toBe(1)
   })
 
+  test('the other flats’ furniture shows in the Building view only: back in Walk or the Dollhouse it is put away (qa4fix: +0.42 M triangles stayed)', async () => {
+    const THREE = await import('three')
+    const { Building } = await import('./building')
+    const b = new (Building as unknown as new (u: Unit, t: Tower, s: string, k: number, q: string) => { make(): Generator<void>; frame(m: string, q: string): void; dispose(): void })({ ...FLATS['type-a'].unit, floor: 2 }, bti as Tower, 'type-a', 2, 'high')
+    for (const _ of b.make()); // eslint-disable-line @typescript-eslint/no-unused-vars
+    const flats = (b as unknown as { flats: { k: number; things: unknown }[] }).flats
+    const things = new THREE.Group()
+    const f = flats.find((x) => x.k === 4)!
+    f.things = things // (as furnishThings leaves it once the Building view was opened)
+    ;(b as unknown as { want: () => void }).want = () => {} // (no models loaded here)
+    b.frame('building', 'high')
+    expect(things.visible).toBe(true)
+    b.frame('walk', 'high')
+    expect(things.visible).toBe(false)
+    b.frame('orbit', 'high')
+    expect(things.visible).toBe(false)
+    b.frame('building', 'high')
+    expect(things.visible).toBe(true) // kept made: back at once
+    b.dispose()
+  })
+
   test('Finishes’ "This wall": the clicked outer wall’s run outlined on every floor its drawing stands on, and only there (qa4fix)', async () => {
     const a = { ...bti.FLATS['type-a'].unit, id: 'a' }
     const t = projectTower(makeProject('p', a, 2, 4, 'none'))

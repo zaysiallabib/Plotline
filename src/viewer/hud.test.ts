@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest'
 import * as bti from '../data/building/demo-tower'
 import * as banani from '../data/building/banani-tower'
 import * as sheltech from '../data/building/sheltech-tower'
-import { chromeOf, cleanKey, floorTitle, floorWord, hintOf, lowWallAt, railWord, towerCard, wakes } from './Hud'
+import { chromeOf, cleanKey, clearOf, floorTitle, floorWord, hintOf, lowWallAt, railWord, towerCard, wakes } from './Hud'
 import { noteAt } from './Notes'
 import { dayGradient, roseTurn, skyColor } from './SunPill'
 
@@ -106,6 +106,14 @@ describe('hud', () => {
     expect(towerCard(t, at(low.id), false, false, false).act).toBe('Click to open it') // a buyer: the flat
     expect(towerCard(t, at(full.id), false, false, true).act).toBe('Click to open it')
     expect(lowWallAt(bti, { k: 2, flat: { stem: 'type-a', floor: 2 }, wall: { drawing: a.id, run: low.id, id: low.id, stem: 'type-a' } })).toBeNull() // a built-in tower: no project to keep it in
+  })
+
+  it('the tower card never covers the Sun & wind pill: over it instead; elsewhere where it was (qa4fix)', () => {
+    const pill = { left: 730, top: 948, right: 870, bottom: 984 }
+    expect(clearOf(700, 900, 180, 90, pill)).toBe(948 - 8 - 90) // it would have covered the pill: lifted over it
+    expect(clearOf(200, 900, 180, 90, pill)).toBe(900) // beside it: as it was
+    expect(clearOf(700, 700, 180, 90, pill)).toBe(700) // above it: as it was
+    expect(clearOf(700, 900, 180, 90, null)).toBe(900) // no pill (Clean view)
   })
 
   it('the card beside the pointer on the tower: the floor as its title, the flat under it with its size, what a click does', () => {

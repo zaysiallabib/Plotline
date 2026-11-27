@@ -845,8 +845,8 @@ export class Building extends THREE.Group {
 
   /**
    * Round the walked flat (walk, Dollhouse): the floors render.ts towerLevel picks for the tier, the sun's shadow from them as
-   * TIERS.towerShadows says, no lifts; the other flats' rooms behind their glass, their furniture once the Building view has
-   * been opened (the walk starts as fast as before). The Building view: all of it, casting as built (highlight cuts).
+   * TIERS.towerShadows says, no lifts; the other flats' rooms behind their glass, never their furniture (made once the Building
+   * view has been opened, shown only there: placeInside). The Building view: all of it, casting as built (highlight cuts).
    */
   frame(mode: 'walk' | 'orbit' | 'building', tier: Quality): void {
     // the same view again, settled (Enter or a Rooms jump places him: PlotlineScene.setMode): nothing changes — its batches
@@ -1339,9 +1339,13 @@ export class Building extends THREE.Group {
     this.batchAround()
   }
 
-  /** Every flat's furniture shown as the tier says (furnishes; on Low the picked floor too), unless a cut hides its floor. */
+  /**
+   * Every flat's furniture shown as the tier says (furnishes; on Low the picked floor too), unless a cut hides its floor — in
+   * the Building view only: back in Walk or the Dollhouse it is put away (qa4fix: 0.42 M triangles, 8 draws and twice the
+   * frame time stayed on Type A after a visit); kept made, so the Building view shows it again at once.
+   */
   private placeInside(): void {
-    for (const f of this.flats) if (f.things) f.things.visible = !f.things.userData.cut && this.shows(f.k) && furnishes(this.tier, f.k, this.furnishedFloors, this.picked)
+    for (const f of this.flats) if (f.things) f.things.visible = !this.around && !f.things.userData.cut && this.shows(f.k) && furnishes(this.tier, f.k, this.furnishedFloors, this.picked)
   }
 
   /** Flat f's lamps (flatLamps): the picked flat's while the Lights are on, a common level's at night, the others the night pattern. */
