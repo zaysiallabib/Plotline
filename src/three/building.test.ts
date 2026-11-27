@@ -997,8 +997,8 @@ describe('round the flat the tower is a handful of draws (session 31 perf: the c
   })
 })
 
-/** the tower above, built before this lane (s31/redesign 0382eba): every vertex where it was */
-const UNCHANGED = '558304:74884131.6'
+/** the tower above, built before this lane (s31/redesign 0382eba): every vertex where it was — and since s31 lowwall with its low walls' caps and balconies' slab edges (558304:74884131.6 without) */
+const UNCHANGED = '565288:76407276.8'
 
 describe('the storeys the set prints (session 31 heights: data/building/storeys.ts)', () => {
   const stop = { addColorStop: () => {} }
@@ -1034,6 +1034,30 @@ describe('the storeys the set prints (session 31 heights: data/building/storeys.
     })
     return `${n}:${sum.toFixed(1)}`
   }
+
+  test('a flat whose balcony fronts are glass (Wall.lowKind): every other floor of the tower draws them as glass and steel, not plaster', async () => {
+    const { GLAZING_GLASS } = await import('./openings')
+    const { RAIL_STEEL } = await import('./rails')
+    const u0 = await fixture()
+    const { materialFor, EXTERIOR_PLASTER } = await import('./materials')
+    const u = { ...u0, walls: u0.walls.map((w) => (w.heightM > 1 && w.heightM < 1.2 ? { ...w, lowKind: 'glass' as const } : w)) }
+    const glassAt = (b: Group, m: unknown) => {
+      const ks = new Set<number>()
+      b.traverse((o) => void ((o as Mesh).material === m && ks.add(o.userData.level)))
+      return [...ks].sort((a, b) => a - b)
+    }
+    const b = await built(projectTower(makeProject('p', u, 2, 6, 'none')), { ...u, floor: 3 }, 3)
+    expect(glassAt(b, GLAZING_GLASS)).toEqual([1, 2, 4, 5, 6]) // (floor 3 is the walked flat's: the scene draws its own)
+    expect(b.children.some((o) => (o as Mesh).material === materialFor(RAIL_STEEL, false, false, true))).toBe(true)
+    // and the plaster shell lost those walls' boxes: fewer vertices than the tower with solid fronts
+    const solid = await built(projectTower(makeProject('p', u0, 2, 6, 'none')), { ...u0, floor: 3 }, 3)
+    const plaster = (g: Group) => {
+      let n = 0
+      g.traverse((o) => void ((o as Mesh).material === materialFor(EXTERIOR_PLASTER, false, false, true) && (n += (o as Mesh).geometry.attributes.position.count)))
+      return n
+    }
+    expect(plaster(b)).toBeLessThan(plaster(solid))
+  })
 
   test('a project whose set has no section: the very same tower, vertex for vertex, as before this lane', async () => {
     const u = await fixture()
@@ -1084,7 +1108,8 @@ describe('the storeys the set prints (session 31 heights: data/building/storeys.
   })
 
   test('the roof itself: the ridge down the long middle, the slopes from the eaves, gables from the slab', async () => {
-    const { pitchedRoof } = await import('./building')
+    const { roofGeometry } = await import('./roof') // (the heights lane's pitchedRoof, generalised by the roof lane: the same at no overhang)
+    const pitchedRoof = (pts: Pt[], dir: Pt, base: number, eave: number, ridge: number, hip = false) => roofGeometry(pts, dir, { kind: hip ? 'hip' : 'gable' }, base, eave, ridge)
     const r = pitchedRoof([{ x: 0, y: 0 }, { x: 4, y: 10 }, { x: 0, y: 10 }, { x: 4, y: 0 }], { x: 1, y: 0 }, 5, 5.5, 8)
     const pos = r.cover.attributes.position
     const top = [...Array(pos.count).keys()].filter((i) => pos.getY(i) === 8).map((i) => [pos.getX(i), pos.getZ(i)])

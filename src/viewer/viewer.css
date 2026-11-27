@@ -164,7 +164,8 @@ html:has(.viewer), body:has(.viewer) { overscroll-behavior: none; }
 .popover textarea,
 .ftin input,
 .sun-date,
-.changes-key input {
+.changes-key input,
+.roof-fields :is(input[type='number'], select) {
   height: var(--control);
   padding: 0 var(--s-3);
   background: var(--surface);
@@ -175,7 +176,13 @@ html:has(.viewer), body:has(.viewer) { overscroll-behavior: none; }
   outline: none;
   transition: border-color var(--dur-fast) var(--ease);
 }
-.buyer-name input:focus, .popover textarea:focus, .ftin input:focus, .sun-date:focus, .changes-key input:focus { border-color: var(--accent); }
+.buyer-name input:focus, .popover textarea:focus, .ftin input:focus, .sun-date:focus, .changes-key input:focus, .roof-fields :is(input, select):focus { border-color: var(--accent); }
+/* the roof's fields (staff, Finishes): a number without the browser's spinner (arrow keys still step it); a select with room for its arrow */
+.roof-fields input[type='number'] { appearance: textfield; -moz-appearance: textfield; }
+.roof-fields input[type='number']::-webkit-inner-spin-button { -webkit-appearance: none; }
+.roof-fields select { padding-right: var(--s-5); }
+.roof-fields input[type='checkbox'] { width: var(--s-4); height: var(--s-4); margin: 0; accent-color: var(--accent); }
+.finishes .roof-line .small { color: var(--ink-2); }
 
 /* ── the start screen: marble, the flat's name in the serif, the one blue button ─────────────────────────────────── */
 .load {
@@ -629,6 +636,13 @@ html:has(.viewer), body:has(.viewer) { overscroll-behavior: none; }
 .ftin { display: flex; flex-direction: column; gap: var(--s-1); font-size: var(--fs-xs); color: var(--muted); }
 .ftin input { width: 84px; font-size: var(--fs-sm); }
 .ftin input.bad { border-color: var(--danger); }
+/* a low wall's "Made of" (and a solid one's Cornice): the select as wide as the row holds, the box beside it */
+.made-of { align-items: flex-end; }
+.made-of .ftin { flex: 1; min-width: 0; }
+.ftin select { height: var(--control); padding: 0 var(--s-2); background: var(--surface); color: var(--ink); border: 1px solid var(--line); border-radius: var(--r-sm); font-size: var(--fs-sm); outline: none; }
+.ftin select:focus { border-color: var(--accent); }
+.ftin-check { display: flex; align-items: center; gap: var(--s-2); height: var(--control); font-size: var(--fs-sm); color: var(--ink-2); cursor: pointer; }
+.ftin-check input { accent-color: var(--accent); width: 16px; height: 16px; margin: 0; }
 /* the piece in hand: beside the pointer, or under the dot while the mouse is locked; the dot = what G and a click aim at */
 .hand-tag { position: absolute; z-index: 6; left: 0; top: 0; max-width: 340px; padding: var(--s-2) var(--s-3); font-size: var(--fs-sm); line-height: var(--lh); pointer-events: none; }
 .hand-tag.at-dot { left: 50%; top: calc(50% + var(--s-5)); transform: translateX(-50%); }

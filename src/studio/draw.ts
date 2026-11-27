@@ -1,5 +1,5 @@
 /** Imperative canvas rendering. Transform: metres → plan px (originPx + m·pxPerM) → screen (·zoom + pan); see transform.ts. */
-import { formatFeetInches, pillarCorners, roomAt, roomPolygon, signedArea, unitBounds, wallFrame } from '../core'
+import { formatFeetInches, pillarCorners, railOf, roomAt, roomPolygon, signedArea, unitBounds, wallFrame } from '../core'
 import type { Flat, FurniturePlacement, Graph, Id, Opening, Pt, Room, RoomKind, RoomLabel, Vertex, Wall } from '../core'
 import { NAME_LOOKS, nameLooks, overlaps, placeBadges, type Rect } from './crowd'
 import { GRID_M, layerOf, pieceLabel, pieceQuad, sideDots, type Move } from './furniture'
@@ -446,6 +446,14 @@ export function draw(a: DrawArgs): void {
     ctx.strokeStyle = selected ? C.accent : type === 'low' ? C.ink2 : exterior ? C.ink : C.ink2
     ctx.lineWidth = px(1)
     ctx.stroke()
+    if (railOf(w)) {
+      // a railing, a glass front, a fence (Wall.lowKind): one line down its middle, as a plan draws a balustrade
+      ctx.beginPath()
+      ctx.moveTo(f.origin.x, f.origin.y)
+      ctx.lineTo(f.origin.x + f.dir.x * f.lengthM, f.origin.y + f.dir.y * f.lengthM)
+      ctx.lineWidth = px(1)
+      ctx.stroke()
+    }
     if (!selected && hot?.kind === 'wall' && hot.id === w.id) {
       ctx.strokeStyle = fade(C.accent, 0.4)
       ctx.lineWidth = px(6)

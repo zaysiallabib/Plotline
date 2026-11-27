@@ -17,6 +17,7 @@ import type { Review } from '../../studio/review'
 import type { SheetKind } from '../../import/sheets'
 import { placesIn, settleOn } from './apartments'
 import { towerHeights, type Heights } from './storeys'
+import { isPitched, parseRoof, roofOf, type Roof } from './roof'
 
 export const PROJECTS_KEY = 'plotline.projects'
 
@@ -63,6 +64,12 @@ export interface Project {
    * every storey FLOOR_M, as before. An imported building's own storeys (`elevations`) come first.
    */
   heights?: Heights & { from?: string[] }
+  /**
+   * The roof over the top floor as the person set it (session 31 roof lane, roof.ts: kind, pitch, ridge, overhang, covering,
+   * edge, roof windows): Studio → Building → Roof, or the 3D view's Finishes → the roof. It comes over what the set's sections
+   * read (heights: a gable or a hip, its eave and ridge). Absent: that, else the flat roof and its parapet as before.
+   */
+  roof?: Roof
   /**
    * Each drawing's "Check these" list (studio/review.ts Review), kept with it: opening another floor's drawing and coming
    * back finds its rows again (manual walk s31: they went). By drawing id; absent: none kept.
@@ -632,6 +639,7 @@ export function projectTower(p: Project): Tower {
   const lowestFloor = Math.min(0, ...(p.levels ?? []).filter((l) => l.kind === 'basement').map((l) => -(l.n ?? 1)), -(p.plan?.basements ?? 0))
   const STOREYS = p.heights && !p.elevations ? towerHeights(p.heights, lowestFloor, top, FLOOR_M) : undefined
   const ELEVATIONS = STOREYS?.levels ?? elevationsOf(p, top)
+  const ROOF_SHAPE = roofOf(p.roof, STOREYS && p.heights)
   // the building's outside shape on every drawing without its own, its floor datum at that drawing's floor height
   // ponytail: one baseY per drawing (its first floor); a drawing on floors 1–5 is placed by the Building view's own floor arithmetic
   if (p.shell)
@@ -666,8 +674,8 @@ export function projectTower(p: Project): Tower {
   // no traced rooftop: the top floor's own stair and lift rooms run up into a head room on the roof (building.ts), as the Demo
   // tower's listed core does; a traced rooftop draws its own
   const topF = FLOORS.find((f) => f.floor === top)
-  const CORE: Tower['CORE'] = roof || STOREYS?.ridgeM !== undefined ? [] : [...new Set([...(topF?.flats ?? []), ...(topF?.standIns ?? [])])].flatMap((s) => [...new Set(deriveRooms(FLATS[s].unit).filter(runsUp).map((r) => r.name))].map((n): [string, string] => [s, n]))
-  return { FLOOR_M, FLATS, FLOORS, CORE, GROUND: { plot, roads: [], gardens: [], ramp: [], bays: [], blocks: [], columns }, ROOF: { gardens: [], tanks: [] }, LEVELS, ...(ELEVATIONS ? { ELEVATIONS } : {}), ...(STOREYS ? { STOREYS } : {}) }
+  const CORE: Tower['CORE'] = roof || isPitched(ROOF_SHAPE) ? [] : [...new Set([...(topF?.flats ?? []), ...(topF?.standIns ?? [])])].flatMap((s) => [...new Set(deriveRooms(FLATS[s].unit).filter(runsUp).map((r) => r.name))].map((n): [string, string] => [s, n]))
+  return { FLOOR_M, FLATS, FLOORS, CORE, GROUND: { plot, roads: [], gardens: [], ramp: [], bays: [], blocks: [], columns }, ROOF: { gardens: [], tanks: [] }, LEVELS, ...(ELEVATIONS ? { ELEVATIONS } : {}), ...(STOREYS ? { STOREYS } : {}), ...(ROOF_SHAPE ? { ROOF_SHAPE } : {}) }
 }
 
 /** The tower's floor heights by floor number (the rooftop = top + 1) from an imported building's storey elevations; undefined when the project has none. */
@@ -694,6 +702,7 @@ export function parseProjects(raw: string | null): Project[] {
         (p.levels === undefined || Array.isArray(p.levels)) &&
         (p.sheets === undefined || Array.isArray(p.sheets)) &&
         (p.heights === undefined || (typeof p.heights === 'object' && typeof p.heights?.floors === 'object')) &&
+        (p.roof === undefined || parseRoof(p.roof) !== null) &&
         (p.plan === undefined || (typeof p.plan === 'object' && Number.isFinite(p.plan?.floors))),
     )
   } catch {

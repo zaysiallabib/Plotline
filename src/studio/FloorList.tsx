@@ -17,6 +17,8 @@ import type { SheetKind } from '../import/sheets'
 import { emptyUnit } from './model'
 import { copyPicture, deletePicture } from './pictures'
 import { ask, askText } from '../lib/ask'
+import { roofOf, roofWords } from '../data/building/roof'
+import { RoofFields } from './RoofFields'
 
 /** a drawing's name: its own, else what Preview 3D calls it ("Floor plan A", "Type A"); per unit object (the list re-renders every second) */
 const titleCache = new WeakMap<Unit, string>()
@@ -121,6 +123,8 @@ const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1)
 
 export function FloorList({ projects, project, drawing, unit, fresh, onStore, onCreate, onActivate, onOpen, onRename, onFurnish, onShow, onOldWay, onClose, onToast, onSheet, site, onAccount, untitled }: Props) {
   const [also, setAlso] = useState<Record<Id, string>>({})
+  /** the roof's fields open under its line */
+  const [roofOpen, setRoofOpen] = useState(false)
   // a clicked button lets go of the keys (Enter / Space on it again must not draw another floor)
   const blur = (e: React.MouseEvent) => e.target instanceof HTMLButtonElement && e.target.blur()
 
@@ -334,6 +338,18 @@ export function FloorList({ projects, project, drawing, unit, fresh, onStore, on
           )
         })}
       </ul>
+      <section className="roof-line" aria-label="Roof">
+        <div className="site-line">
+          <span className="label">Roof</span>
+          <span className="muted" title={roofWords(roofOf(project.roof, project.heights), project.heights?.ridgeM !== undefined)}>
+            {roofWords(roofOf(project.roof, project.heights), project.heights?.ridgeM !== undefined)}
+          </span>
+          <button className="link" title="The roof over the top floor: flat with its parapet, gable, hip, shed or mansard; its pitch, eaves, covering, edge and roof windows" onClick={() => setRoofOpen((o) => !o)}>
+            {roofOpen ? 'Close' : 'Change'}
+          </button>
+        </div>
+        {roofOpen && <RoofFields roof={roofOf(project.roof, project.heights)} read={project.heights?.ridgeM !== undefined} covering onChange={(roof) => change((p) => ({ ...p, roof }))} />}
+      </section>
       {inProject ? (
         <section className="open-drawing">
           <label>

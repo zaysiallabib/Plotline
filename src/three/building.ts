@@ -26,7 +26,8 @@ import * as THREE from 'three'
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js'
 import * as core from '../core'
 import type { Id, MaterialRef, Opening, Pt, Room, Unit, Wall } from '../core'
-import { floorIn, stemIn, streetOf, topFloor, towerOf, voidsOver, type Tower } from '../data/building'
+import { floorIn, roofIn, stemIn, streetOf, topFloor, towerOf, voidsOver, type Tower } from '../data/building'
+import { coveringOf, coveringsFor, isPitched, type Roof } from '../data/building/roof'
 import { keptAt } from '../data/building/apartments'
 import { storeyUnit } from '../data/building/storeys'
 import type { Rect } from '../data/building/demo-tower'
@@ -41,6 +42,8 @@ import { ROOF_M, SITE_REACH_M, TIERS, towerLevel, wideOnly, type Quality } from 
 import { batch, CELL_M, HIDDEN } from './batch'
 import { CONCRETE, EXTERIOR_PLASTER, PAINT as BAY_PAINT, materialFor, noSpots, resolveFinishRef, zoneFinishRef } from './materials'
 import { WATER, meterUVs } from './openings'
+import { balconyEdges, capGeometry, railParts, type RailPart } from './rails'
+import { roofGeometry } from './roof'
 
 /** every drawing's rooms (interiors.ts roomsGeometry) per tower and key, for the page: built once, whichever floor is walked */
 const ROOMS = new WeakMap<Tower, Map<string, Promise<THREE.BufferGeometry | null>>>()
@@ -68,6 +71,9 @@ const AROUND_MS = 400
 const WALL_M = 3
 /** the roof's parapet over the top floor's outer walls (no traced rooftop) */
 const PARAPET_M = 1.1
+/** a flat roof's covering (gravel, a green roof, terrace tiles) over its slab; a parapet cap's depth by what it is made of */
+const DECK_M = 0.03
+const CAP_M = { plaster: 0.06, metal: 0.03, stone: 0.08 }
 /** Look's slab under the current flat (render.ts SLAB_M) */
 const LOOK_SLAB = 0.15
 /**
@@ -83,8 +89,14 @@ const GREEN: MaterialRef = { kind: 'pbr', textureId: 'turf' }
 const ASPHALT: MaterialRef = { kind: 'color', color: '#5b5955', roughness: 0.95 }
 const PAINT: MaterialRef = { kind: 'color', color: '#e8e6e0', roughness: 0.8 }
 const TANK: MaterialRef = { kind: 'color', color: '#2a2b2c', roughness: 0.6 }
-/** a pitched roof's covering (its sheets or tiles seen from the Building view's distance): a weathered warm grey */
-const ROOF_COVER: MaterialRef = { kind: 'color', color: '#6b6660', roughness: 0.75 }
+/** an overhang's fascia board and soffit, a roof window's flashing: painted white over the plaster (they cast the eaves' shadow) */
+const TRIM: MaterialRef = { kind: 'pbr', textureId: 'plaster_white', tint: '#ece8e0' }
+/** a flat roof's parapet cap (Roof.coping): metal, stone, or the walls' own plaster a little wider */
+const COPING: Record<NonNullable<Roof['coping']>, MaterialRef> = {
+  plaster: EXTERIOR_PLASTER,
+  metal: { kind: 'pbr', textureId: 'metal_brushed', tint: '#a9aeb2' },
+  stone: { kind: 'pbr', textureId: 'concrete', tint: '#e2dccf' },
+}
 /** the haze the glass mirrors by day (setSun: × the day's share), mostly at a slant (Fresnel) */
 const PANE_HAZE = 2
 /** how much of the room behind the glass shows through: Dhaka's grey-tinted float glass, as the walk's panes (openings.ts) */
@@ -239,54 +251,6 @@ export function plate(unit: Unit, rooms: Room[], top: number, h: number, walls: 
   return out
 }
 
-/**
- * A pitched roof over the top floor (session 31 heights: as the set's sections and elevations print it): over the box of
- * its outer walls' corners `pts` (plan, the scene's frame) along their longest wall's direction `dir`, the ridge down the
- * box's long middle at `ridge` (y), two slopes down to the eaves at `eave` along the long sides; a gable: a gable end at each
- * short end from the roof slab `base` up to the slopes; `hip`: two more slopes there instead, the ridge shorter by the
- * box's width (a pyramid on a square). A knee wall from `base` to the eave all round. Both faces of each (seen from the
- * Dollhouse's cut too). `cover`: the slopes; `walls`: the gables and knee walls.
- * ponytail: one box over the whole floor (an L-shaped house gets one roof over its box), slopes alike, no overhang, no dormers.
- */
-export function pitchedRoof(pts: Pt[], dir: Pt, base: number, eave: number, ridge: number, hip = false): { cover: THREE.BufferGeometry; walls: THREE.BufferGeometry } {
-  let u = { x: dir.x, y: dir.y }
-  let v = { x: -u.y, y: u.x }
-  const span = (d: Pt) => {
-    const t = pts.map((p) => p.x * d.x + p.y * d.y)
-    return [Math.min(...t), Math.max(...t)]
-  }
-  let [a0, a1] = span(u)
-  let [b0, b1] = span(v)
-  if (a1 - a0 < b1 - b0) [u, v, a0, a1, b0, b1] = [v, { x: -u.x, y: -u.y }, b0, b1, -a1, -a0] // (the ridge runs down the long side)
-  const bm = (b0 + b1) / 2
-  const d = hip ? Math.min((b1 - b0) / 2, (a1 - a0) / 2) : 0 // (a hip's ridge stops this far in from each end)
-  const at = (a: number, b: number, y: number): number[] => [a * u.x + b * v.x, y, a * u.y + b * v.y]
-  const faces = (polys: number[][][], wall: boolean): THREE.BufferGeometry => {
-    const pos: number[] = []
-    const uv: number[] = []
-    for (const poly of polys)
-      for (let i = 1; i + 1 < poly.length; i++)
-        for (const tri of [[poly[0], poly[i], poly[i + 1]], [poly[0], poly[i + 1], poly[i]]])
-          for (const q of tri) pos.push(...q), uv.push(wall ? q[0] + q[2] : q[0], wall ? q[1] : q[2])
-    const g = new THREE.BufferGeometry()
-    g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3))
-    g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2))
-    g.computeVertexNormals()
-    return g
-  }
-  const cover = faces(
-    [
-      [at(a0, b0, eave), at(a1, b0, eave), at(a1 - d, bm, ridge), at(a0 + d, bm, ridge)],
-      [at(a1, b1, eave), at(a0, b1, eave), at(a0 + d, bm, ridge), at(a1 - d, bm, ridge)],
-      ...(hip ? [[at(a0, b1, eave), at(a0, b0, eave), at(a0 + d, bm, ridge)], [at(a1, b0, eave), at(a1, b1, eave), at(a1 - d, bm, ridge)]] : []),
-    ],
-    false,
-  )
-  const knee = eave - base > 0.01 ? [...[b0, b1].map((b) => [at(a0, b, base), at(a1, b, base), at(a1, b, eave), at(a0, b, eave)]), ...(hip ? [a0, a1].map((a) => [at(a, b0, base), at(a, b1, base), at(a, b1, eave), at(a, b0, eave)]) : [])] : []
-  const gables = hip ? [] : [a0, a1].map((a) => [at(a, b0, base), at(a, b1, base), at(a, b1, eave), at(a, bm, ridge), at(a, b0, eave)])
-  return { cover, walls: faces([...knee, ...gables], true) }
-}
-
 /** Is plan point p on flat `unit` (in a room, or in a wall's body), its own frame. */
 export function onFlat(p: Pt, unit: Unit, rooms: Room[]): boolean {
   if (core.roomAt(p, rooms, unit)) return true
@@ -418,6 +382,8 @@ export class Building extends THREE.Group {
   private readonly own: THREE.Material[] = [this.panes, ...this.lift.materials, ...this.hoverLift.materials]
   private readonly rooms = new Map<string, Room[]>()
   private readonly t: Tower
+  /** the roof over the top floor as set (data/building/roof.ts), read once: none, the flat roof and its parapet */
+  private readonly roof: Roof | undefined
   private readonly place: ReturnType<typeof frameOf>
   /** the walked flat as the scene draws it (unit, rooms): what of the tower it already covers (sharedWith, lid) */
   private readonly walked: { unit: Unit; rooms: Room[] }
@@ -470,6 +436,7 @@ export class Building extends THREE.Group {
   private constructor(unit: Unit, t: Tower, stem: string, floor: number, tier: Quality) {
     super()
     this.t = t
+    this.roof = roofIn(t)
     this.stem = stem
     this.tier = tier
     this.floor = this.picked = floor
@@ -493,7 +460,7 @@ export class Building extends THREE.Group {
   }
   /** the parapet round the roof: the project's own (its sections print it; under a pitched roof none), else PARAPET_M */
   private get parapetM(): number {
-    return this.t.STOREYS?.ridgeM !== undefined ? 0.01 : (this.t.STOREYS?.parapetM ?? PARAPET_M)
+    return isPitched(this.roof) ? 0.01 : (this.t.STOREYS?.parapetM ?? PARAPET_M)
   }
 
   /**
@@ -505,8 +472,13 @@ export class Building extends THREE.Group {
     const { t, stem, floor } = this
     const { FLATS, FLOORS, CORE, GROUND, ROOF, FLOOR_M } = t
     const PLATE_M = this.plateM
-    /** a pitched roof (STOREYS): the top floor's outer walls' corners it stands over, the scene's plan frame, and their longest wall's direction */
-    const pitched = t.STOREYS?.ridgeM !== undefined && t.STOREYS.eaveM !== undefined ? { pts: [] as Pt[], dir: { x: 1, y: 0 }, len: 0 } : null
+    /** the roof as set (roof.ts; a set's sections may say gable or hip) */
+    const shape = this.roof
+    const pitched = isPitched(shape)
+    /** the box the roof stands over (a pitched roof, a flat one's skylights): the top floor's outer walls' corners, the scene's plan frame, and their longest wall's direction */
+    const over = pitched || shape?.windows?.length ? { pts: [] as Pt[], dir: { x: 1, y: 0 }, len: 0 } : null
+    /** a flat roof's covering over its slab (gravel, a green roof, terrace tiles): none for the plain slab */
+    const deck = shape && !pitched && coveringOf(shape) !== coveringsFor(shape)[0] ? coveringOf(shape).material : null
     // the architect's outside shape (core Shell: the scene draws it round the flat in every mode) stands in for the box
     // massing — the other flats' shells, plates, panes, the roof, plinth and ground pieces are left out so nothing draws
     // twice; the flats keep their invisible pick proxies, traced levels still draw in full. Its windows' glass solid in the
@@ -515,8 +487,8 @@ export class Building extends THREE.Group {
     const hasShell = !!unit.shell
     const ownPanes = !hasShell || unit.shell!.glass === 'opaque'
     /** per floor (one mesh per material per floor: frame shows floors by tier), per material */
-    const lists = new Map<number, Map<MaterialRef | 'glass', THREE.BufferGeometry[]>>()
-    const put = (k: number, m: MaterialRef | 'glass', ...g: THREE.BufferGeometry[]) => {
+    const lists = new Map<number, Map<MaterialRef | THREE.Material | 'glass', THREE.BufferGeometry[]>>()
+    const put = (k: number, m: MaterialRef | THREE.Material | 'glass', ...g: THREE.BufferGeometry[]) => {
       if (!g.length) return // an empty list (no tanks, no bays) must not reach merge
       const l = lists.get(k) ?? lists.set(k, new Map()).get(k)!
       l.set(m, [...(l.get(m) ?? []), ...g])
@@ -536,12 +508,18 @@ export class Building extends THREE.Group {
     const shellWalls = (u0: Unit, skip = none, h = WALL_M) => {
       const u = t.STOREYS ? storeyUnit(u0, h) : u0 // (a project's own storeys: its full walls that tall)
       return [
-        ...u.walls.filter((w) => !skip.walls.has(w.id)).map((w) => wallGeometry(w, u)).filter((x) => !!x),
+        // (a railing, a glass front: its own parts, railsOf; a solid low wall with its cap)
+        ...u.walls.filter((w) => !skip.walls.has(w.id) && !core.railOf(w)).flatMap((w) => [wallGeometry(w, u), capGeometry(w, u)]).filter((x) => !!x),
         ...(u.pillars ?? []).filter((p) => !skip.pillars.has(p.id)).map((p) => box(p.x - p.wM / 2, p.y - p.hM / 2, p.x + p.wM / 2, p.y + p.hM / 2, 0, h)),
       ]
     }
     /** a flat's ordinary shell (walls, columns, plate; nothing left out, no lid), its own frame: built once and placed on each floor it stands on (SHELLS) */
     const ordinary = keptIn(SHELLS, t)
+    /** a flat's railings and glass fronts (rails.ts), its own frame, once: a copy on each floor it stands on */
+    const rails = new Map<string, { id: Id; parts: RailPart[] }[]>()
+    const railsOf = (s: string, u: Unit) => rails.get(s) ?? rails.set(s, u.walls.flatMap((w) => (core.railOf(w) ? [{ id: w.id, parts: railParts(w, u) }] : []))).get(s)!
+    /** a flat's balconies' slab edges (rails.ts balconyEdges), its own frame, as a list for a merge */
+    const edges = (u: Unit, rooms: Room[]) => [balconyEdges(u, rooms)].filter((g) => !!g)
 
     // floors 0..top: a shell per flat (and his traced ground floor); the roof (top + 1): the top floor's plates and parapet
     // (its flats, or the massing standing in for them: a tower of levels and typical shells has no flats)
@@ -563,21 +541,39 @@ export class Building extends THREE.Group {
           const others = standIns.filter((o) => o !== s)
           const outside = (p: Pt) => !core.roomAt(p, rooms, u) && !others.some((o) => this.inFlat(o, { x: p.x + this.shift(s).x - this.shift(o).x, y: p.y + this.shift(s).y - this.shift(o).y }))
           const outer = u.walls.filter((w) => outerSide(w, u, (p) => !outside(p)) !== 0)
-          if (pitched) {
-            // under a pitched roof: no parapet; its corners for the roof over the whole floor (after this loop)
+          if (over) {
+            // the roof's box: its corners, to the walls' outer faces (a pitched roof over the whole floor — its eaves on the faces,
+            // the slab's edge under them — a flat one's skylights: after this loop)
             for (const w of outer) {
               const f = core.wallFrame(w, u.vertices)
-              for (const id of [w.a, w.b]) {
-                const q = u.vertices.find((x) => x.id === id)!
-                pitched.pts.push({ x: q.x + this.shift(s).x, y: q.y + this.shift(s).y })
-              }
-              if (f.lengthM > pitched.len) Object.assign(pitched, { len: f.lengthM, dir: f.dir })
+              const t = w.thicknessM / 2
+              for (const id of [w.a, w.b])
+                for (const side of [t, -t]) {
+                  const q = u.vertices.find((x) => x.id === id)!
+                  over.pts.push({ x: q.x + f.normal.x * side + this.shift(s).x, y: q.y + f.normal.y * side + this.shift(s).y })
+                }
+              if (f.lengthM > over.len) Object.assign(over, { len: f.lengthM, dir: f.dir })
             }
-            continue
           }
+          if (pitched) continue // under a pitched roof: no parapet
           const walls = outer.map((w) => ({ ...w, heightM: this.parapetM, openings: [] }))
           const graph = { vertices: u.vertices, walls }
           put(k, EXTERIOR_PLASTER, ...walls.map((w) => wallGeometry(w, graph)).filter((g) => !!g).map(at))
+          // its edge as set: a cap a little wider than the parapet, a cornice band round the outside just under the roof line
+          const coping = shape?.coping
+          if (coping)
+            put(k, COPING[coping], ...walls.map((w) => {
+              const t = w.thicknessM / 2 + 0.03
+              return at(alongWall(w, u, -t, core.wallFrame(w, graph.vertices).lengthM + t, this.parapetM, this.parapetM + CAP_M[coping], -t, t))
+            }))
+          if (shape?.cornice)
+            put(k, EXTERIOR_PLASTER, ...walls.map((w) => {
+              const side = outerSide(w, u, (p) => !outside(p))
+              const t = w.thicknessM / 2
+              return at(alongWall(w, u, -t - 0.15, core.wallFrame(w, graph.vertices).lengthM + t + 0.15, -0.35, -0.05, side * t, side * (t + 0.15)))
+            }))
+          // a covering over the slab, its rooms' outline (not a shaft's: open to the sky), 3 cm thick
+          if (deck) put(k, deck, ...plate(u, rooms.filter((r) => r.kind !== 'shaft'), DECK_M, DECK_M, []).map((g) => at(meterUVs(g))))
           continue
         }
         const mine = k === floor && s === stem
@@ -595,13 +591,14 @@ export class Building extends THREE.Group {
         const lid = this.lid(s, k)
         let geo: THREE.BufferGeometry
         if (!mine && !lid && k !== 0 && !hasShell && !skip.walls.size && !skip.rooms.size && !skip.pillars.size) {
-          geo = ordinary.get(key) ?? ordinary.set(key, merge([...shellWalls(u, none, wallH), ...plate(u, rooms, 0, PLATE_M)])).get(key)!
+          geo = ordinary.get(key) ?? ordinary.set(key, merge([...shellWalls(u, none, wallH), ...plate(u, rooms, 0, PLATE_M), ...edges(u, rooms)])).get(key)!
           KEPT.add(geo)
         } else {
           const walls = shellWalls(u, skip, wallH).map(at)
           // the current flat: Look's 0.15 m slab is there already, the plate only closes the gap under it; a ground-floor
-          // shell (a Studio building whose flat has no column drawn) stands on the plinth: its top is the plate (no z-fight)
-          const slab = k === 0 || hasShell ? [] : plate(u, rooms.filter((r) => !skip.rooms.has(r.id)), mine ? -LOOK_SLAB : 0, mine ? PLATE_M - LOOK_SLAB : PLATE_M, plateWalls, lid).map(at)
+          // shell (a Studio building whose flat has no column drawn) stands on the plinth: its top is the plate (no z-fight).
+          // Its balconies' slab edges with the plate (the walked flat's: Look's, with its slab)
+          const slab = k === 0 || hasShell ? [] : [...plate(u, rooms.filter((r) => !skip.rooms.has(r.id)), mine ? -LOOK_SLAB : 0, mine ? PLATE_M - LOOK_SLAB : PLATE_M, plateWalls, lid), ...(mine ? [] : edges(u, rooms))].map(at)
           if (mine) put(k, EXTERIOR_PLASTER, ...slab)
           const shell = mine ? walls : [...walls, ...slab]
           if (!shell.length) continue // all of it the walked flat's
@@ -615,6 +612,8 @@ export class Building extends THREE.Group {
         if (flats.includes(s)) mesh.userData.flat = { stem: s, floor: k } satisfies FlatRef
         mesh.userData.level = k // a cut at a lower floor hides it (highlight)
         this.add(mesh)
+        // its railings and glass fronts in their own materials (the walked flat's: the scene's; under the architect's shape: its own)
+        if (!mine && !hasShell) for (const r of railsOf(s, u)) if (!skip.walls.has(r.id)) for (const p of r.parts) put(k, p.m, at(p.geo.clone()))
         // every window real glass with its flat's rooms behind it (the walked flat: its own glass, drawn by the scene); the
         // architect's shape has its own windows (unless their glass came solid: ownPanes)
         if (mine || !ownPanes) continue
@@ -630,25 +629,38 @@ export class Building extends THREE.Group {
       }
     }
 
-    // a pitched roof over the top floor, as its set's sections and elevations print it; a top floor still a picture to trace
-    // (nothing drawn on it yet): over the highest floor that has walls, so the building stands as tall as its set says
-    for (let k = top; pitched && !pitched.pts.length && k >= 0; k--)
+    // a pitched roof over the top floor (as set, or as its set's sections and elevations print it); a top floor still a picture
+    // to trace (nothing drawn on it yet): over the highest floor that has walls, so the building stands as tall as its set says
+    for (let k = top; over && !over.pts.length && k >= 0; k--)
       for (const s of [...(FLOORS.find((f) => f.floor === k)?.flats ?? []), ...(FLOORS.find((f) => f.floor === k)?.standIns ?? [])]) {
         const { unit: u } = FLATS[s]
         for (const w of u.walls) {
           const f = core.wallFrame(w, u.vertices)
-          if (f.lengthM > pitched.len) Object.assign(pitched, { len: f.lengthM, dir: f.dir })
+          if (f.lengthM > over.len) Object.assign(over, { len: f.lengthM, dir: f.dir })
         }
-        pitched.pts.push(...u.vertices.map((q) => ({ x: q.x + this.shift(s).x, y: q.y + this.shift(s).y })))
+        over.pts.push(...u.vertices.map((q) => ({ x: q.x + this.shift(s).x, y: q.y + this.shift(s).y })))
       }
-    if (pitched?.pts.length) {
-      const r = pitchedRoof(pitched.pts, pitched.dir, R, this.levelOf(0) + t.STOREYS!.eaveM!, this.levelOf(0) + t.STOREYS!.ridgeM!, !!t.STOREYS!.hip)
-      put(top + 1, ROOF_COVER, r.cover)
-      put(top + 1, EXTERIOR_PLASTER, r.walls)
+    // (a traced rooftop with walls is its own flat roof — its parapets, its zones: no skylights over it — but a pitched roof is
+    // drawn over the top floor whatever stands on the slab; a rooftop still a picture to trace is no roof yet)
+    const roofTraced = roofLevel.some((s) => FLATS[s].unit.walls.length > 0)
+    if (shape && over?.pts.length && !hasShell && (pitched || !roofTraced)) {
+      // the eave as the set prints it, else on the roof slab; the ridge as printed (when no pitch is set)
+      const eave = t.STOREYS?.eaveM !== undefined ? G + t.STOREYS.eaveM : R
+      const r = roofGeometry(over.pts, over.dir, shape, pitched ? R : R + (deck ? DECK_M : 0), eave, t.STOREYS?.ridgeM !== undefined ? G + t.STOREYS.ridgeM : undefined)
+      const some = (g: THREE.BufferGeometry) => (g.attributes.position.count ? [g] : (g.dispose(), [])) // (a part this roof has none of)
+      put(top + 1, coveringOf(shape).material, ...some(r.cover))
+      put(top + 1, EXTERIOR_PLASTER, ...some(r.walls))
+      put(top + 1, TRIM, ...some(r.trim))
+      if (r.panes.attributes.position.count) {
+        // the roof windows: the tower's glass (a ray through one names the roof)
+        const own = owners.get(top + 1) ?? owners.set(top + 1, []).get(top + 1)!
+        for (let i = r.panes.attributes.position.count / 3; i > 0; i--) own.push({ k: top + 1, flat: null })
+        put(top + 1, 'glass', r.panes)
+      } else r.panes.dispose()
     }
 
     // the core, ground to roof head: its traced walls at the ground and as the stair head + lift machine room
-    for (const [s, name] of hasShell ? [] : CORE) {
+    for (const [s, name] of hasShell || pitched ? [] : CORE) { // (under a pitched roof no head room: the roof is the top)
       const { unit: u } = FLATS[s]
       const room = this.roomsOf(s).find((r) => r.name === name)
       if (!room) continue
@@ -681,20 +693,20 @@ export class Building extends THREE.Group {
     const plinth = floor === -1 ? Math.min(0.6, plinthTop - this.lidY) : 0.6
     if (!hasShell && plinth > 0.005) put(0, PAVING, new THREE.ExtrudeGeometry(plot, { depth: plinth, bevelEnabled: false }).rotateX(Math.PI / 2).translate(0, plinthTop, 0))
     if (!hasShell) put(0, GREEN, ...GROUND.gardens.map((r) => meterUVs(flat(r, G))))
-    if (!hasShell) put(top + 1, GREEN, ...ROOF.gardens.map((r) => meterUVs(flat(r, R))))
+    if (!hasShell && !pitched) put(top + 1, GREEN, ...ROOF.gardens.map((r) => meterUVs(flat(r, R + (deck ? DECK_M : 0)))))
     if (!hasShell) put(0, ASPHALT, ...GROUND.ramp.map((r) => flat(r, G)))
     for (const [x0, y0, x1, y1] of hasShell ? [] : GROUND.bays) {
       const e = 0.08
       put(0, PAINT, ...[[x0, y0, x1, y0 + e], [x0, y1 - e, x1, y1], [x0, y0, x0 + e, y1], [x1 - e, y0, x1, y1]].map((r) => flat(r as Rect, G)))
     }
     if (!hasShell) put(0, EXTERIOR_PLASTER, ...[...GROUND.blocks, ...GROUND.columns].map((r) => rectBox(plan(r), G, G + this.wallsOf(0))))
-    if (!hasShell) put(top + 1, TANK, ...ROOF.tanks.map((r) => rectBox(plan(r), R + FLOOR_M, R + FLOOR_M + 1.2)))
+    if (!hasShell && !pitched) put(top + 1, TANK, ...ROOF.tanks.map((r) => rectBox(plan(r), R + FLOOR_M, R + FLOOR_M + 1.2))) // (water tanks on a flat roof only)
 
     for (const [k, byMaterial] of lists)
       for (const [m, geos] of byMaterial) {
         const pane = m === 'glass'
-        const mesh = new THREE.Mesh(merge(geos), pane ? this.panes : materialFor(m, false, false, true))
-        mesh.castShadow = !pane && m !== GREEN && m !== PAINT && m !== ASPHALT
+        const mesh = new THREE.Mesh(merge(geos), pane ? this.panes : m instanceof THREE.Material ? m : materialFor(m, false, false, true))
+        mesh.castShadow = !pane && m !== GREEN && m !== PAINT && m !== ASPHALT && !(m instanceof THREE.Material && m.transparent)
         mesh.receiveShadow = true // a pane too: its frame in the facade's shade
         if (pane) this.paneOwners.set(mesh, owners.get(k) ?? []) // picked: a ray through a window names the flat behind it
         mesh.userData.level = k // its floor: a cut under it hides it (highlight; the plinth: his traced ground floor stands on it), the walk shows floors by tier (frame)
@@ -963,7 +975,7 @@ export class Building extends THREE.Group {
     for (const [m, geo] of parts) {
       const mesh = new THREE.Mesh(geo, m === 'panes' ? this.panes : m instanceof THREE.Material ? m : materialFor(m, false, false, true))
       const flatOnly = m === BAY_PAINT || m === WATER || m === 'panes'
-      mesh.castShadow = !flatOnly
+      mesh.castShadow = !flatOnly && !(m instanceof THREE.Material && m.transparent) // (a glass front, a wire mesh: no solid shadow)
       mesh.receiveShadow = true
       if (flatOnly) mesh.raycast = () => {}
       group.add(mesh)
@@ -1004,12 +1016,19 @@ export class Building extends THREE.Group {
       const l = wallLift(w, u, rooms)
       const foot = Math.max(...l.foot)
       const capped = foot + w.heightM > cap ? { ...w, heightM: Math.max(0.01, cap - foot) } : w
+      if (core.railOf(capped)) {
+        // a railing, a glass front, a fence (rails.ts), on its floor as the wall would stand
+        for (const p of railParts(capped, u)) liftWall(p.geo, capped, u, l), put(p.m, p.geo)
+        continue
+      }
       const built = liftedWall(capped, u, l)
       const geo = wallGeometry(built, u)
       if (!geo) continue
       liftWall(geo, capped, u, l)
       const planter = w.heightM <= 0.6 && rooms.some((r) => r.kind === 'planter' && r.wallIds.includes(w.id))
       put(w.heightM <= KERB_M || planter ? CONCRETE : EXTERIOR_PLASTER, geo)
+      const top = capGeometry(capped, u) // a solid low wall's cap, as its wall
+      if (top) liftWall(top, capped, u, l), put(planter ? CONCRETE : EXTERIOR_PLASTER, top)
       const L = core.wallFrame(w, u.vertices).lengthM || 1
       built.openings.forEach((o) => {
         if (o.kind !== 'window' && o.kind !== 'slider') return
@@ -1324,6 +1343,11 @@ export class Building extends THREE.Group {
       this.washes.set(k, (g = geos.length ? merge(geos) : new THREE.BufferGeometry()))
     }
     this.hoverLift.shape(g)
+  }
+
+  /** the floor picked (highlight): PlotlineScene.retower picks it again on the new tower */
+  get pickedFloor(): number {
+    return this.picked
   }
 
   /** Picking floor k hides what stands above it: a basement, or the ground floor he traced (the built-in towers: never). */

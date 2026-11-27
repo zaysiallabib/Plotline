@@ -57,7 +57,21 @@ export interface Wall {
    * a free end of it is never an issue. Once both its ends join other walls it is an ordinary wall anyway.
    */
   standsAlone?: true
+  /**
+   * What a low wall (over a kerb, under 2.4 m: core.railOf) is made of; absent = solid plaster with a cap. A passage in
+   * it is a gate (a gap). Drawn by code from the wall's own line and height (three/rails.ts).
+   */
+  lowKind?: LowWallKind
+  /** a solid low wall's stepped cornice under its cap (off by default) */
+  cornice?: true
 }
+
+/**
+ * A low wall that is not plaster: a glass balustrade (panes, a steel top rail, a base channel), a metal railing (posts,
+ * rails, bars), a steel grille (the Dhaka MS grille: bars with a band of crossed flats), a timber balustrade, a timber
+ * board fence, a chain-link fence.
+ */
+export type LowWallKind = 'glass' | 'railing' | 'grille' | 'timber' | 'fence' | 'chainlink'
 
 export type RoomKind =
   | 'bed'

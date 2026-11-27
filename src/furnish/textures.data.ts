@@ -128,4 +128,13 @@ export const TEXTURES: Record<string, TextureSet> = {
     roughness: '/assets/textures/marble_floor_white/roughness.jpg',
     tint: '#d7d7d7',
   },
+  // session 31 roof lane: a roof's coverings (finishes.ts ROOF_COVERINGS), Poly Haven 1k maps re-encoded small (albedo + normal
+  // 1024, roughness 512, no AO; MANIFEST.md); u along the eaves, v up the slope (three/roof.ts)
+  roof_clay: { ...PH('roof_clay', 'Clay roof tiles', 'clay_roof_tiles_02', 2.5, 'Amal Kumar'), ao: undefined },
+  roof_slate: { ...PH('roof_slate', 'Slate roof tiles', 'grey_roof_01', 8, 'Rob Tuytel'), ao: undefined },
+  roof_shingles: { ...PH('roof_shingles', 'Timber roof shingles', 'roof_slates_02', 3, 'Rob Tuytel'), ao: undefined },
+  // the box-profile sheet comes red: its colour picture turned zinc grey (its luminance lifted), the option's tint over it
+  roof_seam: { ...PH('roof_seam', 'Zinc standing-seam sheet', 'box_profile_metal_sheet', 2, 'Amal Kumar'), ao: undefined },
+  roof_corrugated: { ...PH('roof_corrugated', 'Corrugated metal sheet', 'corrugated_iron_02', 2.7, 'Jenelle van Heerden, Sergej Majboroda'), ao: undefined },
+  roof_gravel: { ...PH('roof_gravel', 'Roof gravel', 'gravel_floor_02', 2, 'Jenelle van Heerden, Dimitrios Savva'), ao: undefined },
 }
