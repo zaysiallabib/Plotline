@@ -165,12 +165,16 @@ export const PREVIEW_KEY = 'plotline.preview'
 export const planOf = (u: Unit): string => JSON.stringify([u.vertices, u.walls])
 /** a stored draft is a Draft `{ unit, … }` or a bare Unit (StudioApp init accepts both) */
 const unitIn = (x: unknown): Unit | null => (isUnit(x) ? x : isUnit((x as { unit?: unknown } | null)?.unit) ? (x as { unit: Unit }).unit : null)
+/** the stored draft holds unit `id`: its own, or the project drawing it is open as (a drawing traced again — Auto-trace — keeps
+ *  its project id in `drawing` while the Studio's unit takes a new one; StudioApp synced writes it back under that id) */
+const holds = (d: unknown, u: Unit | null, id: string): boolean => !!u && (u.id === id || (d as { drawing?: unknown } | null)?.drawing === id)
 
 /** Can this page's opening edits go into the Studio draft? 'ok': it holds this unit, its plan as shown here; 'other': another unit, or none; 'changed': this unit, its plan edited in the Studio since. */
 export function draftState(unit: Unit, store?: Store): 'ok' | 'other' | 'changed' {
   try {
-    const u = unitIn(JSON.parse((store ?? localStorage).getItem(DRAFT_KEY) ?? 'null'))
-    if (!u || u.id !== unit.id) return 'other'
+    const d: unknown = JSON.parse((store ?? localStorage).getItem(DRAFT_KEY) ?? 'null')
+    const u = unitIn(d)
+    if (!u || !holds(d, u, unit.id)) return 'other'
     return planOf(normalizeUnit(u)) === planOf(unit) ? 'ok' : 'changed'
   } catch {
     return 'other'
@@ -191,10 +195,10 @@ export function saveOpenings(before: Unit, after: Unit, store?: Store): 'ok' | '
     for (const key of [DRAFT_KEY, PREVIEW_KEY]) {
       const d: unknown = JSON.parse(s.getItem(key) ?? 'null')
       const u = unitIn(d)
-      if (!u || u.id !== after.id) continue
+      if (!u || !holds(d, u, after.id)) continue
       const v = { ...u, vertices: after.vertices, walls: after.walls }
       s.setItem(key, JSON.stringify(isUnit(d) ? v : { ...(d as object), unit: v }))
-      const ps = key === DRAFT_KEY && syncUnit(parseProjects(s.getItem(PROJECTS_KEY)), v)
+      const ps = key === DRAFT_KEY && syncUnit(parseProjects(s.getItem(PROJECTS_KEY)), { ...v, id: after.id })
       if (ps) s.setItem(PROJECTS_KEY, JSON.stringify(ps))
     }
     return 'ok'

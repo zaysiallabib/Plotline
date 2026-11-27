@@ -1046,7 +1046,16 @@ function Viewer({ first }: { first: Shown }) {
     }
     const url = shareUrl(location, unit.floor, fullCfg) // the flat picked in the Building view stays on its floor; never `staff`
     history.replaceState(null, '', url)
-    void navigator.clipboard?.writeText(url).then(() => showToast('Link copied — it opens with exactly these finishes.'))
+    // a drawing made in the Studio (a project's floor, the preview) lives in this browser only: its link opens nowhere else (qa4)
+    const here = decodeURIComponent(location.pathname.match(/^\/u\/([^/]+)/)?.[1] ?? '')
+    const onlyHere = !SHARED && here !== '' && !UNITS.some((x) => x.stem === here)
+    void navigator.clipboard
+      ?.writeText(url)
+      .then(() =>
+        onlyHere
+          ? showToast('Link copied — but this drawing is kept in this browser only: anyone else opening it sees "This flat isn\'t here". A buyer link needs the online database (Studio → ⋯ → Sign in).', 8000)
+          : showToast('Link copied — it opens with exactly these finishes.'),
+      )
   }
 
   const toggleVR = () => void xr?.toggle().catch(() => showToast(VR_FAILED))

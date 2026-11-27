@@ -651,6 +651,24 @@ describe('one floor or all (founder 2026-11-20): a floor whose drawing is on oth
     expect(saveOpenings(a, after, s)).toBe('ok')
     expect(parseProjects(s.getItem(PROJECTS_KEY))[0].units.a.walls[0].openings).toEqual([])
   })
+
+  it('the Studio draft open as a project drawing under another id (traced again: Auto-trace) is still this drawing: no "built-in unit" question (qa4)', () => {
+    const s = memStore()
+    tower(s)
+    const a = box('a')
+    // the Studio's unit took a new id; the draft names the project drawing it is open as
+    s.setItem(DRAFT_KEY, JSON.stringify({ unit: { ...a, id: 'traced-again' }, drawing: 'a' }))
+    expect(draftState(a, s)).toBe('ok')
+    const after = { ...a, walls: a.walls.map((w) => ({ ...w, openings: [] })) }
+    expect(saveOpenings(a, after, s)).toBe('ok')
+    const d = JSON.parse(s.getItem(DRAFT_KEY)!)
+    expect([d.unit.id, d.drawing, d.unit.walls[0].openings]).toEqual(['traced-again', 'a', []]) // the draft keeps its own id
+    expect(parseProjects(s.getItem(PROJECTS_KEY))[0].units.a.walls[0].openings).toEqual([])
+    expect(parseProjects(s.getItem(PROJECTS_KEY))[0].units['traced-again']).toBeUndefined()
+    // another drawing open in the Studio: still another unit
+    s.setItem(DRAFT_KEY, JSON.stringify({ unit: { ...a, id: 'traced-again' }, drawing: 'b' }))
+    expect(draftState(a, s)).toBe('other')
+  })
 })
 describe('a wall piece goes up and down its wall too (founder 2026-11-20: "i can move on the sides but not up and down")', () => {
   const top = { p: { x: 2.5, y: 0.1 }, n: { x: 0, y: 1 } } // the TV's own wall, its face toward the room

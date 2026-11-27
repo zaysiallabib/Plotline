@@ -7,7 +7,7 @@ import { floorIn, towerOf, type Tower } from '../data/building'
 import { frameOf, onFlat, plate, sharedWith } from './building'
 import * as bti from '../data/building/demo-tower'
 import { CORE, FLATS, FLOORS } from '../data/building/demo-tower'
-import { alignColumns, flatBounds, levelOf, makeProject, parseProjects, placeFlat, placeLevel, placeOfLevel, placementOf, projectTower, removeFlat, removeLevel, sheetOffset, syncUnit } from '../data/building/projects'
+import { alignColumns, flatBounds, levelOf, makeProject, newProject, setSlot, parseProjects, placeFlat, placeLevel, placeOfLevel, placementOf, projectTower, removeFlat, removeLevel, sheetOffset, syncUnit } from '../data/building/projects'
 import { baseLevel, coverOf, levelName, roleIn, stairTo, topFloor } from '../data/building'
 import * as banani from '../data/building/banani-tower'
 import * as dmd from '../data/building/dmd-tower'
@@ -605,6 +605,23 @@ describe('the Building view: rooms behind every window, the picked flat lit (ses
     expect(await roofOf(t)).toBeGreaterThan((await roofOf({ ...t, CORE: [] })) + 100)
     // his own rooftop traced: it draws its own head room, none added
     expect(projectTower(placeLevel(p, { ...u, id: 'roof' }, 'rooftop', undefined, { x: 0, y: 0 }, 'drawing')).CORE).toEqual([])
+  })
+
+  test('a one-storey building inside its architect’s shape (Try a sample → the 7-room flat): the Building view frames the flat, never a black screen (qa4)', async () => {
+    // as the IFC reader makes it: the flat on the ground floor, an empty top storey as the rooftop, the file's outside shape on
+    // the project. The shape stands in for everything of the tower round the walked flat and no other storey has walls: the
+    // tower drew nothing, and its view put the eye on its own target (an empty box) — a black screen
+    const u = { ...bti.FLATS['type-a'].unit, id: 'solo' }
+    const roof = { ...u, id: 'top', walls: [], vertices: [], roomLabels: [], pillars: [] }
+    let p = setSlot(setSlot(newProject('p', 'Flat', { basements: 0, floors: 0, rooftop: true }), 0, u), 'R', roof)
+    p = { ...p, shell: { id: 's', name: 'shape', baseY: 0, street: true } }
+    const t = projectTower(p)
+    const { Building } = await import('./building')
+    const b = new (Building as unknown as new (u: Unit, t: Tower, s: string, k: number, q: string) => { make(): Generator<void>; view(k: number): { eye: { distanceTo(o: unknown): number }; target: unknown } })(t.FLATS.solo.unit, t, 'solo', 0, 'high')
+    for (const _ of b.make()); // eslint-disable-line @typescript-eslint/no-unused-vars
+    const { eye, target } = b.view(0)
+    const r = core.unitBounds(u)
+    expect(eye.distanceTo(target)).toBeGreaterThan(Math.hypot(r.maxX - r.minX, r.maxY - r.minY))
   })
 
   test('an architect’s shape whose windows came with solid glass: they leave the shape, the tower’s own panes take their place (polish2)', async () => {

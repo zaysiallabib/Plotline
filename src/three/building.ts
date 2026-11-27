@@ -785,6 +785,13 @@ export class Building extends THREE.Group {
       this.add(g)
     }
     this.box.setFromObject(this)
+    // nothing of the tower drawn — an architect's outside shape stands in for it and no other storey has walls (an IFC flat of one
+    // storey): the walked flat is what the view frames, else the eye sat on its own target (a black screen, qa4)
+    if (this.box.isEmpty()) {
+      const r = core.unitBounds(unit)
+      const y = this.levelOf(floor)
+      this.box.set(new THREE.Vector3(r.minX, y, r.minY), new THREE.Vector3(r.maxX, y + this.wallsOf(floor), r.maxY))
+    }
 
     // his traced basements (after the box: the view frames the tower above ground), in full, each its own group so picking
     // one in the floor picker can hide everything that stands above it (cut); under the street: a basement reaching past
