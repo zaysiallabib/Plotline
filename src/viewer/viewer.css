@@ -636,6 +636,13 @@ html:has(.viewer), body:has(.viewer) { overscroll-behavior: none; }
 .ftin { display: flex; flex-direction: column; gap: var(--s-1); font-size: var(--fs-xs); color: var(--muted); }
 .ftin input { width: 84px; font-size: var(--fs-sm); }
 .ftin input.bad { border-color: var(--danger); }
+/* a low wall's "Made of" (and a solid one's Cornice): the select as wide as the row holds, the box beside it */
+.made-of { align-items: flex-end; }
+.made-of .ftin { flex: 1; min-width: 0; }
+.ftin select { height: var(--control); padding: 0 var(--s-2); background: var(--surface); color: var(--ink); border: 1px solid var(--line); border-radius: var(--r-sm); font-size: var(--fs-sm); outline: none; }
+.ftin select:focus { border-color: var(--accent); }
+.ftin-check { display: flex; align-items: center; gap: var(--s-2); height: var(--control); font-size: var(--fs-sm); color: var(--ink-2); cursor: pointer; }
+.ftin-check input { accent-color: var(--accent); width: 16px; height: 16px; margin: 0; }
 /* the piece in hand: beside the pointer, or under the dot while the mouse is locked; the dot = what G and a click aim at */
 .hand-tag { position: absolute; z-index: 6; left: 0; top: 0; max-width: 340px; padding: var(--s-2) var(--s-3); font-size: var(--fs-sm); line-height: var(--lh); pointer-events: none; }
 .hand-tag.at-dot { left: 50%; top: calc(50% + var(--s-5)); transform: translateX(-50%); }

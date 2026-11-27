@@ -1,12 +1,12 @@
 import { useEffect, useMemo, useState } from 'react'
-import { FT, flatTypeOf, formatFeetInches, parseLength, sqmToSqft, wallFrame } from '../core'
-import type { Flat, FurniturePlacement, Opening, OpeningKind, Room, RoomKind, Shell, Slope, Unit } from '../core'
+import { FT, flatTypeOf, formatFeetInches, parseLength, sqmToSqft, takesLowKind, wallFrame } from '../core'
+import type { Flat, FurniturePlacement, Opening, OpeningKind, Room, RoomKind, Shell, Slope, Unit, Wall } from '../core'
 import { deleteShell } from './shells'
 import { LOCAL_AI_KEY, START_CMD, START_LINE, isLocalUrl, localAISettings, testLocalAI, type AiNote, type LocalAI } from './localAI'
 import { placementLabel, placementRange, placementSize } from '../furnish/kit'
 import { resizeAxes, surfaceOf } from './furniture'
 import { LibraryPanel } from './LibraryPanel'
-import { EXTERIOR_M, PARTITION_M, WALL_TYPES, findEntity, formatLevel, openingDefaults, parseLevel, rampDirs, selectionText, shared, wallTypeOf, type StudioIssue, type StudioState, type WallType } from './model'
+import { EXTERIOR_M, LOW_KINDS, PARTITION_M, WALL_TYPES, findEntity, formatLevel, openingDefaults, parseLevel, rampDirs, selectionText, shared, wallTypeOf, type StudioIssue, type StudioState, type WallType } from './model'
 import { AI_KEY, LOOKS_RIGHT, SHOW_ME, TRACKER_KEY, answerId, fewRooms, roomCount, type StudioAction as Action } from './review'
 import { groupRows, REVIEW_KIND, type Bulk, type Fix, type Mark, type MarkFixes, type Severity } from './issues'
 import type { AutoTraceStats } from '../trace/types'
@@ -656,6 +656,7 @@ function Selection({ state, dispatch, rooms, flats }: { state: StudioState; disp
               value={shared(walls.map((w) => w.w.thicknessM))}
               onChange={(t) => dispatch({ type: 'update-wall', id: ids, patch: { thicknessM: t } })}
             />
+            <MadeOf walls={walls.map((w) => w.w)} dispatch={dispatch} />
             <StandsAlone ids={ids} on={walls.every((w) => w.w.standsAlone)} dispatch={dispatch} />
           </>
         )}
@@ -717,6 +718,7 @@ function Selection({ state, dispatch, rooms, flats }: { state: StudioState; disp
         <Row label="Height (0 = zone line)">
           <LenInput valueM={w.heightM} onCommit={(m) => dispatch({ type: 'set-wall-type', ids: [w.id], wall: wallTypeOf(m), heightM: m })} />
         </Row>
+        <MadeOf walls={[w]} dispatch={dispatch} />
         <StandsAlone ids={[w.id]} on={!!w.standsAlone} dispatch={dispatch} />
         <Row label="Length (moves B)">
           <LenInput valueM={len} onCommit={(m) => dispatch({ type: 'set-wall-length', id: w.id, lengthM: m })} />
@@ -1053,6 +1055,37 @@ function AskAI({ id, ai }: { id: string; ai: NonNullable<Props['ai']> }) {
             </button>
           )}
         </span>
+      )}
+    </>
+  )
+}
+
+/**
+ * What the picked low walls are made of (model LOW_KINDS: solid plaster, glass, a railing, a grille, timber, a fence) and a
+ * solid one's cornice; only walls over a kerb and under 2.4 m take it (core.takesLowKind). Nothing for any other wall.
+ */
+function MadeOf({ walls, dispatch }: { walls: Wall[]; dispatch: (a: Action) => void }) {
+  const low = walls.filter(takesLowKind)
+  if (!low.length) return null
+  const kinds = new Set(low.map((w) => w.lowKind ?? 'solid'))
+  const kind = kinds.size === 1 ? [...kinds][0] : ''
+  const solid = low.filter((w) => !w.lowKind)
+  return (
+    <>
+      <Row label="Made of">
+        <select value={kind} aria-label="What the low wall is made of" onChange={(e) => e.target.value && dispatch({ type: 'low-wall', ids: low.map((w) => w.id), kind: e.target.value as (typeof LOW_KINDS)[number][0] })}>
+          {!kind && <option value="">mixed</option>}
+          {LOW_KINDS.map(([k, label]) => (
+            <option key={k} value={k}>
+              {label}
+            </option>
+          ))}
+        </select>
+      </Row>
+      {solid.length > 0 && (
+        <label className="check" title="A stepped band under the wall's cap, as on a classical parapet">
+          <input type="checkbox" checked={solid.every((w) => w.cornice)} onChange={(e) => dispatch({ type: 'low-wall', ids: solid.map((w) => w.id), cornice: e.target.checked })} /> Cornice under the cap
+        </label>
       )}
     </>
   )

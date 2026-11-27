@@ -2,8 +2,8 @@
  * Studio state + pure reducer. No DOM, no React: Vitest-covered.
  * Every coordinate in here is plan METERS. Pixels stay in StudioApp/draw.
  */
-import { FT, TOUCH_M, deriveRooms, formatFeetInches, isOutdoor, nearestWall, newId, parseLength, pillarCorners, roomAt, roomPolygon, validate, vertexById, wallFrame } from '../core'
-import type { Id, Opening, OpeningKind, Pillar, Pt, Room, RoomKind, RoomLabel, Shell, Unit, ValidationIssue, Vertex, Wall } from '../core'
+import { FT, TOUCH_M, deriveRooms, takesLowKind, formatFeetInches, isOutdoor, nearestWall, newId, parseLength, pillarCorners, roomAt, roomPolygon, validate, vertexById, wallFrame } from '../core'
+import type { Id, LowWallKind, Opening, OpeningKind, Pillar, Pt, Room, RoomKind, RoomLabel, Shell, Unit, ValidationIssue, Vertex, Wall } from '../core'
 import { HARD, snapOpeningOffset, snapPoint, type OpeningSnap, type Snap } from './snap'
 import { classifyRoom } from '../trace/text'
 import { furnish } from '../furnish/presets'
@@ -27,6 +27,19 @@ export const WALL_TYPES: Record<WallType, { label: string; heightM: number }> = 
   kerb: { label: 'Kerb', heightM: 0.15 },
   zone: { label: 'Zone line', heightM: 0 }, // a zone's edge (lawn | paving …): drawn as nothing in 3D
 }
+/**
+ * What a low wall is made of (Wall.lowKind; 'solid' = none, plaster with a cap), in plain words: the Studio's and the 3D
+ * view's "Made of" list, for any wall over a kerb and under 2.4 m (core.takesLowKind)
+ */
+export const LOW_KINDS: [LowWallKind | 'solid', string][] = [
+  ['solid', 'Solid (plaster)'],
+  ['glass', 'Glass'],
+  ['railing', 'Metal railing'],
+  ['grille', 'Steel grille'],
+  ['timber', 'Timber railing'],
+  ['fence', 'Timber fence'],
+  ['chainlink', 'Chain-link fence'],
+]
 /** a zone line's plan width (a graph edge, never a wall in 3D) */
 export const ZONE_LINE_M = 0.05
 /** up to this a wall is a kerb (core: ≤ ~0.2) */
@@ -169,6 +182,8 @@ export type Action =
   | { type: 'set-wall-type'; ids: Id[]; wall: WallType; heightM?: number }
   /** "Stands alone (screen / decoration)" / "Keep — it stands alone": its loose ends are meant (Wall.standsAlone); one undo */
   | { type: 'stand-alone'; ids: Id[]; on: boolean }
+  /** "Made of" / "Cornice" on low walls (LOW_KINDS; walls of ids too tall or a kerb are left as they are); one undo */
+  | { type: 'low-wall'; ids: Id[]; kind?: LowWallKind | 'solid'; cornice?: boolean }
   /** the C tool: a column centred at (x, y) (Unit.pillars), selected */
   | { type: 'add-pillar'; x: number; y: number; wM: number; hM: number }
   /** a column moved / resized; `live` = mid-drag (drag-begin holds the undo entry) */
@@ -740,7 +755,7 @@ function healStraight(unit: Unit, ids: Iterable<Id>, bentOnly = false): Unit {
     const v = vertexById(u.vertices, id)
     const off = (v.x - fc.origin.x) * fc.normal.x + (v.y - fc.origin.y) * fc.normal.y
     if (Math.abs(off) > 0.02 || fc.lengthM <= EPS || (bentOnly && Math.abs(off) <= EPS)) continue
-    const same = w1.thicknessM === w2.thicknessM && w1.heightM === w2.heightM && !w1.standsAlone === !w2.standsAlone
+    const same = w1.thicknessM === w2.thicknessM && w1.heightM === w2.heightM && !w1.standsAlone === !w2.standsAlone && w1.lowKind === w2.lowKind && !w1.cornice === !w2.cornice
     if (!same || u.walls.some((w) => w.id !== w1.id && w.id !== w2.id && wallKey(w.a, w.b) === wallKey(c.a, c.b))) {
       // two widths (or a merge that would double a wall): only straightened, each keeps its own
       if (Math.abs(off) <= EPS) continue
@@ -1419,6 +1434,20 @@ export function reducer(s: StudioState, a: Action): StudioState {
         return a.on ? { ...rest, standsAlone: true as const } : rest
       })
       return commit(s, { ...s.unit, walls })
+    }
+    case 'low-wall': {
+      const ids = new Set(a.ids)
+      let changed = false
+      const walls = s.unit.walls.map((w) => {
+        if (!ids.has(w.id) || !takesLowKind(w)) return w
+        const { lowKind, cornice, ...rest } = w
+        const k = a.kind === undefined ? lowKind : a.kind === 'solid' ? undefined : a.kind
+        const c = a.cornice === undefined ? cornice : a.cornice || undefined
+        if (k === lowKind && !c === !cornice) return w
+        changed = true
+        return { ...rest, ...(k ? { lowKind: k } : {}), ...(c ? { cornice: true as const } : {}) }
+      })
+      return changed ? commit(s, { ...s.unit, walls }) : s
     }
     case 'add-pillar': {
       const p: Pillar = { id: newId(), x: a.x, y: a.y, wM: Math.max(MIN_PILLAR_M, a.wM), hM: Math.max(MIN_PILLAR_M, a.hM) }
