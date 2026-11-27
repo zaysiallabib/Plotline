@@ -8,8 +8,8 @@
  * An empty `unit.furniture` IS the preset layout (layoutFor); the first move writes the whole array so it is exported,
  * "Reset all" empties it again; rooms with no stored pieces keep getting their presets. Reuses src/furnish (read-only).
  */
-import { deriveRooms, newId, pointInPolygon, roomAt, roomInnerPolygon, unitBounds, wallFrame } from '../core'
-import type { FurniturePlacement, Id, Pt, Room, Unit } from '../core'
+import { deriveRooms, LOW_WALL_M, newId, pointInPolygon, railOf, roomAt, roomInnerPolygon, unitBounds, wallFrame } from '../core'
+import type { FurniturePlacement, Id, Opening, Pt, Room, Unit, Wall } from '../core'
 import { KIT, kitAsset, objectKind, placementLabel, placementRange, placementSize, resizeLimits, type KitAsset, type ObjectKind } from '../furnish/kit'
 import { GAP, chairSpots, curtainEnds, curtainShift, footprint, furnish, hangCurtains, openingOnFace, quadsOverlap, windowZones } from '../furnish/presets'
 import { ownModels } from '../furnish/own'
@@ -114,11 +114,14 @@ export const LIFT_STEP_M = 0.0254
 /** No lower than the skirting (details.ts SKIRTING_H 9 cm) */
 const SKIRT_M = 0.1
 
-/** Wall piece `p`'s bottom asked at `y0` (m above the floor): on the 1" step, over the skirting, its top under the ceiling (its room's tallest wall). */
-export function liftTo(unit: Unit, room: Room | null, p: FurniturePlacement, y0: number): number {
+/**
+ * Wall piece `p`'s bottom asked at `y0` (m above the floor): on the 1" step, over the skirting (outside the flat, where there
+ * is none: `low` 0, down to the floor), its top under the ceiling (its room's tallest wall).
+ */
+export function liftTo(unit: Unit, room: Room | null, p: FurniturePlacement, y0: number, low = p.outside ? 0 : SKIRT_M): number {
   const ceiling = Math.max(0, ...(room?.wallIds ?? []).map((id) => unit.walls.find((w) => w.id === id)?.heightM ?? 0)) || 3
   const y = Math.round(Math.round(y0 / LIFT_STEP_M) * LIFT_STEP_M * 1e4) / 1e4
-  return Math.min(Math.max(y, SKIRT_M), Math.max(SKIRT_M, ceiling - sizeOf(p).y))
+  return Math.min(Math.max(y, low), Math.max(low, ceiling - sizeOf(p).y))
 }
 
 /** What a piece that stands on top (kit `onTop`: a table lamp) may stand on: tables, desks, bedsides, chests, shelves, units, counters. */
@@ -312,9 +315,16 @@ function doorHoles(unit: Unit, room: Room): { q: Pt[]; to: number }[] {
 /** Why p may not stand where it is (null = it may). `others` = every piece that is not moving with it. */
 export function whyNot(unit: Unit, room: Room | null, others: FurniturePlacement[], p: FurniturePlacement): string | null {
   const q = pieceQuad(p)
-  if (!room || !inside(p, q).every((v) => pointInPolygon(v, roomInnerPolygon(room, unit)))) return 'Outside the room'
+  if (p.onCap) {
+    const why = whyNotOnCap(unit, room, p)
+    if (why) return why
+  } else if (p.outside) {
+    const why = whyNotOutside(unit, room, p, q)
+    if (why) return why
+  } else if (!room || !inside(p, q).every((v) => pointInPolygon(v, roomInnerPolygon(room, unit)))) return 'Outside the room'
   // doors, passages and the entrance path are NOT kept clear (founder 2026-10-13: "let us not worry about blocking passage")
-  if (surfaceOf(p) === 'wall' && !isCurtain(p)) {
+  // a sunshade, canopy, awning, shutter or screen sits over its opening by design (kit overOpening)
+  if (room && surfaceOf(p) === 'wall' && !isCurtain(p) && !p.outside && !p.onCap && !assetOf(p)?.overOpening) {
     const [y0, y1] = band(p)
     if (windowZones(room, unit).some((w) => y1 > w.from && y0 < w.to && quadsOverlap(w.q, q))) return 'Covers the window'
     if (doorHoles(unit, room).some((d) => y0 < d.to && quadsOverlap(d.q, q))) return 'Covers the doorway' // a TV hung in the hole
@@ -364,6 +374,10 @@ export function movePiece(unit: Unit, rooms: Room[], pieces: FurniturePlacement[
   const p = pieces.find((x) => x.id === id)
   if (!p) return null
   if (p.openingId) return slideCurtain(unit, rooms, pieces, p, to)
+  if (surfaceOf(p) === 'wall' && assetOf(p)?.outdoor && !roomAt(to, rooms, unit)) {
+    const f = nearestOuterFace(unit, rooms, to, sizeOf(p).z / 2 + 0.6)
+    if (f) return hangOutside(unit, rooms, pieces, id, f)
+  }
   let rot = norm(rotationDeg)
   const size = sizeOf(p)
   const b = unitBounds(unit)
@@ -388,7 +402,8 @@ export function movePiece(unit: Unit, rooms: Room[], pieces: FurniturePlacement[
     if (r.snapped) snapped = 'wall'
   }
   const roomId = room?.id ?? p.roomId
-  const piece = { ...p, x: c.x, y: c.y, rotationDeg: rot, roomId }
+  const { outside: _out, onCap: _cap, ...inRoom } = p // (one hung outside or on a cap, moved into a room: in it now)
+  const piece: FurniturePlacement = { ...inRoom, x: c.x, y: c.y, rotationDeg: rot, roomId }
   const t = ((rot - p.rotationDeg) * Math.PI) / 180
   const moved = new Map<Id, FurniturePlacement>([[p.id, piece]])
   for (const r of riders(pieces, p)) {
@@ -433,7 +448,11 @@ export interface WallFace {
 
 /** The layout with wall piece `id`'s bottom at `y0` above the floor of the room `at` is in (liftTo: 1" steps, skirting to ceiling). */
 const lifted = (unit: Unit, rooms: Room[], pieces: FurniturePlacement[], id: Id, at: Pt, y0: number) =>
-  pieces.map((x) => (x.id === id ? { ...x, mountY: liftTo(unit, roomAt(at, rooms, unit), x, y0) } : x))
+  pieces.map((x) => {
+    if (x.id !== id) return x
+    const r = roomAt(at, rooms, unit)
+    return { ...x, mountY: liftTo(unit, r ?? rooms.find((o) => o.id === x.roomId) ?? null, x, y0, r ? SKIRT_M : 0) }
+  })
 
 /**
  * Piece `id` hung on face `w`: back to it, front into the room, sliding along it in 3" steps; with a height `w.y`, its
@@ -442,20 +461,24 @@ const lifted = (unit: Unit, rooms: Room[], pieces: FurniturePlacement[], id: Id,
 export function hangOn(unit: Unit, rooms: Room[], pieces: FurniturePlacement[], id: Id, w: WallFace): Move | null {
   const p = pieces.find((x) => x.id === id)
   if (!p) return null
+  const edge = assetOf(p)?.onEdge ? onEdge(unit, rooms, pieces, id, w) : null
+  if (edge) return edge
+  const o = assetOf(p)?.outdoor ? outerFace(unit, rooms, w) : null
+  if (o) return hangOutside(unit, rooms, pieces, id, o)
   const { n } = w
   const d = { x: n.y, y: -n.x } // along the wall
   const u = w.p.x * d.x + w.p.y * d.y
   const s = Math.round(u / GRID_M) * GRID_M - u
   const out = sizeOf(p).z / 2 + FLUSH_M
   const c = { x: w.p.x + d.x * s + n.x * out, y: w.p.y + d.y * s + n.y * out }
-  const all = w.y === undefined ? pieces : lifted(unit, rooms, pieces, id, c, w.y - sizeOf(p).y / 2)
+  const all = w.y === undefined ? pieces : lifted(unit, rooms, pieces, id, c, w.y - sizeOf(p).y / 2).map((x) => (x.id === id ? { ...x, mountY: onOpening(unit, x, w, x.mountY!) } : x))
   return movePiece(unit, rooms, all, id, c, (Math.atan2(-n.x, n.y) * 180) / Math.PI, false)
 }
 
 /** Wall piece `id` (not curtains) up or down its wall: its bottom to `y0` m above the floor (liftTo), where it is, on a move's rules. null: not a wall piece. */
 export function liftPiece(unit: Unit, rooms: Room[], pieces: FurniturePlacement[], id: Id, y0: number): Move | null {
   const p = pieces.find((x) => x.id === id)
-  if (!p || surfaceOf(p) !== 'wall' || isCurtain(p)) return null
+  if (!p || surfaceOf(p) !== 'wall' || isCurtain(p) || p.onCap) return null // (on a cap: the cap is its height)
   return movePiece(unit, rooms, lifted(unit, rooms, pieces, id, p, y0), id, p, p.rotationDeg, false)
 }
 
@@ -491,16 +514,236 @@ export function placePiece(unit: Unit, rooms: Room[], pieces: FurniturePlacement
   const p: FurniturePlacement = { id, assetId, roomId: roomAt(at, rooms, unit)?.id ?? '', x: at.x, y: at.y, rotationDeg: norm(rotationDeg) }
   const all = [...pieces, p]
   if (surfaceOf(p) !== 'wall') return movePiece(unit, rooms, all, id, at, rotationDeg)
-  const face = wall ?? nearestFace(unit, rooms, at)
+  const face = wall ?? nearestFace(unit, rooms, at) ?? (kitAsset(assetId)?.outdoor ? nearestOuterFace(unit, rooms, at, sizeOf(p).z / 2 + 0.6) : null)
   if (isCurtain(p)) {
     // new curtains hang on the opening pointed at (a window, sliding door, door or passage: founder 2026-10-19), sized by it
     const on = (hole && openingOnFace(unit, rooms, hole)) || (face && openingOnFace(unit, rooms, face))
     return (on && rehang(unit, rooms, all, id, on)) || { furniture: all, piece: p, ids: [id], snapped: null, error: 'Point at an opening' }
   }
-  return face ? hangOn(unit, rooms, all, id, face) : { furniture: all, piece: p, ids: [id], snapped: null, error: 'Outside the room' }
+  if (!face) return { furniture: all, piece: p, ids: [id], snapped: null, error: 'Outside the room' }
+  // fitted over an opening: its overhang on both sides, else one side or none where a wall beside the opening stops it
+  let first: Move | null = null
+  for (const ends of [[1, 1], [0, 1], [1, 0], [0, 0]] as const) {
+    const fit = fitOver(unit, p, face, ends)
+    if (!fit) break
+    const m = hangOn(unit, rooms, [...pieces, fit.piece], id, fit.face)
+    if (m && !m.error) return m
+    first ??= m
+  }
+  return first ?? hangOn(unit, rooms, all, id, face)
 }
 
-const TABS = ['Living', 'Dining', 'Bedroom', 'Office', 'Kitchen', 'Bath', 'Lights & AC', 'Greenery', 'Outdoor', 'Lobby & gym', 'Decor'] as const
+// ───────────────────────────── outside the flat: a wall's outer face (session 31 pieces) ─────────────────────────────
+
+const dot = (a: Pt, b: Pt) => a.x * b.x + a.y * b.y
+type Frame = ReturnType<typeof wallFrame>
+
+/** The wall whose face holds `w` (a point on that face, its normal out of it): the wall, its frame, the point's way along it. */
+function faceWall(unit: Unit, w: WallFace): { wall: Wall; f: Frame; u: number } | null {
+  let best: { wall: Wall; f: Frame; u: number } | null = null
+  let bestD = 0.06
+  for (const wall of unit.walls) {
+    if (wall.heightM <= 0) continue // a zone line has no face
+    const f = wallFrame(wall, unit.vertices)
+    const k = dot(f.normal, w.n)
+    if (Math.abs(k) < 0.99) continue
+    const rel = { x: w.p.x - f.origin.x, y: w.p.y - f.origin.y }
+    const u = dot(rel, f.dir)
+    const d = Math.abs(dot(rel, f.normal) * Math.sign(k) - wall.thicknessM / 2)
+    if (d < bestD && u > -0.05 && u < f.lengthM + 0.05) [best, bestD] = [{ wall, f, u }, d]
+  }
+  return best
+}
+
+/** A wall's OUTER face at a point: no room on that side (the flat's outside), `roomId` the room behind the wall. */
+export interface OuterFace extends WallFace {
+  wallId: Id
+  roomId: Id
+}
+
+/** Face `w` when it is an outer one: no room 10 cm out of it, a room behind its wall; else null. */
+export function outerFace(unit: Unit, rooms: Room[], w: WallFace): OuterFace | null {
+  const fw = faceWall(unit, w)
+  if (!fw) return null
+  const t = fw.wall.thicknessM + 0.1
+  const room = roomAt({ x: w.p.x - w.n.x * t, y: w.p.y - w.n.y * t }, rooms, unit)
+  return room && !roomAt({ x: w.p.x + w.n.x * 0.1, y: w.p.y + w.n.y * 0.1 }, rooms, unit) ? { ...w, wallId: fw.wall.id, roomId: room.id } : null
+}
+
+/** The outer face nearest `at` (a plan point in no room: the Studio's click outside the flat), within `reach` m. */
+export function nearestOuterFace(unit: Unit, rooms: Room[], at: Pt, reach = 1): OuterFace | null {
+  if (roomAt(at, rooms, unit)) return null
+  let best: OuterFace | null = null
+  let bestD = reach
+  for (const wall of unit.walls) {
+    if (wall.heightM <= 0) continue
+    const f = wallFrame(wall, unit.vertices)
+    const rel = { x: at.x - f.origin.x, y: at.y - f.origin.y }
+    const s = dot(rel, f.normal) >= 0 ? 1 : -1
+    const n = { x: f.normal.x * s, y: f.normal.y * s }
+    const u = Math.max(0, Math.min(f.lengthM, dot(rel, f.dir)))
+    const p = { x: f.origin.x + f.dir.x * u + (n.x * wall.thicknessM) / 2, y: f.origin.y + f.dir.y * u + (n.y * wall.thicknessM) / 2 }
+    const d = Math.hypot(at.x - p.x, at.y - p.y)
+    if (d > bestD) continue
+    const o = outerFace(unit, rooms, { p, n })
+    if (o) [best, bestD] = [o, d]
+  }
+  return best
+}
+
+/**
+ * Outdoor piece `id` hung on outer face `w` (a sunshade, an AC outdoor unit, a canopy): back to it, front out, sliding along
+ * it in 3" steps; with a height `w.y`, its middle there (liftTo, down to the floor: no skirting outside; a sunshade near an
+ * opening's head onto it), else where it hung. It belongs to the room behind the wall, marked `outside`; whyNot's rules.
+ */
+function hangOutside(unit: Unit, rooms: Room[], pieces: FurniturePlacement[], id: Id, w: OuterFace): Move | null {
+  const p = pieces.find((x) => x.id === id)
+  if (!p) return null
+  const { n } = w
+  const d = { x: n.y, y: -n.x } // along the wall
+  const u = dot(w.p, d)
+  const s = Math.round(u / GRID_M) * GRID_M - u
+  const size = sizeOf(p)
+  const c = { x: w.p.x + d.x * s + n.x * (size.z / 2 + FLUSH_M), y: w.p.y + d.y * s + n.y * (size.z / 2 + FLUSH_M) }
+  const room = rooms.find((r) => r.id === w.roomId) ?? null
+  const out: FurniturePlacement = { ...p, x: c.x, y: c.y, rotationDeg: norm((Math.atan2(-n.x, n.y) * 180) / Math.PI), roomId: w.roomId, outside: true }
+  const piece = w.y === undefined ? out : { ...out, mountY: onOpening(unit, out, w, liftTo(unit, room, out, w.y - size.y / 2)) }
+  const others = pieces.filter((x) => x.id !== id)
+  return { furniture: pieces.map((x) => (x.id === id ? piece : x)), piece, ids: [id], snapped: 'wall', error: whyNot(unit, room, others, piece) }
+}
+
+/** Where on its wall a piece on face `w` reaches: its back edge's ends along the wall (the frame's u), centred on `w.p`. */
+const spanOn = (f: Frame, w: WallFace, width: number): [number, number] => {
+  const u = dot({ x: w.p.x - f.origin.x, y: w.p.y - f.origin.y }, f.dir)
+  return [u - width / 2, u + width / 2]
+}
+
+/** Where a piece made to sit over an opening goes on it (kit overOpening): its bottom on the head, or 5 cm under the sill. */
+const seat = (how: 'head' | 'cover', o: Opening): number => (how === 'head' ? o.sillM + o.heightM : Math.max(0, o.sillM - 0.05))
+/**
+ * A piece made to sit over an opening (kit overOpening), its bottom at `y0` on face `w` (on the 1" step): onto its seat on an
+ * opening it spans (a sunshade on the head, a screen from the sill) when within 20 cm of it, exactly. Any other piece: `y0`.
+ */
+function onOpening(unit: Unit, p: FurniturePlacement, w: WallFace, y0: number): number {
+  const how = assetOf(p)?.overOpening
+  const fw = how ? faceWall(unit, w) : null
+  if (!how || !fw) return y0
+  const [u0, u1] = spanOn(fw.f, w, sizeOf(p).x)
+  const seats = fw.wall.openings.filter((o) => u1 > o.offsetM && u0 < o.offsetM + o.widthM).map((o) => seat(how, o))
+  const near = seats.sort((a, b) => Math.abs(a - y0) - Math.abs(b - y0))[0]
+  return near !== undefined && Math.abs(near - y0) <= 0.2 ? near : y0
+}
+
+/**
+ * A new piece made to sit over an opening (kit overOpening), dropped on face `w` over one: as wide as it plus an overhang on
+ * each side that `ends` keeps (1: a sunshade or awning 15 cm, a shutter or screen 5 cm; 0: none — a wall beside the opening),
+ * a screen as tall; a sunshade on its head, a screen from its sill. Its size within its limits (kit.ts resizeLimits), centred
+ * on the opening when they change it. null: not such a piece, or no opening there.
+ */
+function fitOver(unit: Unit, p: FurniturePlacement, w: WallFace, ends: readonly [number, number]): { piece: FurniturePlacement; face: WallFace } | null {
+  const how = assetOf(p)?.overOpening
+  const fw = how ? faceWall(unit, w) : null
+  const o = fw?.wall.openings.find((x) => fw.u >= x.offsetM - 0.1 && fw.u <= x.offsetM + x.widthM + 0.1)
+  if (!how || !fw || !o) return null
+  const lim = resizeLimits(p.assetId)
+  const kit = sizeOf(p)
+  const fitK = (k: 'x' | 'y', v: number) => (lim && lim.max[k] > lim.min[k] ? Math.min(lim.max[k], Math.max(lim.min[k], Math.round(v / SIZE_STEP_M) / (1 / SIZE_STEP_M))) : kit[k])
+  const e = how === 'head' ? 0.15 : 0.05
+  const want = o.widthM + e * (ends[0] + ends[1])
+  const s = { ...kit, x: fitK('x', want), ...(how === 'cover' ? { y: fitK('y', o.heightM + 0.15) } : {}) }
+  const bottom = seat(how, o)
+  const side = (Math.sign(dot(fw.f.normal, w.n)) * fw.wall.thicknessM) / 2
+  // its size as asked: from the start side's overhang; held at its limits (a shutter no narrower than 1.47 m): against the
+  // side that keeps none (a wall there), else centred
+  const u = Math.abs(s.x - want) < 0.03 ? o.offsetM - e * ends[0] + s.x / 2 : !ends[0] && ends[1] ? o.offsetM + s.x / 2 : ends[0] && !ends[1] ? o.offsetM + o.widthM - s.x / 2 : o.offsetM + o.widthM / 2
+  const at = { x: fw.f.origin.x + fw.f.dir.x * u + fw.f.normal.x * side, y: fw.f.origin.y + fw.f.dir.y * u + fw.f.normal.y * side }
+  const sized = s.x !== kit.x || s.y !== kit.y ? { ...p, sizeM: s } : p
+  return { piece: sized, face: { p: at, n: w.n, y: bottom + s.y / 2 } }
+}
+
+/**
+ * A balcony-edge piece (kit onEdge: the planter box) pointed at face `w` of a LOW wall (under LOW_WALL_M; else null: it hangs
+ * as any wall piece): on a solid one it sits on its cap — its middle on the wall's line, 3" steps along it, its bottom on the
+ * cap's top (three/rails.ts: 5 mm over the wall), facing the side pointed from, `onCap`; at a railing, a glass front or a
+ * grille (Wall.lowKind) it stands on the floor just inside it, on the room's side whichever side was pointed at.
+ */
+function onEdge(unit: Unit, rooms: Room[], pieces: FurniturePlacement[], id: Id, w: WallFace): Move | null {
+  const p = pieces.find((x) => x.id === id)
+  const fw = faceWall(unit, w)
+  if (!p || !fw || fw.wall.heightM >= LOW_WALL_M) return null
+  const t = fw.wall.thicknessM
+  const size = sizeOf(p)
+  const others = pieces.filter((x) => x.id !== id)
+  const step = (c: Pt, n: Pt): Pt => {
+    const d = { x: n.y, y: -n.x }
+    const u = dot(c, d)
+    const s = Math.round(u / GRID_M) * GRID_M - u
+    return { x: c.x + d.x * s, y: c.y + d.y * s }
+  }
+  const rot = (n: Pt) => norm((Math.atan2(-n.x, n.y) * 180) / Math.PI)
+  const { outside: _o, onCap: _c, ...base } = p
+  const done = (piece: FurniturePlacement, room: Room | null): Move => ({ furniture: pieces.map((x) => (x.id === id ? piece : x)), piece, ids: [id], snapped: 'wall', error: whyNot(unit, room, others, piece) })
+  if (railOf(fw.wall)) {
+    // on the floor just inside: the side a room is on (the pointed side, else the other)
+    const here = roomAt({ x: w.p.x + w.n.x * 0.1, y: w.p.y + w.n.y * 0.1 }, rooms, unit)
+    const n = here ? w.n : { x: -w.n.x, y: -w.n.y }
+    const f = here ? w.p : { x: w.p.x - w.n.x * t, y: w.p.y - w.n.y * t }
+    const room = here ?? roomAt({ x: f.x + n.x * 0.1, y: f.y + n.y * 0.1 }, rooms, unit)
+    const c = step({ x: f.x + n.x * (size.z / 2 + FLUSH_M), y: f.y + n.y * (size.z / 2 + FLUSH_M) }, n)
+    return done({ ...base, x: c.x, y: c.y, rotationDeg: rot(n), roomId: room?.id ?? p.roomId, mountY: 0 }, room)
+  }
+  const room = roomAt({ x: w.p.x - w.n.x * (t + 0.1), y: w.p.y - w.n.y * (t + 0.1) }, rooms, unit) ?? roomAt({ x: w.p.x + w.n.x * 0.1, y: w.p.y + w.n.y * 0.1 }, rooms, unit)
+  const c = step({ x: w.p.x - (w.n.x * t) / 2, y: w.p.y - (w.n.y * t) / 2 }, w.n)
+  return done({ ...base, x: c.x, y: c.y, rotationDeg: rot(w.n), roomId: room?.id ?? p.roomId, mountY: Math.round((fw.wall.heightM + 0.005) * 1e4) / 1e4, onCap: true }, room)
+}
+
+/** Why a piece on a low wall's cap may not sit where it is: its room gone, no low wall of its room under its middle, past its end. */
+function whyNotOnCap(unit: Unit, room: Room | null, p: FurniturePlacement): string | null {
+  if (!room) return 'Outside the room'
+  const n = frontOf(p.rotationDeg)
+  const fw = room.wallIds.map((id) => unit.walls.find((x) => x.id === id)!).find((wall) => {
+    if (!wall || wall.heightM >= LOW_WALL_M) return false
+    const f = wallFrame(wall, unit.vertices)
+    const rel = { x: p.x - f.origin.x, y: p.y - f.origin.y }
+    return Math.abs(dot(f.normal, n)) > 0.99 && Math.abs(dot(rel, f.normal)) < 0.03 && dot(rel, f.dir) > 0 && dot(rel, f.dir) < f.lengthM
+  })
+  if (!fw) return 'Not on a low wall'
+  const f = wallFrame(fw, unit.vertices)
+  const u = dot({ x: p.x - f.origin.x, y: p.y - f.origin.y }, f.dir)
+  const half = sizeOf(p).x / 2
+  return u - half < -0.01 || u + half > f.lengthM + 0.01 ? 'Past the end of the wall' : null
+}
+
+/**
+ * Why an outside piece may not hang where it is: its room gone, its back not on an outer face of one of that room's walls,
+ * past that wall's end, into another wall below its top (a balcony's parapet round the corner: a canopy above it may), over
+ * a window or doorway it is not made for. (Off the outer face it can reach a room only through a wall.)
+ */
+function whyNotOutside(unit: Unit, room: Room | null, p: FurniturePlacement, q: Pt[]): string | null {
+  if (!room) return 'Outside the room'
+  const back = { p: { x: (q[0].x + q[1].x) / 2, y: (q[0].y + q[1].y) / 2 }, n: frontOf(p.rotationDeg) }
+  const fw = faceWall(unit, back)
+  if (!fw || !room.wallIds.includes(fw.wall.id)) return 'Not on an outside wall'
+  const [u0, u1] = spanOn(fw.f, back, sizeOf(p).x)
+  if (u0 < -0.01 || u1 > fw.f.lengthM + 0.01) return 'Past the end of the wall'
+  const [y0, y1] = band(p)
+  for (const o of unit.walls) {
+    if (o === fw.wall || o.heightM <= y0) continue
+    const g = wallFrame(o, unit.vertices)
+    const at = (u: number, v: number): Pt => ({ x: g.origin.x + g.dir.x * u + g.normal.x * v, y: g.origin.y + g.dir.y * u + g.normal.y * v })
+    const h = o.thicknessM / 2
+    if (quadsOverlap([at(0, -h), at(g.lengthM, -h), at(g.lengthM, h), at(0, h)], q)) return 'Runs into a wall'
+  }
+  if (assetOf(p)?.overOpening) return null
+  for (const o of fw.wall.openings) {
+    if (o.widthM <= 0.1 || u1 <= o.offsetM + 0.05 || u0 >= o.offsetM + o.widthM - 0.05) continue
+    if (o.kind === 'window' && y1 > o.sillM + 0.05 && y0 < o.sillM + o.heightM) return 'Covers the window'
+    if (o.kind !== 'window' && y0 < o.sillM + o.heightM) return 'Covers the doorway'
+  }
+  return null
+}
+
+const TABS = ['Living', 'Dining', 'Bedroom', 'Office', 'Kitchen', 'Bath', 'Lights & AC', 'Greenery', 'Outdoor', 'Outside', 'Lobby & gym', 'Decor'] as const
 type Tab = (typeof TABS)[number]
 /** By what it is, else by category; the rest (rugs, art, clock, vase) is Decor. Every plant (pots, planter boxes, shrubs, trees) is Greenery. */
 const TAB_OF: Record<string, Tab> = {
@@ -512,14 +755,18 @@ const TAB_OF: Record<string, Tab> = {
   bench: 'Outdoor', lounger: 'Outdoor', 'table-set': 'Outdoor', pergola: 'Outdoor', play: 'Outdoor', car: 'Outdoor',
   'reception-desk': 'Lobby & gym', gym: 'Lobby & gym', mirror: 'Lobby & gym',
   appliance: 'Kitchen', dresser: 'Bedroom', console: 'Living', 'shoe-rack': 'Living', 'prayer-mat': 'Bedroom', crib: 'Bedroom', 'drying-rack': 'Outdoor',
+  // what hangs on the building's outside or stands on its roof (session 31)
+  canopy: 'Outside', sunshade: 'Outside', awning: 'Outside', screen: 'Outside', shutter: 'Outside', 'ac-outdoor': 'Outside', 'fire-escape': 'Outside',
+  solar: 'Outside', chimney: 'Outside', flagpole: 'Outside', sign: 'Outside',
 }
 /** Pieces whose own tab is not their kind's. */
-const TAB_ID: Record<string, Tab> = { bench_upholstered: 'Bedroom', geyser: 'Bath', wall_mirror: 'Bedroom', wash_basin: 'Dining' }
+const TAB_ID: Record<string, Tab> = { bench_upholstered: 'Bedroom', geyser: 'Bath', wall_mirror: 'Bedroom', wash_basin: 'Dining', planter_edge: 'Outside' }
 /** Also listed in another tab: Dhaka dining areas have a hand-wash basin (founder 2026-09-28). */
 const ALSO_IN: Record<string, Tab[]> = {
   basin: ['Dining'], vanity: ['Dining'], [CURTAINS]: ['Living'], wash_basin: ['Bath'], water_filter: ['Dining'], console_table: ['Dining'],
   floor_lamp: ['Living'], table_lamp: ['Bedroom'], pendant_light: ['Dining'], chandelier_01: ['Dining', 'Living'],
   bench_upholstered: ['Living'], prayer_mat: ['Living'], wall_mirror: ['Living'], washing_machine: ['Bath'], exhaust_fan: ['Bath'],
+  planter_edge: ['Greenery'], porch_roof: ['Outdoor'], exterior_aircon_unit: ['Lights & AC'],
 }
 /** Kinds also listed in Office (a study's desk, chair and shelves are a bedroom's too). */
 const OFFICE = new Set(['desk', 'chair', 'shelf'])
@@ -541,7 +788,7 @@ export interface LibraryItem {
 export function library(): { tab: string; items: LibraryItem[] }[] {
   const all = [...Object.keys(KIT), ...Object.keys(PROCEDURAL), ...ownModels().map((m) => m.id)].map((id) => kitAsset(id)!).filter((a) => a && objectKind(a) !== 'stair')
   const label = (a: KitAsset) => (a.category === 'bed' && a.id.startsWith('bed_') ? `${a.label} (${BED_LINEN[a.id.match(/_[bc]$/)?.[0] ?? '']})` : a.label)
-  const tabOf = (a: KitAsset) => TAB_ID[a.id] ?? TAB_OF[objectKind(a)] ?? TAB_OF[a.category] ?? 'Decor'
+  const tabOf = (a: KitAsset) => TAB_ID[a.id] ?? (a.own && a.outdoor ? 'Outside' : undefined) ?? TAB_OF[objectKind(a)] ?? TAB_OF[a.category] ?? 'Decor'
   const inTab = (a: KitAsset, tab: Tab) => tabOf(a) === tab || ALSO_IN[a.id]?.includes(tab) || (tab === 'Office' && OFFICE.has(objectKind(a)))
   return TABS.map((tab) => ({ tab, items: all.filter((a) => inTab(a, tab)).map((a) => ({ id: a.id, label: label(a), size: a.sizeM, kind: objectKind(a), scan: !a.url.startsWith('procedural:'), ...(a.own ? { own: true as const } : {}) })) }))
 }
@@ -586,7 +833,7 @@ export function resizePiece(unit: Unit, rooms: Room[], pieces: FurniturePlacemen
   let c = { x: p.x + du * Math.cos(t) - dv * Math.sin(t), y: p.y + du * Math.sin(t) + dv * Math.cos(t) }
   const room = rooms.find((r) => r.id === p.roomId) ?? null
   let snapped: Move['snapped'] = null
-  if (room) {
+  if (room && !p.outside && !p.onCap) {
     const r = snapToWalls(c, footprint(c, p.rotationDeg, s), p.rotationDeg, s, roomInnerPolygon(room, unit), isFitted(p) ? FLUSH_M : GAP)
     c = r.c
     if (r.snapped) snapped = 'wall'

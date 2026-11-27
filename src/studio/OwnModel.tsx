@@ -22,6 +22,7 @@ const SITS: { id: Sits; label: string }[] = [
   { id: 'wall', label: 'Wall' },
   { id: 'ceiling', label: 'Ceiling' },
   { id: 'table', label: 'On a table' },
+  { id: 'outside', label: 'Outside wall' },
 ]
 /** the four arrows: the side of the model as it first turns toward you (glTF +z), its back, its right and left sides */
 const FRONTS: { id: Front; arrow: string; title: string; at: string }[] = [

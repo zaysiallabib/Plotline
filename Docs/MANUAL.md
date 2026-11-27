@@ -524,6 +524,11 @@ block is the roof.
 - **Roof windows** (on a flat roof **Skylights**): **+ Add** puts one on the front slope; the windows on a slope spread out
   evenly; **Front / Back** moves one to the other slope; drag its slider to slide it along; **×** takes it away. A roof
   window is glass in a grey frame lying on the slope; a skylight sits on a 15 cm curb on the roof.
+- **On the roof:** **+ Solar panels** puts a frame of two panels on the roof, **+ Chimney** a chimney stack; like the
+  windows they spread out evenly, **Front / Back** moves one to the other slope, the slider slides it along, **×** takes it
+  away. On a flat roof the panels stand on their tilted frame on the deck; on a sloping roof they lie on the slope, 12 cm
+  over its tiles, and a chimney stands upright out of it. One that does not fit its slope (a narrow house) is left out.
+  (A rooftop you traced as a level of its own is a floor: put panels and chimneys there from **Add → Outside**, §3.)
 - Each change rebuilds the tower round the flat at once; **Done** closes the block. It is kept at once: a building made in
   the Studio keeps it in its project (the Studio's project column shows it under **ROOF**, §6); a built-in building
   (Type A's, Sheltech's) keeps it in this browser.
@@ -542,6 +547,20 @@ block is the roof.
   down it, in 1-inch steps, never below the skirting or through the ceiling. It turns red over a window ("Covers the
   window") or in a doorway ("Covers the doorway"); above a door's head it may hang.
 - **Drag a dot** on a piece to make it bigger or smaller (only pieces that can stretch).
+- **Outside the flat** (the library's **Outside** group): a sunshade (chhajja), a canopy, an awning, louvres, fins, a
+  jaali screen, a roller shutter, an AC outdoor unit, a fire escape, an edge planter or a name sign may also hang on the
+  **outside face** of a wall — the side where no room is. In the **Dollhouse** turn round to the flat's outside (or in the
+  **Building view**, with Edit furniture on, turn the tower), pick the piece in **Add** and point at the outside of one of
+  this flat's walls; on a balcony in **Walk**, point at the balcony's own walls. In the Building view only a new piece is
+  put down this way — to move or delete one, go back to the Dollhouse (a click on the tower opens a floor). It goes
+  flat against that face, facing out, and slides along it in 3-inch steps, up and down in 1-inch steps (outside there is no
+  skirting: it may come down to the floor). It turns red and says why: "Covers the window", "Covers the doorway", "Past the
+  end of the wall", "Runs into a wall" (a parapet round the corner: above it is fine), or that it overlaps another piece.
+  Other pieces (a sofa, a TV, a picture) stay inside: on an outside face they say "Outside the room".
+- **Over a window or door by design:** a sunshade, canopy or awning never "covers" its opening. Dropped on a window or
+  door it fits itself to it: centred on it, 15 cm wider each side, its underside on the opening's top. A louvre, fin or
+  jaali screen or a roller shutter fits in front of it: 5 cm wider each side, from just under the sill, as tall as the
+  opening. Dragged later, a sunshade within 20 cm of an opening's top sits on it exactly. Drag a dot to change the size.
 - **Curtains** are a piece of their own, hung on their opening. Drag them (or **G**) and they slide along their wall in
   3-inch steps; they cannot be pushed into another pair ("Overlaps the curtains"). Drag the dot on one side to make them
   wider or narrower on that side (5 cm steps from the opening's edge, 0.4 to 6 m, never round a corner). They follow
@@ -573,10 +592,22 @@ The same list in the 3D view (**Edit ▾ → Furniture → Add**) and in the Stu
   *jaynamaz*, *geyser*), or a room (*balcony*, *kitchen*, *office*); plurals work. **Enter** takes the first piece. One
   **Esc** empties the box and leaves it (in the 3D view it also closes the library, as its **×** does).
 - **Without a search:** **Recent** (your last six), then the groups with how many pieces each holds — **Living** 28,
-  **Dining** 15, **Bedroom** 32, **Office** 6, **Kitchen** 16, **Bath** 8, **Lights & AC** 9, **Greenery** 17,
-  **Outdoor** 11, **Lobby & gym** 6, **Decor** 28 — 154 pieces in all (some are in two groups: the hand-wash basin under
-  Dining and Bath, as a Dhaka dining space has one; desks and office chairs under Bedroom and Office). Inside a group the
-  pieces stand by kind with a count (Sofas 5, Armchairs 3, …).
+  **Dining** 15, **Bedroom** 32, **Office** 6, **Kitchen** 16, **Bath** 8, **Lights & AC** 10, **Greenery** 18,
+  **Outdoor** 12, **Outside** 16, **Lobby & gym** 6, **Decor** 28 — 170 pieces in all (some are in two groups: the
+  hand-wash basin under Dining and Bath, as a Dhaka dining space has one; desks and office chairs under Bedroom and Office;
+  the edge planter under Greenery and Outside, the AC outdoor unit under Lights & AC and Outside). Inside a group the pieces stand by kind with a count (Sofas 5, Armchairs
+  3, …).
+- **Outside** is what goes on a building rather than in a room: **Canopies and porch roofs** (a glass canopy on steel rods,
+  a concrete slab canopy, a porch roof on posts), **Sunshades** (the chhajja over a window), **Awnings** (fabric),
+  **Screens and fins** (vertical fins, a louvre screen, a perforated jaali screen), a **roller shutter** (a scan) and an
+  **AC outdoor unit** on its wall brackets (a scan), a **planter box on a balcony edge**
+  (with plants: pointed at a balcony's solid low wall it sits on its cap, astride it; at a railing, grille or glass front
+  it stands on the balcony floor just inside it), a **fire escape** (a steel landing with a stair up to the floor above: put one on each floor and they
+  make the whole stair), a **name sign** (a blank brushed-steel plate), **solar panels**, a **chimney** and a **flagpole**.
+  The last three and the porch roof stand on a floor: a rooftop's deck, a ground floor's paving or lawn. All but the two
+  scans are built by Plotline and get more fins, slats, modules or balusters as they grow, never stretched ones; the
+  shutter stretches wider or taller on its own, the AC unit keeps its shape. Words that find them:
+  *chhajja*, *louver*, *jaali*, *aircon*, *PV*, *facade*, *outside*.
 - **Each row:** the name, its footprint in feet (width × depth), and a mark — **built** (drawn by Plotline; resizing
   builds it again at the new size: more shelves, drawers, doors or seats, never stretched), **scan** (a photo-real
   scanned model from Poly Haven, loaded when placed; resizing stretches it a little) or **yours** (your staff's own, with
@@ -606,8 +637,9 @@ exactly like the built-in ones.
    A .gltf dropped alone says to drop its files together.
 3. The model turns slowly on the left, with its size in feet and inches (and metres) and its triangle count. On the
    right: **Name**; **Kind** (decides its group); **Which side is the front** (click the arrow of the front side until it
-   faces you); **Where it sits** — **Floor**, **Wall** (eye height, like a picture), **Ceiling** (hangs, like a pendant)
-   or **On a table** (like the table lamp); **Real size** — type one side (6'2", 1.9 m or 190 cm) and Enter, the other two
+   faces you); **Where it sits** — **Floor**, **Wall** (eye height, like a picture), **Ceiling** (hangs, like a pendant),
+   **On a table** (like the table lamp) or **Outside wall** (a supplier's AC unit, awning or sign: it hangs on a wall like a
+   picture and may also go on a wall's outside face; listed under **Outside**); **Real size** — type one side (6'2", 1.9 m or 190 cm) and Enter, the other two
    follow so it never squashes; **It gives light** (ticked by itself for the kind "Lamp or light": it lights the room at
    night).
    An **OBJ or STL names no unit**. When its numbers cannot be metres (bigger than 12 m or smaller than 5 cm), Plotline
@@ -680,6 +712,10 @@ The whole tower, floor by floor: point at a floor to see which it is, open a fla
   size from the plan ("Type B · 1747 sft"), then what a click does there. **Click** opens that flat in its Dollhouse,
   walks a ground floor, basement, rooftop or common floor, or — on a floor with nothing to open — picks that floor as the
   list does. The card keeps to the screen at its edges; it goes while you drag the tower round.
+- **Staff, with Edit furniture on:** **Add** a piece from the library's **Outside** group (a sunshade, a canopy, an AC
+  unit…) and point at the outside of the open flat's walls: it hangs there as in the Dollhouse (§3), and a click puts it
+  down. While a piece is in your hand, a click on the tower puts the piece down instead of opening a floor; Esc lets it go,
+  and so does opening **Finishes** (there a click on an outer wall opens its outside card); picking a piece closes Finishes.
 - **No new page:** the flat or level you click comes into the same 3D, as a stair brings a floor (§2): the tower stays on
   screen, the line at the bottom says where you are going ("Floor 8 …"), and the picture changes in one go — about 2–3
   seconds for a flat, longer the first time you open a ground floor with trees and play things (5 s on Lite, about 10 s
@@ -961,6 +997,10 @@ had.
   TV is picked within a few pixels of its line.
 - **A wall piece** (TV, picture, AC, clock, mirror) shows **Height from floor (m)** on the right: type its bottom edge's
   height (1-inch steps; refused over a window or in a doorway). On the plan dragging moves it along the wall.
+- **Outside a wall:** a piece of the library's **Outside** group (a sunshade, a canopy, a sign…) can go on the
+  outer side of a wall: pick it, click just outside the wall on the plan (within about a metre of it). Over a window it
+  fits itself to the window, as in 3D (§3). Drag it along the outside, or round a corner onto the next wall; drag it into a
+  room and it is an ordinary wall piece of that room again.
 - **Curtains** show as a thin strip along their opening: drag it along its wall, drag an end dot to widen one side, type
   **W** on the right for an exact width (both sides move), **Del** removes it.
 - **Add a piece** (on the right while F is on) is the library (§3): search or open a group, click a piece, click the plan
@@ -1466,7 +1506,8 @@ your account card on that list (as ⋯ → your email).
 **ROOF** (under the floors): the roof over the top floor in one line ("Flat, with its parapet · Plain roof slab", "Gable ·
 pitch as drawn · Clay tiles · eaves 0.45 m · 2 roof windows"). **Change** opens its fields under it — **Kind**, **Pitch °**,
 **Ridge**, **Eaves m**, **Covering** (a list), **Coping**, **A cornice band under the roof**, **Roof windows** / **Skylights**
-with **+ Add**, **Front / Back**, a slider and **×** — the same as the 3D view's roof block (§3, "The roof"); **Close** folds
+with **+ Add**, **Front / Back**, a slider and **×**, **On the roof** with **+ Solar panels** and **+ Chimney** (the same
+rows) — the same as the 3D view's roof block (§3, "The roof"); **Close** folds
 them. A typed number goes in on Enter or when you leave the box. Saved in the project at once; **Show building** shows it.
 A project built from a drawing set whose sections print an eave and a ridge starts with that roof ("Gable · pitch as
 drawn"): change its covering or overhang and it stays at the printed heights; type a pitch to make it steeper or flatter.
@@ -1762,6 +1803,12 @@ Things that are confusing or not finished. Each one is a job on the list.
   floor's own, press **Share** in that floor's 3D view (staff, with the online database).
 - In 3D, walls higher than 1.2 m cannot be moved; sliding a low wall whose end meets the middle of another wall slides
   that piece's doors and windows with it.
+- **Outside pieces** (sunshades, canopies, AC units…): "outside" is outside the drawing. A one-flat drawing in a tower of
+  several (the built-in Type A, B, C) does not know its neighbour flat, so the wall it shares with the next flat or the
+  core counts as outside and a piece hung there stands inside the neighbour — use the building's real outer walls. A
+  whole-floor drawing (the Studio's way) knows its neighbours. In the Building view a piece can be added, not moved or
+  deleted (do that in the Dollhouse). On the other floors of the same drawing a flat's outside pieces show only where the
+  Building view draws furniture (by quality), and lit as the inside.
 - A low wall's **Made of** is kept in the drawing, the 3D and the Building view, but not in a DXF given back (it comes back
   solid), and an architect's file (IFC) brings its railings as its own shape, not as a Made of. With Finishes open, a
   click on a railing or glass front offers the balcony's wall paint (the railing's own colour has no choice yet). The
@@ -1815,6 +1862,8 @@ is a job (hand-tested 2026-10-05, updated since).
 | Wall paint of one room / one wall | Yes — Finishes open, click the wall; kept for that flat | No | — |
 | The building's outside (every outer wall, one floor's band, one wall; the window frames) | Yes (staff) — Finishes → Outside walls / Window frames, or click an outer wall: This wall · This floor · Whole building; kept for the whole building | Yes — a wall's **Outside**, a window's **Frame** | — |
 | Tree, shrub, plant, furniture, loungers, pergola | Yes — move, turn, resize, delete, add from the library | Yes (F) | Swap a plant for another in one step |
+| Sunshade, canopy, awning, fins, louvres, jaali, roller shutter, AC outdoor unit, fire escape, edge planter, name sign on a wall's outside | Yes — add from **Outside**, move along the outside, up and down, resize, delete (Dollhouse; on a balcony in Walk; the Building view adds only) | Yes (F: click outside the wall) | Their colour or material |
+| Solar panels, chimney, flagpole, porch roof | Yes — like any piece, on a rooftop deck or a ground-floor zone | Yes (F) | A roof that is no traced level (the tower's own flat roof) takes none |
 | Your own furniture model | Yes — Add → + Add your own…, then like any piece; ⋯ renames, resizes, removes | Yes (F) | — |
 | A finish option of your own | Yes — Finishes → + Add option (staff); ⋯ changes or removes it | No | — |
 | Curtains | Yes — slide, widen one side, delete, add onto any opening | Yes (F) — plus a typed width | Fabric and colour, drawn closed |
