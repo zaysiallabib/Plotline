@@ -1456,7 +1456,14 @@ export function guessScale(box: { w: number; h: number }, sizeAreaSqm: number): 
  * back by where it stands. Zone lines and kerbs wear none.
  */
 export function finishesOn(unit: Pick<Unit, 'vertices' | 'walls'>, drafts: { pts: Pt[]; thicknessM: number; finish?: string }[]): Map<Id, string> {
-  const segs = drafts.flatMap((d) => (d.finish ? d.pts.slice(1).map((b, i) => ({ a: d.pts[i], b, tol: d.thicknessM / 2 + 0.05, f: d.finish! })) : []))
+  const segs = drafts.flatMap((d) =>
+    d.finish
+      ? d.pts.slice(1).map((b, i) => {
+          const a = d.pts[i], tol = d.thicknessM / 2 + 0.05
+          return { a, b, tol, f: d.finish!, x0: Math.min(a.x, b.x) - tol, x1: Math.max(a.x, b.x) + tol, y0: Math.min(a.y, b.y) - tol, y1: Math.max(a.y, b.y) + tol }
+        })
+      : [],
+  )
   const vs = new Map(unit.vertices.map((v) => [v.id, v]))
   const out = new Map<Id, string>()
   for (const w of unit.walls) {
@@ -1465,8 +1472,8 @@ export function finishesOn(unit: Pick<Unit, 'vertices' | 'walls'>, drafts: { pts
     const M = Math.hypot(q.x - p.x, q.y - p.y)
     if (M < 1e-6) continue
     const mid = { x: (p.x + q.x) / 2, y: (p.y + q.y) / 2 }
-    for (const { a, b, tol, f } of segs) {
-      if (mid.x < Math.min(a.x, b.x) - tol || mid.x > Math.max(a.x, b.x) + tol || mid.y < Math.min(a.y, b.y) - tol || mid.y > Math.max(a.y, b.y) + tol) continue
+    for (const { a, b, tol, f, x0, x1, y0, y1 } of segs) {
+      if (mid.x < x0 || mid.x > x1 || mid.y < y0 || mid.y > y1) continue
       const L = Math.hypot(b.x - a.x, b.y - a.y)
       if (L < 1e-6 || Math.abs(((b.x - a.x) * (q.y - p.y) - (b.y - a.y) * (q.x - p.x)) / (L * M)) > 0.05) continue
       const d = { x: (b.x - a.x) / L, y: (b.y - a.y) / L }

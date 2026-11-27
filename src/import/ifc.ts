@@ -423,17 +423,38 @@ function readModel(W: WebIfc, api: Api, model: number, fileName: string, t0: num
     return undefined
   }
   const common = (ps: any) => ps?.type === W.IFCPROPERTYSET && /common/i.test(String(val(ps.Name) ?? ''))
-  const external = new Map<number, boolean>()
+  // (the property sets of the elements that can be outside only, each read when first asked: a big file's other tens of
+  // thousands — doors, spaces, furniture — are never opened)
+  const asked = new Set([W.IFCWALL, W.IFCSLAB, W.IFCCURTAINWALL, W.IFCCOVERING, W.IFCBUILDINGELEMENTPART, W.IFCPLATE, W.IFCBUILDINGELEMENTPROXY, W.IFCROOF].flatMap((t) => [...idsOfSet(t)]))
+  const psetsOf = new Map<number, number[]>()
   for (const r of idsOf(W.IFCRELDEFINESBYPROPERTIES)) {
     const rel = line(r)
-    const ps = rel.RelatingPropertyDefinition?.value !== undefined ? line(rel.RelatingPropertyDefinition.value) : null
-    const v = common(ps) ? externalIn(ps) : undefined
-    if (v !== undefined) for (const o of rel.RelatedObjects ?? []) external.set(o.value, v)
+    const ps = rel.RelatingPropertyDefinition?.value
+    if (ps !== undefined) for (const o of rel.RelatedObjects ?? []) if (asked.has(o.value)) (psetsOf.get(o.value) ?? psetsOf.set(o.value, []).get(o.value)!).push(ps)
+  }
+  const psetSays = new Map<number, boolean | undefined>()
+  const external = new Map<number, boolean | undefined>()
+  /** an element's own IsExternal (its Common property sets) */
+  const ownExternal = (id: number): boolean | undefined => {
+    if (!external.has(id))
+      external.set(
+        id,
+        (psetsOf.get(id) ?? [])
+          .map((ps) => {
+            if (!psetSays.has(ps)) {
+              const p = line(ps)
+              psetSays.set(ps, common(p) ? externalIn(p) : undefined)
+            }
+            return psetSays.get(ps)
+          })
+          .find((x) => x !== undefined),
+      )
+    return external.get(id)
   }
   const typeSays = new Map<number, boolean | undefined>()
   /** the element's IsExternal, else its type's, else what it is part of says; undefined: the file does not say */
   const isExternal = (id: number, depth = 0): boolean | undefined => {
-    const v = external.get(id)
+    const v = ownExternal(id)
     if (v !== undefined) return v
     const t = typeOf.get(id)
     if (t !== undefined) {
@@ -444,7 +465,7 @@ function readModel(W: WebIfc, api: Api, model: number, fileName: string, t0: num
     return up !== undefined && depth < 4 ? isExternal(up, depth + 1) : undefined
   }
   /** the file says which walls are outside (16 of the 21 samples): only those are dressed; else every wall is */
-  const fileSaysOutside = [...external.keys()].some((id) => isA(id, W.IFCWALL)) // (a file that says it of its railings only says nothing of its walls)
+  const fileSaysOutside = [...idsOfSet(W.IFCWALL)].some((id) => ownExternal(id) !== undefined) // (a file that says it of its railings only says nothing of its walls)
   type Mat = { name: string; id: number }
   const matsOf = new Map<number, { mats: Mat[]; layered: boolean }>()
   /** a material select as its materials, a layer set's in the file's order (outside → inside, as CAD programs write it) */
@@ -519,10 +540,15 @@ function readModel(W: WebIfc, api: Api, model: number, fileName: string, t0: num
     const e = read.get(k) ?? read.set(k, { name, finish, count: 0, yours }).get(k)!
     e.count++
   }
+  const typeNamesOf = new Map<number, string[]>()
   const typeNames = (id: number): string[] => {
+    const kept = typeNamesOf.get(id)
+    if (kept) return kept
     const e = line(id)
     const t = typeOf.has(id) ? line(typeOf.get(id)!) : null
-    return [val(t?.Name), val(e?.ObjectType), val(e?.Name)].filter((x): x is string => typeof x === 'string' && !!x.trim())
+    const out = [val(t?.Name), val(e?.ObjectType), val(e?.Name)].filter((x): x is string => typeof x === 'string' && !!x.trim())
+    typeNamesOf.set(id, out)
+    return out
   }
   const finishOf = new Map<number, string | null>()
   /**
@@ -553,9 +579,15 @@ function readModel(W: WebIfc, api: Api, model: number, fileName: string, t0: num
     return f
   }
   const roofIds = idsOfSet(W.IFCROOF)
+  const predefinedKept = new Map<number, string>()
   const predefinedOf = (id: number): string => {
-    const e = line(id)
-    return String(val(e?.PredefinedType) ?? val(e?.ShapeType) ?? '') || String(val(typeOf.has(id) ? line(typeOf.get(id)!).PredefinedType : '') ?? '')
+    let p = predefinedKept.get(id)
+    if (p === undefined) {
+      const e = line(id)
+      p = String(val(e?.PredefinedType) ?? val(e?.ShapeType) ?? '') || String(val(typeOf.has(id) ? line(typeOf.get(id)!).PredefinedType : '') ?? '')
+      predefinedKept.set(id, p)
+    }
+    return p
   }
   const inRoof = (id: number): boolean => roofIds.has(id) || roofIds.has(aggregateParent.get(id) ?? -1) || (isA(id, W.IFCSLAB) && predefinedOf(id) === 'ROOF')
   /** a roof's covering (an option of ROOF_COVERINGS): its materials, its type's or own name; null: as the file colours it */
@@ -691,6 +723,13 @@ function readModel(W: WebIfc, api: Api, model: number, fileName: string, t0: num
   // the 3D is most of the time: one step per element with a body (the openings are not streamed; measured on molio,
   // hitos, duplex: the stream visits 95–99 % of this count — products would count hitos' 9 203 annotations too)
   const products = Math.max(1, idsOf(W.IFCELEMENT).length - idsOf(W.IFCOPENINGELEMENT).length)
+  /** each railing's body and upright faces as the stream builds them — its own meshes and its parts' (Vienna's are posts, rails and panes aggregated under it) */
+  const railIds = idsOfSet(W.IFCRAILING)
+  const rails = new Map<number, { ob: Body; upright: [Pt, Pt, Pt][] }>()
+  const railOf = (id: number): number | undefined => {
+    for (let i = 0, cur: number | undefined = id; cur !== undefined && i < 3; i++, cur = aggregateParent.get(cur)) if (railIds.has(cur)) return cur
+    return undefined
+  }
   /** the shape's dressed area by slot and option (m²): the commonest is the building's own (dressName's main) */
   const dressedArea = new Map<string, number>()
   /** the roofs' upward faces (unit normal, area, plan centre): the roof's kind, pitch and ridge (roofSetting) */
@@ -698,8 +737,10 @@ function readModel(W: WebIfc, api: Api, model: number, fileName: string, t0: num
   /** each IfcRoof's upward area (its own faces and its slabs'): the kind its PredefinedType names weighs by it */
   const roofArea = new Map<number, number>()
   const triArea = (P: Float32Array, a: number, b: number, c: number) => {
-    const [ux, uy, uz, vx, vy, vz] = [P[b] - P[a], P[b + 1] - P[a + 1], P[b + 2] - P[a + 2], P[c] - P[a], P[c + 1] - P[a + 1], P[c + 2] - P[a + 2]]
-    return Math.hypot(uy * vz - uz * vy, uz * vx - ux * vz, ux * vy - uy * vx) / 2
+    // (plain numbers, no Math.hypot nor array destructuring: a million triangles)
+    const ux = P[b] - P[a], uy = P[b + 1] - P[a + 1], uz = P[b + 2] - P[a + 2], vx = P[c] - P[a], vy = P[c + 1] - P[a + 1], vz = P[c + 2] - P[a + 2]
+    const cx = uy * vz - uz * vy, cy = uz * vx - ux * vz, cz = ux * vy - uy * vx
+    return Math.sqrt(cx * cx + cy * cy + cz * cz) / 2
   }
   let streamed = 0
   let said = -1
@@ -749,14 +790,24 @@ function readModel(W: WebIfc, api: Api, model: number, fileName: string, t0: num
     } else if (shell && win) {
       const o = windowFrame(id)
       if (o) look = { slot: 'frame', option: o }
-    } else if (shell && cladding.has(tn) && !(tn === 'IfcPlate' && (predefinedOf(id) === 'CURTAIN_PANEL' || isA(owner, W.IFCCURTAINWALL))) && outerEl(id, tn)) {
+    } else if (shell && cladding.has(tn) && !(tn === 'IfcPlate' && (isA(owner, W.IFCCURTAINWALL) || predefinedOf(id) === 'CURTAIN_PANEL')) && outerEl(id, tn)) {
       const o = wallFinish(id)
       if (o) look = { slot: 'out', option: o }
       // (an outer wall whose names say nothing known is plaster: it counts toward the building's own, undressed)
       else if (unknownOuter(id)) for (const { wm } of wms) for (let t = 0; t < wm.I.length; t += 3) dressedArea.set(`out|${OUTSIDE_SLOT.defaultOptionId}`, (dressedArea.get(`out|${OUTSIDE_SLOT.defaultOptionId}`) ?? 0) + triArea(wm.P, wm.I[t] * 3, wm.I[t + 1] * 3, wm.I[t + 2] * 3))
     }
+    const rail = railOf(id)
     for (const [i, { g, wm }] of wms.entries()) {
       if (wantBody) takeBody(bodyOf(owner), wm.P, wm.N, wm.I, false, isA(owner, W.IFCWALL))
+      if (rail !== undefined) {
+        // a railing's (or one of its parts'): its footprint, height and upright faces in plan (the railings, below)
+        const r = rails.get(rail) ?? rails.set(rail, { ob: { pts: [], minY: Infinity, maxY: -Infinity }, upright: [] }).get(rail)!
+        takeBody(r.ob, wm.P, wm.N, wm.I, false)
+        for (let t = 0; t < wm.I.length; t += 3) {
+          const a = wm.I[t] * 3, b = wm.I[t + 1] * 3, c = wm.I[t + 2] * 3
+          if (Math.abs(wm.N[a + 1]) < 0.3) r.upright.push([planOfWorld(wm.P[a], wm.P[a + 2]), planOfWorld(wm.P[b], wm.P[b + 2]), planOfWorld(wm.P[c], wm.P[c + 2])])
+        }
+      }
       if (wantBody && isA(owner, W.IFCCURTAINWALL)) {
         if (owner !== mesh.expressID) takeBody(partOf(owner, mesh.expressID), wm.P, wm.N, wm.I, false)
         // a glass front with a body of its own (a balcony's glazing wrapped round it, Nordic housing): its upright faces are its parts
@@ -1145,28 +1196,8 @@ function readModel(W: WebIfc, api: Api, model: number, fileName: string, t0: num
   let railsOn = 0
   let railsAlone = 0
   let railsAgainst = 0
-  for (const id of idsOf(W.IFCRAILING)) {
-    // its body: footprint, height range and its upright triangles in plan (railRuns: which sides of its outline it stands on) —
-    // its own, else its parts' (Vienna's railings are posts, rails and panes aggregated under the railing)
-    const ob: Body = { pts: [], minY: Infinity, maxY: -Infinity }
-    const upright: [Pt, Pt, Pt][] = []
-    for (const part of [id, ...(childrenOf.get(id) ?? []).flatMap((c) => [c, ...(childrenOf.get(c) ?? [])])]) {
-      try {
-        const fm = api.GetFlatMesh(model, part)
-        for (let i = 0; i < fm.geometries.size(); i++) {
-          const wm = worldMesh(fm.geometries.get(i))
-          if (!wm) continue
-          takeBody(ob, wm.P, wm.N, wm.I, false)
-          for (let t = 0; t < wm.I.length; t += 3) {
-            const [a, b, c] = [wm.I[t] * 3, wm.I[t + 1] * 3, wm.I[t + 2] * 3]
-            if (Math.abs(wm.N[a + 1]) < 0.3) upright.push([planOfWorld(wm.P[a], wm.P[a + 2]), planOfWorld(wm.P[b], wm.P[b + 2]), planOfWorld(wm.P[c], wm.P[c + 2])])
-          }
-        }
-      } catch {
-        /* a part web-ifc cannot build: the rest */
-      }
-      if (part === id && ob.pts.length) break
-    }
+  for (const [id, { ob, upright }] of rails) {
+    // (its footprint, height range and upright faces in plan, from the stream: railRuns tells which sides of its outline it stands on)
     // (a stair's handrail climbs a storey; a stub of rail is no balcony front)
     if (!ob.pts.length || ob.maxY - ob.minY < 0.5 || ob.maxY - ob.minY > 1.6) continue
     const band = bands.find((b) => ob.minY + 0.05 >= b.bottom - 0.3 && ob.minY + 0.05 < b.top)

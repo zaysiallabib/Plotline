@@ -38,18 +38,19 @@ export const parseDress = (name: string): { slot: 'out' | 'frame' | 'roof'; opti
  */
 export function dressUvs(P: Float32Array, N: Float32Array): Float32Array {
   const uv = new Float32Array((P.length / 3) * 2)
+  // (plain numbers, no Math.hypot nor array destructuring: a million vertices)
   for (let i = 0, j = 0; i < P.length; i += 3, j += 2) {
-    const [x, y, z] = [P[i], P[i + 1], P[i + 2]]
-    const [nx, ny, nz] = [N[i], N[i + 1], N[i + 2]]
-    const h = Math.hypot(nx, nz)
+    const x = P[i], y = P[i + 1], z = P[i + 2]
+    const nx = N[i], ny = N[i + 1], nz = N[i + 2]
+    const h = Math.sqrt(nx * nx + nz * nz)
     if (h < 0.02) {
       uv[j] = x
       uv[j + 1] = z
       continue
     }
-    const [tx, tz] = [-nz / h, nx / h] // along the face, level
+    const tx = -nz / h, tz = nx / h // along the face, level
     // up the face: n × t has a positive rise on every face that is not a ceiling
-    const [bx, by, bz] = [ny * tz, nz * tx - nx * tz, -ny * tx]
+    const bx = ny * tz, by = nz * tx - nx * tz, bz = -ny * tx
     const s = by < 0 ? -1 : 1
     uv[j] = x * tx + z * tz
     uv[j + 1] = s * (x * bx + y * by + z * bz)
