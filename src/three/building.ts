@@ -1454,6 +1454,35 @@ export class Building extends THREE.Group {
     return this.picked
   }
 
+  /**
+   * Finishes' "This wall" (qa4fix): the outer face of wall run `run` of drawing `drawing` on every floor it stands on — each
+   * wall's face a rectangle 2 cm proud of it, as line segments (scene frame, x y z per point, two points a segment) for the
+   * scene to outline until the card closes.
+   */
+  runFaces(drawing: Id, run: Id): number[] {
+    const out: number[] = []
+    const top = topFloor(this.t)
+    for (const [k, y] of this.levels.filter(([k]) => k <= top)) // (the roof's parapet: not a storey of it)
+      for (const s of this.onFloor(k)) {
+        const u = this.t.FLATS[s].unit
+        if (u.id !== drawing) continue
+        const runs = outerRuns(u)
+        const rooms = this.roomsOf(s)
+        const d = this.shift(s)
+        for (const w of u.walls) {
+          if ((runs.get(w.id) ?? w.id) !== run) continue
+          const f = core.wallFrame(w, u.vertices)
+          const n = { x: -f.dir.y, y: f.dir.x } // (outerSide's side)
+          const off = (outerSide(w, u, (p) => !!core.roomAt(p, rooms, u)) || 1) * (w.thicknessM / 2 + 0.02)
+          const [ax, az] = [f.origin.x + n.x * off + d.x, f.origin.y + n.y * off + d.y]
+          const [bx, bz] = [ax + f.dir.x * f.lengthM, az + f.dir.y * f.lengthM]
+          const top = y + Math.min(w.heightM, this.wallsOf(k))
+          out.push(ax, y, az, bx, y, bz, bx, y, bz, bx, top, bz, bx, top, bz, ax, top, az, ax, top, az, ax, y, az)
+        }
+      }
+    return out
+  }
+
   /** Picking floor k hides what stands above it: a basement, or the ground floor he traced (the built-in towers: never). */
   cuts(k: number): boolean {
     return k < 0 || (k === 0 && Object.values(this.t.LEVELS ?? {}).includes(0))

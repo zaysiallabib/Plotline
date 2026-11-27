@@ -693,6 +693,12 @@ function Viewer({ first }: { first: Shown }) {
   const [surface, setSurface] = useState<Surface | null>(null)
   const [room, setRoom] = useState<Room | null>(null)
   const [finishesOpen, setFinishesOpen] = useState(false)
+  // the outer wall the outside card is open on: outlined on the tower, every floor it dresses ("This wall"), until the card closes (qa4fix)
+  const stackOn = mode === 'building' && finishesOpen && surface?.outside?.drawing && surface.outside.run ? `${surface.outside.drawing}|${surface.outside.run}` : null
+  useEffect(() => {
+    const [drawing, run] = stackOn?.split('|') ?? []
+    scene?.showWallStack(stackOn ? { drawing, run } : null)
+  }, [scene, stackOn])
   const [commenting, setCommenting] = useState(false)
   /** the stats card (`?stats=1`, ⋯ → How fast is it here?): never on a buyer's link */
   const [statsOpen, setStatsOpen] = useState(() => !SHARED && params.get('stats') === '1')

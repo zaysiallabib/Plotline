@@ -637,6 +637,8 @@ export class PlotlineScene {
   private opGrab: { id: Id; wallId: Id; end?: 'a' | 'b' | 'top' | 'sill'; off: number; moved: boolean; line?: { o: THREE.Vector3; d: THREE.Vector3 }; rigid?: boolean } | null = null
   /** the selected opening's outline and its two end dots, in its wall's frame (seen through walls) */
   private readonly opBox = new THREE.Group()
+  /** the outer wall Finishes' outside card is open on (Building view): its run outlined on every floor (showWallStack) */
+  private readonly stackBox = new THREE.Group()
   /**
    * Where a slab hangs over this unit (plan polygons in the unit's frame, at its storey height): the footprint of the
    * floor above when the unit is a level of a tower (a basement under the ground floor, a ground floor under the flats).
@@ -742,7 +744,7 @@ export class PlotlineScene {
     this.selFoot.geometry.setIndex([0, 1, 2, 0, 2, 3])
     this.selFoot.frustumCulled = false
     this.selFoot.visible = false
-    this.scene.add(this.selFoot, this.opBox)
+    this.scene.add(this.selFoot, this.opBox, this.stackBox)
 
     window.addEventListener('keydown', this.onKey)
     window.addEventListener('keyup', this.onKey)
@@ -1855,12 +1857,24 @@ export class PlotlineScene {
     this.openingCb = cb
   }
 
-  private clearOpBox(): void {
-    this.opBox.traverse((o) => {
+  private clearOpBox(box = this.opBox): void {
+    box.traverse((o) => {
       ;(o as THREE.Mesh).geometry?.dispose()
       ;((o as THREE.Mesh).material as THREE.Material | undefined)?.dispose?.()
     })
-    this.opBox.clear()
+    box.clear()
+  }
+
+  /**
+   * Finishes' outside card open on an outer wall in the Building view (qa4fix): what "This wall" dresses — that wall run on
+   * every floor its drawing stands on (Building.runFaces) — outlined as a picked thing is (the accent over a white halo),
+   * until the card closes (null).
+   */
+  showWallStack(spot: { drawing: Id; run: Id } | null): void {
+    this.clearOpBox(this.stackBox)
+    const pts = spot && this.building?.runFaces(spot.drawing, spot.run)
+    if (pts?.length) this.stackBox.add(...outline(new THREE.BufferGeometry().setAttribute('position', new THREE.Float32BufferAttribute(pts, 3)), lineMat(SEL), haloMat()))
+    this.wake()
   }
 
   /**

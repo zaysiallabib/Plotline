@@ -261,7 +261,8 @@ chosen once for the whole building, not flat by flat.
   This floor · Whole building**: *this wall* is that straight wall on every floor its floor plan stands on (a balcony's
   front can be timber in a brick tower); *this floor* is every outer wall of that floor (a stone plinth on the ground
   floor); then the options. **Same as the floor** / **Same as the building** takes the choice back; **Window frames ·
-  whole building** sits in the same card; **Done** closes it.
+  whole building** sits in the same card; **Done** closes it. In the Building view the wall you clicked is outlined on the
+  tower in blue (over a thin white line), on every floor *this wall* dresses, until the card closes.
 - A balcony's walls are the outside: they take the outside finish unless a buyer picked a paint for that wall or that
   balcony.
 - **Chosen for one wall, floor or window** lists those choices; **undo** takes one back.

@@ -661,6 +661,26 @@ describe('the Building view: rooms behind every window, the picked flat lit (ses
     expect(topFloor(ht)).toBe(1)
   })
 
+  test('Finishes’ "This wall": the clicked outer wall’s run outlined on every floor its drawing stands on, and only there (qa4fix)', async () => {
+    const a = { ...bti.FLATS['type-a'].unit, id: 'a' }
+    const t = projectTower(makeProject('p', a, 2, 4, 'none'))
+    const { Building } = await import('./building')
+    const { outerRuns } = await import('../furnish/finishes')
+    const b = new (Building as unknown as new (u: Unit, t: Tower, s: string, k: number, q: string) => { make(): Generator<void>; levelOf(k: number): number; runFaces(d: string, r: string): number[] })({ ...a, floor: 2 }, t, 'a', 2, 'high')
+    for (const _ of b.make()); // eslint-disable-line @typescript-eslint/no-unused-vars
+    const longest = [...a.walls].sort((p, q) => core.wallFrame(q, a.vertices).lengthM - core.wallFrame(p, a.vertices).lengthM)[0]
+    const run = outerRuns(a).get(longest.id) ?? longest.id
+    const walls = a.walls.filter((w) => (outerRuns(a).get(w.id) ?? w.id) === run).length
+    const pts = b.runFaces('a', run)
+    // floors 2, 3, 4 and the floors under them standing in with its shell (1, the ground): they wear what it wears; a
+    // rectangle (four segments) a wall a floor, none on the roof's parapet
+    expect(pts.length).toBe(5 * walls * 8 * 3)
+    const ys = [...new Set(pts.filter((_, i) => i % 3 === 1).map((y) => +y.toFixed(2)))].sort((p, q) => p - q)
+    for (const k of [0, 1, 2, 3, 4]) expect(ys).toContain(+b.levelOf(k).toFixed(2))
+    expect(Math.max(...ys)).toBeLessThan(b.levelOf(5))
+    expect(b.runFaces('other drawing', run)).toEqual([])
+  })
+
   test('an architect’s shape whose windows came with solid glass: they leave the shape, the tower’s own panes take their place (polish2)', async () => {
     const THREE = await import('three')
     const { solidWindowsOut } = await import('./shell')
