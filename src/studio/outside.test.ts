@@ -121,3 +121,14 @@ describe("a piece on a wall's outer face (session 31 pieces: sunshades, canopies
     expect(m.piece.outside).toBeUndefined()
   })
 })
+
+describe('on a real flat (BTI Type A)', () => {
+  it("a sunshade over the living room's window beside the shaft wall overhangs on the open side only", async () => {
+    const typeA = (await import('../data/units/type-a.json')).default as unknown as Unit
+    const r = deriveRooms(typeA)
+    const m = placePiece(typeA, r, [], 'sunshade', { x: 12.67, y: 4.85 }, 0, 'ss', { p: { x: 12.67, y: 4.85 }, n: { x: 0, y: -1 }, y: 2.45 })!
+    expect(m.error).toBeNull()
+    expect(m.piece).toMatchObject({ outside: true, roomId: 'r_living', mountY: 2.3, sizeM: { x: 1.35 } }) // 1.2 m window + 15 cm away from the shaft
+    expect(m.piece.x).toBeGreaterThan(12.67) // shifted off the shaft wall (x 11.75..12.0)
+  })
+})

@@ -516,8 +516,16 @@ export function placePiece(unit: Unit, rooms: Room[], pieces: FurniturePlacement
     return (on && rehang(unit, rooms, all, id, on)) || { furniture: all, piece: p, ids: [id], snapped: null, error: 'Point at an opening' }
   }
   if (!face) return { furniture: all, piece: p, ids: [id], snapped: null, error: 'Outside the room' }
-  const fit = fitOver(unit, p, face)
-  return fit ? hangOn(unit, rooms, [...pieces, fit.piece], id, fit.face) : hangOn(unit, rooms, all, id, face)
+  // fitted over an opening: its overhang on both sides, else one side or none where a wall beside the opening stops it
+  let first: Move | null = null
+  for (const ends of [[1, 1], [0, 1], [1, 0], [0, 0]] as const) {
+    const fit = fitOver(unit, p, face, ends)
+    if (!fit) break
+    const m = hangOn(unit, rooms, [...pieces, fit.piece], id, fit.face)
+    if (m && !m.error) return m
+    first ??= m
+  }
+  return first ?? hangOn(unit, rooms, all, id, face)
 }
 
 // ───────────────────────────── outside the flat: a wall's outer face (session 31 pieces) ─────────────────────────────
@@ -622,11 +630,12 @@ function onOpening(unit: Unit, p: FurniturePlacement, w: WallFace, y0: number): 
 }
 
 /**
- * A new piece made to sit over an opening (kit overOpening), dropped on face `w` over one: centred on it, as wide as it (a
- * sunshade or awning 15 cm past each side, a shutter or screen 5 cm), a screen as tall; a sunshade on its head, a screen from
- * its sill. Its size within its limits (kit.ts resizeLimits). null: not such a piece, or no opening there.
+ * A new piece made to sit over an opening (kit overOpening), dropped on face `w` over one: as wide as it plus an overhang on
+ * each side that `ends` keeps (1: a sunshade or awning 15 cm, a shutter or screen 5 cm; 0: none — a wall beside the opening),
+ * a screen as tall; a sunshade on its head, a screen from its sill. Its size within its limits (kit.ts resizeLimits), centred
+ * on the opening when they change it. null: not such a piece, or no opening there.
  */
-function fitOver(unit: Unit, p: FurniturePlacement, w: WallFace): { piece: FurniturePlacement; face: WallFace } | null {
+function fitOver(unit: Unit, p: FurniturePlacement, w: WallFace, ends: readonly [number, number]): { piece: FurniturePlacement; face: WallFace } | null {
   const how = assetOf(p)?.overOpening
   const fw = how ? faceWall(unit, w) : null
   const o = fw?.wall.openings.find((x) => fw.u >= x.offsetM - 0.1 && fw.u <= x.offsetM + x.widthM + 0.1)
@@ -634,10 +643,12 @@ function fitOver(unit: Unit, p: FurniturePlacement, w: WallFace): { piece: Furni
   const lim = resizeLimits(p.assetId)
   const kit = sizeOf(p)
   const fitK = (k: 'x' | 'y', v: number) => (lim && lim.max[k] > lim.min[k] ? Math.min(lim.max[k], Math.max(lim.min[k], Math.round(v / SIZE_STEP_M) / (1 / SIZE_STEP_M))) : kit[k])
-  const s = { ...kit, x: fitK('x', o.widthM + (how === 'head' ? 0.3 : 0.1)), ...(how === 'cover' ? { y: fitK('y', o.heightM + 0.15) } : {}) }
+  const e = how === 'head' ? 0.15 : 0.05
+  const want = o.widthM + e * (ends[0] + ends[1])
+  const s = { ...kit, x: fitK('x', want), ...(how === 'cover' ? { y: fitK('y', o.heightM + 0.15) } : {}) }
   const bottom = seat(how, o)
   const side = (Math.sign(dot(fw.f.normal, w.n)) * fw.wall.thicknessM) / 2
-  const u = o.offsetM + o.widthM / 2
+  const u = Math.abs(s.x - want) < 0.03 ? o.offsetM - e * ends[0] + s.x / 2 : o.offsetM + o.widthM / 2
   const at = { x: fw.f.origin.x + fw.f.dir.x * u + fw.f.normal.x * side, y: fw.f.origin.y + fw.f.dir.y * u + fw.f.normal.y * side }
   const sized = s.x !== kit.x || s.y !== kit.y ? { ...p, sizeM: s } : p
   return { piece: sized, face: { p: at, n: w.n, y: bottom + s.y / 2 } }
