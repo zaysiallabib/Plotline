@@ -1382,6 +1382,26 @@ export class PlotlineScene {
     this.renderer.setAnimationLoop(this.tick)
   }
 
+  /**
+   * The building's roof changed (staff, data/building/roof.ts): the tower round the flat made again in place — the flat, the
+   * camera and the picked floor as they were (a tower is ~0.1–0.3 s to make; its rooms fill in after, as on any open).
+   */
+  retower(): void {
+    const was = this.building
+    if (!was || this.holding || !this.unit) return
+    const b = Building.for(this.unit, this.tier)
+    if (!b) return
+    this.wake()
+    b.onChange = this.wake
+    this.building = b
+    this.scene.add(b)
+    for (const _ of b.make()); // eslint-disable-line @typescript-eslint/no-unused-vars
+    was.dispose()
+    this.aroundFlat()
+    this.setTimeOfDay(this.hour)
+    if (this.mode === 'building') b.highlight(was.pickedFloor)
+  }
+
   /** Building view: highlight floor k (0 = ground, top + 1 = roof) and lift the orbit to it. */
   showFloor(k: number): void {
     this.wake()

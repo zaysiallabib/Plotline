@@ -128,3 +128,21 @@ tile_floor_ceramic AO map as its colour and marble_floor_white's roughness, 800 
 | deck_boards | texture | https://polyhaven.com/a/wooden_planks | Dario Barresi, Charlotte Baglioni | CC0 | 2026-10-04 | textures/deck_boards/{albedo.jpg,normal.jpg,roughness.jpg,ao.jpg} — `deck` zones (wood_floor_deck first: a glossy orange ipe on the roofs) | 1958076 |
 | rubber_gym | texture | https://polyhaven.com/a/rubber_tiles | Amal Kumar | CC0 | 2026-10-04 | textures/rubber_gym/{albedo.jpg,normal.jpg,roughness.jpg,ao.jpg} — gym floor | 1714677 |
 | soil | texture | https://polyhaven.com/a/farm_soil | Amal Kumar | CC0 | 2026-10-04 | textures/soil/{albedo.jpg,normal.jpg,roughness.jpg,ao.jpg} — `planter` zones | 3587235 |
+
+### Added session 31 (the roof: a building's roof coverings)
+
+Poly Haven 1K JPG maps (Diffuse → albedo, nor_gl → normal, Rough → roughness) downloaded through api.polyhaven.com/files and
+re-encoded in a browser canvas to keep them small: albedo 1024 px q80, normal 1024 px q72, roughness 512 px q70, no AO.
+Each asset page read on 2026-11-27: "CC0 1.0 Universal - public domain dedication". Used by the roof's coverings
+(`src/furnish/finishes.ts` ROOF_COVERINGS); the green roof is the `turf` set above, terrace tiles `tile_floor_terracotta`.
+
+| id | type | source | author | license | checked | file(s) | bytes |
+|---|---|---|---|---|---|---|---|
+| roof_clay | texture | https://polyhaven.com/a/clay_roof_tiles_02 | Amal Kumar | CC0 | 2026-11-27 | textures/roof_clay/{albedo.jpg,normal.jpg,roughness.jpg} — clay tiles, 2.5 m a repeat | 415154 |
+| roof_slate | texture | https://polyhaven.com/a/grey_roof_01 | Rob Tuytel | CC0 | 2026-11-27 | textures/roof_slate/{albedo.jpg,normal.jpg,roughness.jpg} — dark grey slate-look roof tiles, 8 m | 398068 |
+| roof_shingles | texture | https://polyhaven.com/a/roof_slates_02 | Rob Tuytel | CC0 | 2026-11-27 | textures/roof_shingles/{albedo.jpg,normal.jpg,roughness.jpg} — weathered grey timber shingles, 3 m | 459445 |
+| roof_seam | texture | https://polyhaven.com/a/box_profile_metal_sheet | Amal Kumar | CC0 | 2026-11-27 | textures/roof_seam/{albedo.jpg,normal.jpg,roughness.jpg} — profiled metal sheet, 2 m; the red albedo turned zinc grey (luminance × 1.6 + 40) | 165763 |
+| roof_corrugated | texture | https://polyhaven.com/a/corrugated_iron_02 | Jenelle van Heerden, Sergej Majboroda | CC0 | 2026-11-27 | textures/roof_corrugated/{albedo.jpg,normal.jpg,roughness.jpg} — corrugated galvanized sheet, 2.7 m | 232706 |
+| roof_gravel | texture | https://polyhaven.com/a/gravel_floor_02 | Jenelle van Heerden, Dimitrios Savva | CC0 | 2026-11-27 | textures/roof_gravel/{albedo.jpg,normal.jpg,roughness.jpg} — grey roof gravel, 2 m | 818155 |
+
+Session 31 roof: **+2489291 bytes (2.4 MB)**, 6 texture sets; each loads only when a roof wears it.
