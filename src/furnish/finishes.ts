@@ -151,7 +151,7 @@ export const FINISH_CATALOG: CatalogSlot[] = [
 export const ROOF_COVERINGS: { flat: FinishOption[]; pitched: FinishOption[] } = {
   flat: [
     { id: 'rc_slab', brand: 'Generic', sku: 'ROOF-SLAB', label: 'Plain roof slab', priceDeltaBdt: 0, material: { kind: 'pbr', textureId: 'plaster_white', tint: '#dbd3c6' } },
-    { id: 'rc_gravel', brand: 'Generic', sku: 'ROOF-GRAVEL-16', label: 'Gravel', priceDeltaBdt: 0, material: { kind: 'pbr', textureId: 'roof_gravel' } },
+    { id: 'rc_gravel', brand: 'Generic', sku: 'ROOF-GRAVEL-16', label: 'Gravel', priceDeltaBdt: 0, material: { kind: 'pbr', textureId: 'roof_gravel', tint: '#b8b4ab' } },
     { id: 'rc_green', brand: 'Generic', sku: 'ROOF-GREEN-SEDUM', label: 'Green roof', priceDeltaBdt: 0, material: { kind: 'pbr', textureId: 'turf', tint: '#c9cf9a' } },
     { id: 'rc_terrace', brand: 'Mir Ceramic', sku: 'MIR-TERRA-300', label: 'Terracotta terrace tiles', priceDeltaBdt: 0, material: { kind: 'pbr', textureId: 'tile_floor_terracotta' } },
   ],

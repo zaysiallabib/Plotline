@@ -129,6 +129,18 @@ describe('the roof setting (data/building/roof.ts): one model with what the set 
     expect(t.CORE).toEqual([])
     expect(projectTower(makeProject('p', u, 2, 4, 'none')).CORE.length).toBeGreaterThan(0) // (flat: the stair runs up to its head room)
   })
+  test('staff change the roof in the 3D view: a built-in building’s kept in this browser, a project’s written into the project', async () => {
+    const m = storage()
+    const { roofIn, saveRoof, towerOf } = await import('../data/building')
+    expect(saveRoof(bti.FLATS['type-a'].unit, { kind: 'shed', pitchDeg: 10 })).toBe(true)
+    expect(roofIn(towerOf(bti.FLATS['type-a'].unit)!)).toEqual({ kind: 'shed', pitchDeg: 10 })
+    const u = { ...bti.FLATS['type-b'].unit, id: 'mine' }
+    m.set('plotline.projects', JSON.stringify([makeProject('p', u, 1, 3, 'none')]))
+    expect(saveRoof(u, { kind: 'hip', covering: 'rc_slate' })).toBe(true)
+    expect(JSON.parse(m.get('plotline.projects')!)[0].roof).toEqual({ kind: 'hip', covering: 'rc_slate' })
+    expect(roofIn(towerOf(u)!)).toEqual({ kind: 'hip', covering: 'rc_slate' })
+    expect(saveRoof({ ...u, id: 'nowhere' }, { kind: 'flat' })).toBe(false) // (no building: nothing kept)
+  })
 })
 
 describe('the pitched roof (three/roof.ts)', () => {
@@ -213,6 +225,27 @@ describe('the demo tower under a roof set by staff (kept in this browser)', () =
     expect(s).toContainEqual([0, 0.03]) // the gravel over the slab
     b.dispose()
     keepRoof('type-a', null)
+  })
+})
+
+describe('a project’s roof: the set’s gable, with the person’s setting over it', () => {
+  test('a rooftop drawing still a picture to trace does not take the set’s roof away; the person’s covering and overhang go on it', async () => {
+    storage()
+    const { placeLevel } = await import('../data/building/projects')
+    const { emptyUnit } = await import('../studio/model')
+    const u = bti.FLATS['type-b'].unit
+    const roofPicture = { ...emptyUnit(), name: 'Rooftop' }
+    const p = placeLevel({ ...makeProject('p', u, 1, 1, 'none'), heights: { floors: { 0: 0, 1: 3.05 }, ceilingM: 5.79, eaveM: 6.1, ridgeM: 8.89 } }, roofPicture, 'rooftop', undefined, { x: 0, y: 0 }, 'typed')
+    const top = async (q: typeof p) => {
+      const t = projectTower(q)
+      const b = await built(t, u.id, 1)
+      const y = Math.max(...spans(b, 2, b.levelOf(0)).map((x) => x[1]))
+      b.dispose()
+      return y
+    }
+    expect(await top(p)).toBeCloseTo(8.89, 2) // the ridge as printed
+    expect(await top({ ...p, roof: { kind: 'gable', covering: 'rc_clay', overhangM: 0.45 } })).toBeCloseTo(8.89, 2) // (the pitch still the set's)
+    expect(await top({ ...p, roof: { kind: 'flat' } })).toBeLessThan(7) // flat after all: no ridge
   })
 })
 

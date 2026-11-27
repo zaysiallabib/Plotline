@@ -661,3 +661,6 @@ ul.notes { margin: 0; padding-left: var(--s-4); display: grid; gap: var(--s-1); 
   .main.with-floors { grid-template-columns: 52px minmax(0, 1fr) 240px 260px; }
   .statusbar .line { display: none; }
 }
+/* the project's roof (FloorList, under the floors): its line as the Site's, its fields under it (index.css .roof-fields) */
+.floors .roof-line { display: flex; flex-direction: column; gap: var(--s-3); }
+.floors .roof-line .site-line > span.muted { display: block; }

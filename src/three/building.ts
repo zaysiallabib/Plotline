@@ -535,13 +535,16 @@ export class Building extends THREE.Group {
           const outside = (p: Pt) => !core.roomAt(p, rooms, u) && !others.some((o) => this.inFlat(o, { x: p.x + this.shift(s).x - this.shift(o).x, y: p.y + this.shift(s).y - this.shift(o).y }))
           const outer = u.walls.filter((w) => outerSide(w, u, (p) => !outside(p)) !== 0)
           if (over) {
-            // the roof's box: its corners (a pitched roof over the whole floor, a flat one's skylights: after this loop)
+            // the roof's box: its corners, to the walls' outer faces (a pitched roof over the whole floor — its eaves on the faces,
+            // the slab's edge under them — a flat one's skylights: after this loop)
             for (const w of outer) {
               const f = core.wallFrame(w, u.vertices)
-              for (const id of [w.a, w.b]) {
-                const q = u.vertices.find((x) => x.id === id)!
-                over.pts.push({ x: q.x + this.shift(s).x, y: q.y + this.shift(s).y })
-              }
+              const t = w.thicknessM / 2
+              for (const id of [w.a, w.b])
+                for (const side of [t, -t]) {
+                  const q = u.vertices.find((x) => x.id === id)!
+                  over.pts.push({ x: q.x + f.normal.x * side + this.shift(s).x, y: q.y + f.normal.y * side + this.shift(s).y })
+                }
               if (f.lengthM > over.len) Object.assign(over, { len: f.lengthM, dir: f.dir })
             }
           }
@@ -627,7 +630,10 @@ export class Building extends THREE.Group {
         }
         over.pts.push(...u.vertices.map((q) => ({ x: q.x + this.shift(s).x, y: q.y + this.shift(s).y })))
       }
-    if (shape && over?.pts.length && !hasShell && !roofLevel.length) {
+    // (a traced rooftop with walls is its own flat roof — its parapets, its zones: no skylights over it — but a pitched roof is
+    // drawn over the top floor whatever stands on the slab; a rooftop still a picture to trace is no roof yet)
+    const roofTraced = roofLevel.some((s) => FLATS[s].unit.walls.length > 0)
+    if (shape && over?.pts.length && !hasShell && (pitched || !roofTraced)) {
       // the eave as the set prints it, else on the roof slab; the ridge as printed (when no pitch is set)
       const eave = t.STOREYS?.eaveM !== undefined ? G + t.STOREYS.eaveM : R
       const r = roofGeometry(over.pts, over.dir, shape, pitched ? R : R + (deck ? DECK_M : 0), eave, t.STOREYS?.ridgeM !== undefined ? G + t.STOREYS.ridgeM : undefined)
@@ -1320,6 +1326,11 @@ export class Building extends THREE.Group {
       this.washes.set(k, (g = geos.length ? merge(geos) : new THREE.BufferGeometry()))
     }
     this.hoverLift.shape(g)
+  }
+
+  /** the floor picked (highlight): PlotlineScene.retower picks it again on the new tower */
+  get pickedFloor(): number {
+    return this.picked
   }
 
   /** Picking floor k hides what stands above it: a basement, or the ground floor he traced (the built-in towers: never). */
