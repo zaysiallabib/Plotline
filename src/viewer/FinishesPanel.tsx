@@ -68,6 +68,9 @@ function useShown() {
 function RoofBlock({ roof }: { roof: NonNullable<Props['roof']> }) {
   const now = coveringOf(roof.value)
   const shown = useShown()
+  // its Change link is gone from under the keys: Tab goes on from the block's first covering, not from the flat's groups
+  // further down where the link stood (phoneqa, keyboard only)
+  useEffect(() => shown.current?.querySelector('button')?.focus({ preventScroll: true }), [shown])
   return (
     <div className="slot surface" ref={shown}>
       <div className="label">The roof · the whole building</div>
