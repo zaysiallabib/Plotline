@@ -1860,8 +1860,10 @@ Things that are confusing or not finished. Each one is a job on the list.
   Building view draws furniture (by quality), and lit as the inside.
 - A low wall's **Made of** is kept in the drawing, the 3D and the Building view, but not in a DXF given back (it comes back
   solid), and an architect's file (IFC) brings its railings as its own shape, not as a Made of. With Finishes open, a
-  click on a railing or glass front offers the balcony's wall paint (the railing's own colour has no choice yet). The
-  daylight on a balcony is worked out as if its front were solid.
+  click on a railing or glass front offers the balcony's wall paint (its own colour is under Edit openings → Colour). The
+  daylight lets a glass front, a railing, a grille or a chain-link through (a glass-fronted veranda is nearly as bright as an
+  open one, a timber railing a little less, a board fence little); the room behind it was already lit as through an open
+  veranda, so it does not change.
 - Two different "share" buttons: **Share** in the 3D view (staff with the online database: a buyer link of that floor's
   flat as it stands; otherwise a link with your finishes) and **⋯ → Share link** in the Studio (a buyer link of the floor
   plan as Preview 3D shows it). Both feed the change list. The same thing has two names in places: "Slider" (3D) /

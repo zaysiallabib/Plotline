@@ -16,7 +16,7 @@
  */
 import * as THREE from 'three'
 import * as core from '../core'
-import type { Id, Pt, Room, RoomKind, Unit, Wall } from '../core'
+import type { Id, LowWallKind, Pt, Room, RoomKind, Unit, Wall } from '../core'
 import { isGlazing } from './openings'
 
 /** plan x, plan y, height */
@@ -47,6 +47,13 @@ export const SHORT_WALL_M = 0.3
  * bake counts them on every window, a pair deleted or slid away included); a door stands ajar
  */
 const TAU: Record<string, number> = { window: 0.6, slider: 0.7, door: 0.3, passage: 1, gap: 1 }
+/**
+ * A low wall that is no solid wall (core.railOf; session 31 outside2): what of the light reaching it comes through, up to
+ * its top — a glass balustrade's 12 mm panes as a glass wall's (0.85), a railing's 16 mm bars 11.5 cm apart and a chain-link's
+ * wires mostly air, the Dhaka grille's bars and band a little less, timber balusters about two thirds, a board fence little.
+ * lowwall left every one solid: a glass-fronted balcony and the room behind it were as dark as behind a parapet.
+ */
+export const RAIL_TAU: Record<LowWallKind, number> = { glass: 0.85, railing: 0.85, chainlink: 0.85, grille: 0.75, timber: 0.6, fence: 0.2 }
 /** radiance below the horizon (street, the blocks opposite) / the sky's: a ceiling sees the window's lower view */
 const GROUND = 0.3
 /** mean interior albedo: bounce = ρ / (1 − ρ) × the room's mean direct light */
@@ -346,6 +353,13 @@ export function* bakeSteps(unit: Unit, rooms: Room[], cover: Pt[][] = [], blocks
       for (const o of w.openings) through(isGlazing(o) ? 0.85 : (TAU[o.kind] ?? 0.5), o.offsetM, o.offsetM + o.widthM, o.sillM, o.sillM + o.heightM)
       // a parapet / planter wall lower than the room: open above it
       if (w.heightM < h - 0.05) through(TAU.gap, 0, frames.get(id)!.lengthM, w.heightM, h)
+      // a railing, a glass front, a fence: through it too, up to its top (its gates, the openings above, are passages already)
+      const rail = core.railOf(w)
+      if (rail) {
+        let runs: [number, number][] = [[0, frames.get(id)!.lengthM]]
+        for (const o of w.openings) runs = runs.flatMap(([a, b]) => [[a, Math.min(b, o.offsetM)], [Math.max(a, o.offsetM + o.widthM), b]] as [number, number][])
+        for (const [a, b] of runs) if (b - a > 0.05) through(RAIL_TAU[rail], a, b, 0, Math.min(w.heightM, h))
+      }
     }
     if (openToSky(r, cover)) {
       const poly = core.roomInnerPolygon(r, unit)
