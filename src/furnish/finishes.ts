@@ -242,7 +242,7 @@ export const OUTSIDE_SLOT: FinishSlot = {
     outside('stone', 'Stone', 'Stone blocks', 'STONE-BLOCK', pbr('stone_blocks', '#e6e2da')),
     outside('timber_slats', 'Timber', 'Timber slats', 'TIMBER-SLAT', pbr('timber_slats')),
     outside('clapboard', 'Timber', 'Timber clapboard', 'TIMBER-LAP', pbr('timber_clapboard')),
-    outside('zinc', 'Metal', 'Zinc panels', 'ZINC-RIB', pbr('metal_seam')),
+    outside('zinc', 'Metal', 'Zinc panels', 'ZINC-RIB', pbr('metal_seam', '#aeb2b6')),
     outside('metal_dark', 'Metal', 'Dark metal panels', 'METAL-RIB-DARK', pbr('metal_seam', '#5a5e63')),
     outside('corrugated', 'Metal', 'Corrugated metal', 'METAL-CORR', pbr('metal_corrugated')),
     outside('concrete', 'Concrete', 'Fair-faced concrete', 'CONC-FAIR', pbr('concrete_fair', '#d4d8d8')),
