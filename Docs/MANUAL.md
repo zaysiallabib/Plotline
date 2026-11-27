@@ -720,7 +720,7 @@ Works in Walk and Dollhouse; the mouse stays free, so drag empty space to look r
   on the tower — the card says *Click to choose what it is made of* — and click it. A card opens bottom left ("Low wall ·
   5'-5" long · 3'-7" high · Floor 5 · Type A") with **Made of** (and Cornice, a railing's Colour); pick **Glass** and that edge turns glass on
   every floor with this drawing ("Changes it on all 5 floors with this drawing"), at once. Tick **This floor only** first
-  and that floor gets its own copy of the drawing instead. **Done** closes the card. Three clicks where Edit ▾ →
+  and that floor gets its own copy of the drawing instead. **Done** (or **Esc**) closes the card. Three clicks where Edit ▾ →
   Openings took six.
 - Keys: **Del** removes what is picked · **Ctrl+Z** undoes (one drag = one step) · **Esc** unpicks · **Alt** while
   dragging a low wall's end keeps its corner.
@@ -755,7 +755,8 @@ The whole tower, floor by floor: point at a floor to see which it is, open a fla
   on High, while the graphics card learns them). The address changes to it, so a reload opens it; the browser's **Back**
   brings you back to the tower, also without a new page. **Walk this level** under the floor list goes the same way.
 - **On a phone:** tap a floor and the card shows beside your finger (the storey brighter); tap the same floor again to open
-  it. A tap somewhere else names that instead.
+  it. A tap somewhere else names that instead. While a sheet (Finishes, Comment, a menu) or a staff card (a balcony edge's **Made of**, Edit furniture) is
+  up, the floor list steps away; it comes back when that closes.
 - **Floors on the right** (headed "Floors"), top to bottom: **Roof**, the flat floors by number, **Ground**, **B1**,
   **B2** — the numbers in the large serif letters, Roof / Ground / B1 in small capitals. The floor under the mouse, in the
   list or on the tower, is the white row and is a little brighter on the tower: point at a row and you see that storey on
@@ -805,7 +806,8 @@ Where staff turn what the architect sent into the project's floors, check them, 
 whatever the architect sends — the whole set as a PDF, CAD files, a building model, or a brochure's plan picture — and
 what you drop decides what comes next. Whatever it was, the column on the right is the project, from the first drop.
 
-**On a phone** (a screen under 720 px wide) the Studio opens as one card instead: "The Studio is for a computer", with
+**On a phone** (a screen under 720 px wide) the Studio opens as one card instead: "The Studio is for a computer" ("Making a
+building from its drawings takes a mouse and a wide screen …"), with
 **See a flat** and **Open it anyway** (that opens the Studio, squeezed, for the rest of that tab).
 
 **What you see.** Left to right: the **tools** (a strip of small drawings), the **sheet** (a light stone page with the
