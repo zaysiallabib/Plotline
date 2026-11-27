@@ -580,9 +580,13 @@ export class Building extends THREE.Group {
     const edges = (u: Unit, rooms: Room[]) => balconyEdgeParts(u, rooms).map(([id, g]) => edgeOf(g, id))
 
     // floors 0..top: a shell per flat (and his traced ground floor); the roof (top + 1): the top floor's plates and parapet
-    // (its flats, or the massing standing in for them: a tower of levels and typical shells has no flats)
+    // (its flats, or the massing standing in for them: a tower of levels and typical shells has no flats) — a building that is
+    // its traced ground floor alone (a one-storey house) roofed over that level (its rooms under a roof: roofRooms)
     const topF = FLOORS.find((f) => f.floor === top)
-    const roofOn = topF ? [...topF.flats, ...(topF.standIns ?? []).filter((s) => t.LEVELS?.[s] === undefined)] : []
+    const onTop = topF ? [...topF.flats, ...(topF.standIns ?? [])] : []
+    const roofOn = onTop.some((s) => t.LEVELS?.[s] === undefined) ? onTop.filter((s) => t.LEVELS?.[s] === undefined) : onTop
+    /** what a roof covers of drawing s: a flat's every room, a level's rooms but its open zones (a lawn, a drive, a pool) */
+    const roofRooms = (s: string) => (t.LEVELS?.[s] === undefined ? this.roomsOf(s) : this.roomsOf(s).filter((r) => !core.isOutdoor(r.kind)))
     for (const { floor: k, flats, standIns = [] } of [...FLOORS.filter((f) => f.floor >= 0 && f.floor <= top), { floor: top + 1, flats: [], standIns: roofOn }]) {
       yield
       const y = this.levelOf(k)
@@ -590,7 +594,7 @@ export class Building extends THREE.Group {
       for (const s of [...flats, ...standIns]) {
         const { unit: u } = FLATS[s]
         const at = (g: THREE.BufferGeometry) => g.translate(this.shift(s).x, y, this.shift(s).y)
-        const rooms = this.roomsOf(s)
+        const rooms = roof ? roofRooms(s) : this.roomsOf(s)
         if (roof) {
           if (hasShell) continue
           for (const [r, gs] of this.edgesBy(s, k, plate(u, rooms, roofLevel.length ? -UNDER_LEVEL_M : 0, PLATE_M, u.walls, this.lid(s, k)).map(at))) put(k, r, ...gs)

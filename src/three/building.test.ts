@@ -627,7 +627,7 @@ describe('the Building view: rooms behind every window, the picked flat lit (ses
     expect(eye.distanceTo(target)).toBeGreaterThan(Math.hypot(r.maxX - r.minX, r.maxY - r.minY))
   })
 
-  test('a walked level picks in the Building view as a walked flat does: its floor and its outer walls, never drawn twice (anybuilding: a one-storey Studio building opened no outside card)', async () => {
+  test('a one-storey building (its ground floor alone): a roof over it, and the walked level picks in the Building view as a walked flat does — its floor, its outer walls — never drawn twice (anybuilding: no outside card opened, no roof)', async () => {
     const THREE = await import('three')
     const u = { ...bti.FLATS['type-a'].unit, id: 'solo' }
     const t = projectTower(setSlot(newProject('p', 'House', { basements: 0, floors: 0, rooftop: false }), 0, u))
@@ -639,8 +639,9 @@ describe('the Building view: rooms behind every window, the picked flat lit (ses
     b.frame('building', 'high')
     b.updateMatrixWorld(true)
     const r = core.unitBounds(u)
-    const down = b.pickAt(new THREE.Raycaster(new THREE.Vector3((r.minX + r.maxX) / 2, 30, (r.minY + r.maxY) / 2), new THREE.Vector3(0, -1, 0)))
-    expect(down?.k).toBe(0)
+    const mid = (y: number) => new THREE.Vector3((r.minX + r.maxX) / 2, y, (r.minY + r.maxY) / 2)
+    expect(b.pickAt(new THREE.Raycaster(mid(30), new THREE.Vector3(0, -1, 0)))?.k).toBe(1) // the roof over it
+    expect(b.pickAt(new THREE.Raycaster(mid(1.5), new THREE.Vector3(0, -1, 0)))?.k).toBe(0) // its floor
     const walls = Array.from({ length: 12 }, (_, i) => r.minY + ((i + 0.5) * (r.maxY - r.minY)) / 12).map((z) => b.pickAt(new THREE.Raycaster(new THREE.Vector3(r.minX - 20, 0.4, z), new THREE.Vector3(1, 0, 0))))
     expect(walls.filter((h) => h?.k === 0 && h.wall?.drawing === 'solo').length).toBeGreaterThan(6)
     // the scene draws the walked level: its proxy is never seen — in any view, nor after a cut is taken away
