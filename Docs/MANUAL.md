@@ -1393,7 +1393,8 @@ spandrels) become its **Solid band** — metal when their material says so, else
 its names (white, anthracite / RAL 7016, black, timber); a gable wall stops at its eaves (the gable is in the outside
 shape). The outside shape wears the same pictures as Plotline's own walls, and **Finishes** in the 3D view shows each as
 chosen — change the whole building there (it changes the shape's walls too), or one wall, one floor, the frames, the
-roof. "What was read from the file" says what each name became ("Timber slats ("Puuverhous"); Fair-faced concrete
+roof: **This wall** and **This floor** dress the shape's own walls there too (click a wall of the shape in the Building
+view — its gable included). "What was read from the file" says what each name became ("Timber slats ("Puuverhous"); Fair-faced concrete
 ("Betoniverhous") — the building's own: Timber slats"). A name Plotline does not know keeps the plaster and is listed
 ("3 materials not known: "BEKLEIDUNG", …"). **Materials** (under the notes) lists every outer wall's material with what
 it became — "Plotline decides: Timber slats" — and how many walls wear it; pick another finish in its box and the file is
@@ -1916,9 +1917,10 @@ Things that are confusing or not finished. Each one is a job on the list.
   "Sliding door" (Studio panel); "Reset layout" (3D) / "Reset to preset" (Studio).
 - One-room finishes: the clicked floor or wall is not outlined in 3D (only the panel names it); the Studio cannot set
   them; two rooms of one floor group with different floors get no threshold strip in their doorway.
-- The building's outside: a building drawn with the architect's own 3D outside shape (Studio → Outside shape) keeps the
-  file's colours — the outside finish dresses the walls Plotline draws (the walked flat's, every tower without a shape).
-  The tower is built again for each choice (about half a second); the floor plates' edges stay plaster. Railings and
+- The building's outside: an architect's 3D outside shape keeps the colours of the parts its file names nothing for; the
+  outside finish dresses its outer walls (the whole building, one wall, one floor) and the walls Plotline draws. Its own
+  slab edges and caps are the file's (Edges and caps dress Plotline's). The tower is built again for each choice (about
+  half a second). Railings and
   glass balcony fronts are their own work; the roof is its own block (Finishes → The roof). A click on a roof's wall or parapet in
   the Building view opens the outside card; on the roof itself, the roof's block.
 

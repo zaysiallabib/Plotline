@@ -875,6 +875,7 @@ export class PlotlineScene {
     yield
     this.look.setUnit(present(unit), this.rooms, this.cover, this.building ? null : street, this.wells, this.holding) // fixtures, lights, slab, shadow fit box, the street
     this.dressSlab()
+    if (this.outside.local) this.dressShell() // (the shape a wall at a time needs the tower: it may have come in before it)
     if (!this.holding) this.aroundFlat() // (a stair's floor: as it shows, spawnAt)
     this.setTimeOfDay(this.hour)
     if (this.windMonth && !this.holding) this.setWind(this.windMonth) // an opening edited: the arrows go through it as it is now
@@ -2146,7 +2147,11 @@ export class PlotlineScene {
     const roof = t ? roofIn(t) : undefined
     const choose = (d: Dress): MaterialRef | null =>
       !d.main ? null : d.slot === 'out' ? this.outside.wall(null, null) : d.slot === 'frame' ? this.outside.frame(null, null) : roof?.covering ? coveringOf(roof).material : null
-    dressShell(this.shell, choose, this.shellClip)
+    // one wall's or one floor's own outside (This wall / This floor on the shape, as on Plotline's own walls): what the tower
+    // says is there, triangle by triangle (Building.outsideAt); none chosen: the building's, one material as before
+    const b = this.building
+    const at = this.outside.local && b ? (p: THREE.Vector3) => { const h = b.outsideAt(p); return h ? this.outside.wall(h.drawing, h.run, h.k) : null } : undefined
+    dressShell(this.shell, choose, this.shellClip, at)
   }
 
   private buildWall(wall: Wall, unit: Unit): void {

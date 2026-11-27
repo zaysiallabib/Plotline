@@ -1600,14 +1600,25 @@ export class Building extends THREE.Group {
     return k === null ? null : { k, flat: (hit.object.userData.flat as FlatRef | undefined) ?? null, ...this.wallNear(hit.point, k) }
   }
 
+  /**
+   * What wears the outside at scene point p (an architect's shape dressed a wall at a time: PlotlineScene.dressShell): the floor
+   * whose storey holds it and the drawing's wall within 40 cm of its face (a cladding stands proud of it), if one.
+   */
+  outsideAt(p: THREE.Vector3): { k: number; drawing?: Id; run?: Id } | null {
+    const k = floorAtY(p.y, this.levels)
+    if (k === null) return null
+    const w = this.wallNear(p, k, 0.4).wall
+    return { k, ...(w ? { drawing: w.drawing, run: w.run } : {}) }
+  }
+
   /** The wall of what stands on floor k nearest scene point p, if p is on it (its face, 15 cm slack): `{ wall }`, else nothing. */
-  private wallNear(p: THREE.Vector3, k: number): Pick<TowerHit, 'wall'> {
+  private wallNear(p: THREE.Vector3, k: number, slack = 0.15): Pick<TowerHit, 'wall'> {
     let best: { d: number; drawing: Id; run: Id; id: Id; stem: string } | null = null
     for (const s of this.onFloor(k)) {
       const u = this.t.FLATS[s].unit
       const sh = this.shift(s)
       const n = core.nearestWall({ x: p.x - sh.x, y: p.z - sh.y }, u)
-      if (n && n.distanceM <= n.wall.thicknessM / 2 + 0.15 && (!best || n.distanceM < best.d)) best = { d: n.distanceM, drawing: u.id, run: outerRuns(u).get(n.wall.id) ?? n.wall.id, id: n.wall.id, stem: s }
+      if (n && n.distanceM <= n.wall.thicknessM / 2 + slack && (!best || n.distanceM < best.d)) best = { d: n.distanceM, drawing: u.id, run: outerRuns(u).get(n.wall.id) ?? n.wall.id, id: n.wall.id, stem: s }
     }
     return best ? { wall: { drawing: best.drawing, run: best.run, id: best.id, stem: best.stem } } : {}
   }

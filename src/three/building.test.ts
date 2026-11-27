@@ -1396,4 +1396,47 @@ describe("the building's outside (session 31 facade): what the tower's walls and
       expect([...outerRuns(u).values()]).toContain(h!.wall!.run)
     }
   })
+
+  test("session 31 outside2: what wears the outside at a point of the scene (an architect's shape dressed a wall at a time): its storey, and the drawing's wall within 40 cm of its face", async () => {
+    const THREE = await import('three')
+    const { outerRuns } = await import('../furnish/finishes')
+    const b = (await tower({ ...A, floor: 2 })) as unknown as Group & { pickAt(r: InstanceType<typeof THREE.Raycaster>): { k: number; wall?: { drawing: string; run: string } } | null; levelOf(k: number): number; outsideAt(p: InstanceType<typeof THREE.Vector3>): { k: number; drawing?: string; run?: string } | null }
+    const mid = new THREE.Box3().setFromObject(b).getCenter(new THREE.Vector3())
+    const y = b.levelOf(6) + 1.4
+    const r = new THREE.Raycaster(new THREE.Vector3(mid.x, y, mid.z).addScaledVector(new THREE.Vector3(1, 0, 0), -80), new THREE.Vector3(1, 0, 0))
+    const hit = r.intersectObject(b, true).find((h) => h.object.visible && h.object.userData.level === 6)!
+    expect(hit).toBeTruthy()
+    // 30 cm out from that face (a cladding's): the same wall, floor 6
+    const at = b.outsideAt(hit.point.clone().addScaledVector(new THREE.Vector3(1, 0, 0), -0.3))!
+    expect(at.k).toBe(6)
+    const u = Object.values(bti.FLATS).find((f) => f.unit.id === at.drawing)!.unit
+    expect([...outerRuns(u).values()]).toContain(at.run)
+    // a metre out: the floor, no wall
+    expect(b.outsideAt(hit.point.clone().addScaledVector(new THREE.Vector3(1, 0, 0), -1.2))).toEqual({ k: 6 })
+  })
+
+  test("session 31 outside2: the shape's outer walls a wall at a time (shell.ts dressShell's `at`): its upright triangles by what is chosen there, one run per material; nothing local: one material, its index as read", async () => {
+    const THREE = await import('three')
+    const { dressShell } = await import('./shell')
+    const { materialFor } = await import('./materials')
+    const { OUTSIDE_SLOT } = await import('../furnish/finishes')
+    const opt = (id: string) => OUTSIDE_SLOT.options.find((o) => o.id === id)!.material
+    const file = new THREE.MeshStandardMaterial({ name: 'plotline:out:fo_out_brick_red:main' })
+    const geo = new THREE.BoxGeometry(4, 6, 0.3).translate(0, 3, 0) // two storeys of wall, its top and bottom flat
+    const m = new THREE.Mesh(geo, file)
+    const g = new THREE.Group().add(m)
+    const index0 = Array.from(geo.index!.array)
+    // the upper storey (y > 3) chose stone: its upright triangles stone, the rest the building's brick
+    const at = (p: InstanceType<typeof THREE.Vector3>) => (p.y > 3 ? opt('fo_out_stone') : opt('fo_out_brick_red'))
+    expect(dressShell(g, () => opt('fo_out_brick_red'), undefined, at)).toBe(1)
+    const mats = m.material as unknown as InstanceType<typeof THREE.Material>[]
+    expect(mats).toHaveLength(2)
+    expect(mats).toContain(materialFor(opt('fo_out_stone'), true, false, true, false, 'shell'))
+    expect(geo.groups.reduce((n, x) => n + x.count, 0)).toBe(index0.length)
+    expect([...geo.index!.array].sort((p, q) => p - q)).toEqual([...index0].sort((p, q) => p - q))
+    // nothing local any more: back to one material, the index as read
+    dressShell(g, () => opt('fo_out_brick_red'))
+    expect(m.material).toBe(materialFor(opt('fo_out_brick_red'), true, false, true, false, 'shell'))
+    expect([geo.groups.length, Array.from(geo.index!.array)]).toEqual([0, index0])
+  })
 })

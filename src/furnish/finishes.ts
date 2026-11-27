@@ -335,6 +335,8 @@ export interface Outside {
   sig: string
   /** some frame is chosen (the building's or one window's): the tower's panes carry a colour each */
   framed: boolean
+  /** some outer wall or floor has its own outside (not only the building's): an architect's shape is dressed a wall at a time */
+  local: boolean
 }
 
 /** `rec` (the building's outside record) over `slots` (OUTSIDE_SLOT, FRAMES_SLOT and EDGES_SLOT with staff's own options: own.ts withOwnOptions); a choice not among the options is ignored. */
@@ -357,6 +359,7 @@ export function outsideOf(rec: Configuration, slots: FinishSlot[] = [OUTSIDE_SLO
     frame: (drawing, openingId) => pick(frames, [drawing && openingId ? frameKey(drawing, openingId) : null, frames.id]),
     sig: entries.length ? JSON.stringify(entries) : '',
     framed: entries.some(([k]) => k === frames.id || k.startsWith('frame:')),
+    local: entries.some(([k]) => k.startsWith('out:')),
   }
 }
 
