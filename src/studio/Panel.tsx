@@ -211,13 +211,15 @@ interface Props {
   /** a DXF's unit (metres per file unit; `yours`: picked by the person) and its "Read in" pick: a unit, Plotline's, or one known length */
   readIn?: { scale: number; yours: boolean } | null
   onReadIn?: (pick: number | 'auto' | 'length') => void
+  /** the trace's scale was Auto-trace's own guess: S on one known length, then the plan traced again at it */
+  onRetrace?: () => void
   /** the Steps, as the source of the drawing open asks (model.stepsOf), unnumbered: [label, done] */
   steps: [string, boolean][]
   /** what Share does, under its step once something is drawn: a buyer link, a DXF, the 3D model, a print */
   shareActs?: { label: string; title: string; onClick: () => void }[]
 }
 
-export function Panel({ state, dispatch, rooms, flats, issues, marks, bulks = [], openBulk = null, onBulk, fixes, active, picked = null, lit = null, onPick, onHot, onOpen, onFix, onAnswer, ai, pieces, placing, onPlace, notes, onDismissNotes, layers, onLayerRole, materials, onMaterial, readIn, onReadIn, steps, shareActs }: Props) {
+export function Panel({ state, dispatch, rooms, flats, issues, marks, bulks = [], openBulk = null, onBulk, fixes, active, picked = null, lit = null, onPick, onHot, onOpen, onFix, onAnswer, ai, pieces, placing, onPlace, notes, onDismissNotes, layers, onLayerRole, materials, onMaterial, readIn, onReadIn, onRetrace, steps, shareActs }: Props) {
   const piece = pieces?.find((p) => state.selection.length === 1 && p.id === state.selection[0])
   const { unit } = state
   const review = marks.filter((m) => m.review)
@@ -498,7 +500,15 @@ export function Panel({ state, dispatch, rooms, flats, issues, marks, bulks = []
           {stats && fewRooms(stats) && <p className="warn">{fewRooms(stats)}</p>}
           {/* (s27 rows: a long list's fixes fill in a row at a time; the page stays live) */}
           {fixes && review.filter((m) => !fixes.has(m.key)).length > 10 && <p className="muted">Working out the rows' fixes — {review.filter((m) => !fixes.has(m.key)).length} rows left…</p>}
-          {stats?.scaleFrom === 'thickness' && <p className="warn">No printed size was found, so the scale is a GUESS. Press S and click the two ends of anything whose length you know (the plot's width is best).</p>}
+          {stats?.scaleFrom === 'thickness' && <p className="warn">No printed size was found, so the scale is a GUESS. Set it on anything whose length you know (the plot's width is best) and the plan is traced again at it.</p>}
+          {/* (from Maheer's Plotline 2.0) the scale came from the tracer, not from S: fix it and trace again in one go */}
+          {stats && stats.scaleFrom !== 'given' && onRetrace && (
+            <p>
+              <button className="link" title="Click the two ends of a length you know, type it — the plan is traced again at that scale (Ctrl+Z brings this trace back)" onClick={onRetrace}>
+                Set the scale and trace again
+              </button>
+            </p>
+          )}
           {review.length || aiDone.length ? (
             <ul className="issues" tabIndex={0} aria-label="Check these: ↑ ↓ pick a row, Enter goes to it" onKeyDown={onListKey}>
               {groups.map((g) => {

@@ -8,7 +8,7 @@ import sheltechA from '../data/units/sheltech-a.json'
 import sheltechB from '../data/units/sheltech-b.json'
 import * as core from '../core'
 import type { Pt, Unit } from '../core'
-import { GAP_PREFIX, SHADE_A, SHADE_M, WATER_DROP_M, WELL_INSET, bayMarkings, junctionShade, carriesRoof, floorGeometry, isSteps, stepGeometry, buildSkirtings, casingPlan, closeGaps, liftWall, liftedWall, roomCeiling, pillarParts, poolBasin, raiseHeads, skirtingRuns, stepFaces, storeyCeiling, storeyTop, wallGeometry, wallLift, wellParts, type SkirtingRun } from './details'
+import { GAP_PREFIX, SHADE_A, SHADE_M, WATER_DROP_M, WELL_INSET, bayMarkings, junctionShade, carriesRoof, coverSlabGeometry, floorGeometry, isSteps, stepGeometry, buildSkirtings, casingPlan, closeGaps, liftWall, liftedWall, roomCeiling, pillarParts, poolBasin, raiseHeads, skirtingRuns, stepFaces, storeyCeiling, storeyTop, wallGeometry, wallLift, wellParts, type SkirtingRun } from './details'
 import sheltechRoof from '../data/units/sheltech-roof.json'
 import bananiRoof from '../data/units/banani-roof.json'
 import draft from '../data/fixtures/founder-sheltech-a-draft.json'
@@ -613,6 +613,44 @@ describe('a level with zones, flush lines and a free-standing screen', () => {
     const n = geo.attributes.normal
     expect(n.getX(0)).toBeGreaterThan(0.99) // toward the ramp (+x of the line x = 9)
     expect(stepFaces(TEST_UNIT, core.deriveRooms(TEST_UNIT))).toEqual([])
+  })
+
+  test('a kerb below a raised floor leaves a face above it up to that floor; a full-height wall fills the gap itself (from Maheer\'s Plotline 2.0)', () => {
+    const unit: Unit = { ...TEST_UNIT, roomLabels: TEST_UNIT.roomLabels.map((r) => ({ ...r, levelM: r.id === 'bed' ? 1 : 0 })), walls: TEST_UNIT.walls.map((w) => (w.id === 'w8' ? { ...w, heightM: 0.15, openings: [] } : w)) }
+    const faces = stepFaces(unit, core.deriveRooms(unit))
+    expect(faces).toHaveLength(1)
+    faces[0].geo.computeBoundingBox()
+    expect(faces[0].geo.boundingBox!.min.y).toBeCloseTo(0.15, 6)
+    expect(faces[0].geo.boundingBox!.max.y).toBeCloseTo(1, 6)
+    expect(faces[0].geo.attributes.normal.getX(0)).toBeLessThan(-0.99)
+    const closed = { ...unit, walls: unit.walls.map((w) => (w.id === 'w8' ? { ...w, heightM: 1.2 } : w)) }
+    expect(stepFaces(closed, core.deriveRooms(closed))).toEqual([])
+  })
+
+  test('a kerb beside a ramp fills only where the ramp rises above its top (from Maheer\'s Plotline 2.0)', () => {
+    const unit: Unit = { ...TEST_UNIT, roomLabels: TEST_UNIT.roomLabels.map((r) => ({ ...r, levelM: 0, ...(r.id === 'bed' ? { slope: { toLevelM: 1, dirDeg: 180 } } : {}) })), walls: TEST_UNIT.walls.map((w) => (w.id === 'w8' ? { ...w, heightM: 0.15, openings: [] } : w)) }
+    const faces = stepFaces(unit, core.deriveRooms(unit))
+    expect(faces).toHaveLength(1)
+    faces[0].geo.computeBoundingBox()
+    expect(faces[0].geo.boundingBox!.min.z).toBeCloseTo(0.6, 6)
+    expect(faces[0].geo.boundingBox!.max.z).toBeCloseTo(4, 6)
+    expect(faces[0].geo.boundingBox!.min.y).toBeCloseTo(0.15, 6)
+  })
+
+  test('the slab over a covered zone is solid: an edge and both faces, angled outlines too (from Maheer\'s Plotline 2.0)', () => {
+    const geo = coverSlabGeometry([{ x: 0, y: 0 }, { x: 4, y: 0 }, { x: 3, y: 2 }, { x: 0, y: 2 }], 0.15)
+    geo.computeBoundingBox()
+    expect(geo.boundingBox!.min.y).toBeCloseTo(-0.15, 6)
+    expect(geo.boundingBox!.max.y).toBeCloseTo(0, 6)
+    const n = geo.attributes.normal
+    expect(Array.from({ length: n.count }, (_, i) => n.getY(i)).some((y) => y > 0.99)).toBe(true)
+    expect(Array.from({ length: n.count }, (_, i) => n.getY(i)).some((y) => y < -0.99)).toBe(true)
+    // seen from the side the slab's edge is hit (the one-sided plane it was could not be)
+    const mesh = new THREE.Mesh(geo, new THREE.MeshBasicMaterial())
+    const ray = new THREE.Raycaster(new THREE.Vector3(5, -0.075, 1), new THREE.Vector3(-1, 0, 0))
+    expect(ray.intersectObject(mesh).length).toBeGreaterThan(0)
+    geo.dispose()
+    mesh.material.dispose()
   })
 
   test.each([1.2, 2.1])("a %s m wall standing alone in type-a's living room: no issue, painted and skirted on both faces and both ends, its top capped", (h) => {

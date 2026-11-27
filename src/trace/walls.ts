@@ -9,7 +9,7 @@
  *   → junction snapping + free-end extension → gaps between facing free ends = OpeningGuess (door arc / window lines test).
  */
 import { bandWalls, coveredByBands } from './bands'
-import { edt, otsu, thin, threshold } from './raster'
+import { WALL_INK_CAP, edt, otsu, thin, threshold } from './raster'
 import { scaleTracks, traceTracks, trackWalls } from './tracks'
 import type { Gray, OpeningGuess, Px, WallSeg, WallTrace } from './types'
 
@@ -44,7 +44,7 @@ export interface WallOpts {
   glass?: Uint8Array
 }
 
-const DEF = { coreFrac: 0.7, blobFrac: 4, minCompFrac: 6, partitionM: 0.127, inkCap: 160, minContrast: 60 }
+const DEF = { coreFrac: 0.7, blobFrac: 4, minCompFrac: 6, partitionM: 0.127, inkCap: WALL_INK_CAP, minContrast: 60 }
 
 export const inkThreshold = (g: Gray, o: WallOpts) => o.darkMax ?? Math.min(otsu(g), o.inkCap ?? DEF.inkCap)
 
@@ -412,6 +412,8 @@ export function traceWalls(gray: Gray, opts: WallOpts = {}): WallTrace {
     // enlarged histogram can lock onto the columns
     const halfBig = opts.halfPx ? opts.halfPx * f : Math.min(half0! * f, wallHalfWidth(edt(threshold(big, inkThreshold(big, opts)), big.width, big.height), big.width, big.height))
     const up = (m?: Uint8Array) => m && upMask(m, gray.width, gray.height, big.width, big.height)
+    // (the door-arc window stays 3 px on the enlarged raster: his ×f window — the same paper as at native size — moved
+    // Water Lily's living room open in Firefox, s31 p2trace; arcInk takes a radius should a sheet ever need it)
     const t = traceWalls(big, { ...opts, upscale: 1, halfPx: halfBig, plant: up(opts.plant), glass: up(opts.glass) })
     const k = 1 / f
     const sc = (s: WallSeg): WallSeg => ({ ...s, a: scalePx(s.a, k), b: scalePx(s.b, k), ...(s.mid ? { mid: scalePx(s.mid, k) } : {}), thicknessPx: s.thicknessPx * k })
@@ -525,16 +527,19 @@ function angledWalls(gray0: Gray, axis: WallSeg[], opts: WallOpts): WallSeg[] {
  * bath floor stands out against the floor's median grey; the floor's own stripes (lighter than the fill) and the fill
  * itself do not — the max-based line ink marks every fill pixel next to a white stripe. Evaluated on demand (probes only).
  */
-export function arcInk(g: Gray, delta = 18): (x: number, y: number) => boolean {
+export function arcInk(g: Gray, delta = 18, radiusPx = 3): (x: number, y: number) => boolean {
   const { width: w, height: h, data } = g
-  const win = new Uint8Array(49)
+  // the window's median ≥ the pixel + delta ⇔ at most half the window is darker than that cut: counted, not sorted; the
+  // radius grows with an enlarged raster so the window covers the same paper (from Maheer's Plotline 2.0)
+  const radius = Math.max(1, Math.round(radiusPx)), middle = ((2 * radius + 1) ** 2) >> 1
   return (x, y) => {
     const xi = Math.round(x), yi = Math.round(y)
-    if (xi < 3 || yi < 3 || xi >= w - 3 || yi >= h - 3) return false
-    let n = 0
-    for (let dy = -3; dy <= 3; dy++) for (let dx = -3; dx <= 3; dx++) win[n++] = data[(yi + dy) * w + xi + dx]
-    win.sort()
-    return data[yi * w + xi] <= win[24] - delta
+    if (xi < radius || yi < radius || xi >= w - radius || yi >= h - radius) return false
+    const cut = data[yi * w + xi] + delta
+    if (cut > 255) return false
+    let below = 0
+    for (let dy = -radius; dy <= radius; dy++) for (let dx = -radius; dx <= radius; dx++) if (data[(yi + dy) * w + xi + dx] < cut && ++below > middle) return false
+    return true
   }
 }
 

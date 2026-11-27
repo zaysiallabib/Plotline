@@ -1,9 +1,23 @@
 /** The sky's light by the sun's altitude, the lamps' auto rule and the shadow-casting pick (render.ts): pure, no WebGL. */
 import * as THREE from 'three'
 import { describe, expect, test } from 'vitest'
-import { aoSize, assignPool, DAY_EXPOSURE, drawWide, EDGE_FADE, EDGE_FADE_Z, widenEdge, fitSunBox, keptLoop, lampCandela, lampShares, lensFov, lightsOn, LITE_PIXELS, markSharp, NIGHT_EXPOSURE, pickCasters, pixelRatioFor, SITE_REACH_M, skyLight, sunLit, TIERS, towerLevel, twilight, WIDE_EVERY, WIDE_M, WIDE_UP_M, wideOnly } from './render'
+import { aoSize, assignPool, coverLightSpots, DAY_EXPOSURE, drawWide, EDGE_FADE, EDGE_FADE_Z, widenEdge, fitSunBox, keptLoop, lampCandela, lampShares, lensFov, lightsOn, LITE_PIXELS, markSharp, NIGHT_EXPOSURE, pickCasters, pixelRatioFor, SITE_REACH_M, skyLight, sunLit, TIERS, towerLevel, twilight, WIDE_EVERY, WIDE_M, WIDE_UP_M, wideOnly } from './render'
 import { LAMP_RANGE } from './daylight'
+import * as core from '../core'
 import type { Room } from '../core'
+import { TEST_UNIT } from './testUnit'
+
+test('a covered zone\'s battens fit their whole 1.2 m body under the slab: partly covered zones and slabs in pieces too (from Maheer\'s Plotline 2.0)', () => {
+  const unit = { ...TEST_UNIT, roomLabels: TEST_UNIT.roomLabels.map((r) => ({ ...r, kind: 'driveway' as const, levelM: 0.6 })) }
+  const rooms = core.deriveRooms(unit)
+  const box = (x0: number, x1: number, y0 = 1, y1 = 2.5) => [{ x: x0, y: y0 }, { x: x1, y: y0 }, { x: x1, y: y1 }, { x: x0, y: y1 }]
+  // the 1.8, 1.8 grid point is covered but the batten's ends would hang in the sky
+  expect(coverLightSpots(unit, rooms, [box(1.5, 2.1)])).toEqual([])
+  // the zone's centre is outside this strip: its grid point still has a ceiling
+  expect(coverLightSpots(unit, rooms, [box(1, 1.8), box(1.8, 2.6)])).toEqual([{ x: 1.8, y: 1.8, floor: 0.6 }])
+  // a void under the batten's middle is not bridged
+  expect(coverLightSpots(unit, rooms, [box(1, 1.74), box(1.86, 2.6)])).toEqual([])
+})
 
 describe('what each quality tier draws (session 31)', () => {
   test('Lite: no shadow maps at all, no lamp light in the shader (every lamp baked into the rooms), no corner shading', () =>

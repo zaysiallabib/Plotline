@@ -6,7 +6,7 @@ import type { Unit } from '../core'
 import { truthLines, registerTruth } from './eval'
 import { FIXTURES, SHOTS, loadPgm, loadPpm, writeUnitOverlay } from './evalio'
 import { findHints, greenMask } from './hints'
-import { KNOBS, areasIn, buildGraph, pick, prepare, dropForeignStubs, findStairs, glassMask, mergeUnread, nameLike, namePieces, namesBeside, pickTraces, prepareTraces, previewFlat, solveTraces, tableRow, titleAreas, type SolveInputs } from './solve'
+import { KNOBS, areasIn, buildGraph, pick, prepare, dropForeignStubs, findStairs, glassMask, planterMask, mergeUnread, nameLike, namePieces, namesBeside, pickTraces, prepareTraces, preview, previewFlat, solveTraces, tableRow, titleAreas, type SolveInputs } from './solve'
 import { glazing } from './walls'
 import { turnOf, turnRaster } from './raster'
 import { oracleText } from './roomsEval'
@@ -118,6 +118,22 @@ describe('a printed name beside an unnamed room names it (Level 3)', () => {
 })
 
 describe('marks: stairs, glazing profile, glass colour', () => {
+  test('printed labels on a dark floor are not foliage; real leafy texture still is (from Maheer\'s Plotline 2.0)', () => {
+    const width = 170, height = 100, g: Gray = { width, height, data: new Uint8Array(width * height).fill(185) }
+    for (let y = 30; y < 60; y++) for (let x = 35; x < 85; x++) g.data[y * width + x] = (x + y) % 4 < 2 ? 0 : 185
+    for (let y = 20; y < 80; y++) for (let x = 115; x < 155; x++) g.data[y * width + x] = (x + y) % 4 < 2 ? 50 : 120
+    const text: TextTrace = { items: [{ kind: 'area', text: '970 SFT', areaSqm: 90, box: { x: 35, y: 30, w: 50, h: 30 }, conf: 0.95, source: 'ocr' }] }
+    const mask = planterMask(g, new Uint8Array(width * height).fill(1), 20, undefined, text)
+    expect(mask[45 * width + 60]).toBe(0)
+    expect(mask[45 * width + 135]).toBe(1)
+    // a JPEG's single green pixels round the print are no planter; a green patch behind it is
+    const ringing = new Uint8Array(width * height)
+    for (let y = 31; y < 60; y += 7) for (let x = 36; x < 85; x += 7) ringing[y * width + x] = 1
+    expect(planterMask(g, new Uint8Array(width * height).fill(1), 20, ringing, text)[45 * width + 60]).toBe(0)
+    const green = new Uint8Array(width * height)
+    for (let y = 30; y < 60; y++) green.fill(1, y * width + 35, y * width + 85)
+    expect(planterMask(g, new Uint8Array(width * height).fill(1), 20, green, text)[45 * width + 60]).toBe(1)
+  })
   test('a flight of 8 evenly spaced 1.2 m treads is a stair; 3 treads, or uneven lines, are not', () => {
     const w = 300, h = 300, k = 50
     const mask = new Uint8Array(w * h)
@@ -454,6 +470,29 @@ describe('solveTraces on a synthetic flat', () => {
     expect(deriveRooms(solveTraces(g, { text }).unit).length).toBe(4)
   })
 
+  test('with no click, a larger unnamed region never displaces the region holding the printed bedrooms (from Maheer\'s Plotline 2.0)', () => {
+    const source = synthetic(), width = 1100, height = 470
+    const g: Gray = { width, height, data: new Uint8Array(width * height).fill(255) }
+    for (let y = 0; y < source.g.height; y++) g.data.set(source.g.data.subarray(y * source.g.width, (y + 1) * source.g.width), y * width)
+    // a larger closed region apart (a core, an outline); no living / kitchen / flat label read
+    for (const [a, b] of [[P(10, 0), P(18, 0)], [P(18, 0), P(18, 6)], [P(18, 6), P(10, 6)], [P(10, 6), P(10, 0)]]) stroke(g, a, b, 0.254 * K)
+    const text: TextTrace = { items: source.text.items.filter((it) => it.roomKind === 'bed').map((it) => ({ ...it, dims: undefined })) }
+    const result = pickTraces(prepareTraces(g, { text }, { pxPerM: K }), undefined, true)
+    expect(result.unit.roomLabels.some((l) => l.name === 'Bed 1')).toBe(true)
+    expect(deriveRooms(result.unit).length).toBeGreaterThan(1)
+  })
+
+  test('with no click and no bedroom printed, a numbered toilet does not override the largest region', () => {
+    const source = synthetic(), width = 1100, height = 470
+    const g: Gray = { width, height, data: new Uint8Array(width * height).fill(255) }
+    for (let y = 0; y < source.g.height; y++) g.data.set(source.g.data.subarray(y * source.g.width, (y + 1) * source.g.width), y * width)
+    for (const [a, b] of [[P(10, 0), P(18, 0)], [P(18, 0), P(18, 6)], [P(18, 6), P(10, 6)], [P(10, 6), P(10, 0)]]) stroke(g, a, b, 0.254 * K)
+    const text: TextTrace = { items: source.text.items.filter((it) => it.roomKind === 'bed').map((it) => ({ ...it, text: 'TOILET 1', roomKind: 'bath', dims: undefined })) }
+    const result = pickTraces(prepareTraces(g, { text }, { pxPerM: K }), undefined, true)
+    expect(deriveRooms(result.unit)).toHaveLength(1)
+    expect(deriveRooms(result.unit)[0].areaSqm).toBeGreaterThan(40)
+  })
+
   test('with the gap closer: a side drawn only as a double thin line (glazing) closes the room, as a window', () => {
     const width = Math.round(6 * K + 2 * O.x), height = Math.round(4 * K + 2 * O.y)
     const g: Gray = { width, height, data: new Uint8Array(width * height).fill(255) }
@@ -577,6 +616,24 @@ describe('s27: a flat holds its own label, never another flat\'s; the floor has 
     const stamp = (x: number): TextItem => ({ text: '624 SFT', box: { x: P(x, 2.5).x - 40, y: P(x, 2.5).y - 8, w: 80, h: 16 }, kind: 'area', areaSqm: 58, conf: 0.9, source: 'ocr' })
     return { g, text: { items: [stamp(5), stamp(15)] } }
   }
+
+  test('on a turned sheet the hover\'s floor rectangles stay rectangles, turned with the sheet (from Maheer\'s Plotline 2.0)', () => {
+    const { g, text } = openPair()
+    const traces = prepareTraces(g, { text }, { pxPerM: K })
+    const turn = turnOf(g.width, g.height, 12)
+    const at = P(1, 1)
+    const flat = previewFlat(traces, at)
+    const rotated = preview({ traces, turn, review: [] }, turn.back(at))
+    expect(flat.region.length).toBeGreaterThan(0)
+    expect(rotated.region.map((r) => [r.w, r.h])).toEqual(flat.region.map((r) => [r.w, r.h]))
+    expect(rotated.region[0]).toMatchObject(turn.back(flat.region[0]))
+    expect(rotated).toHaveProperty('regionAngle', (12 * Math.PI) / 180)
+    // the far corner drawn from the corner, the size and the angle (draw.ts) is the sheet's own far corner
+    const r = rotated.region[0], f = flat.region[0], a = rotated.regionAngle!
+    const far = turn.back({ x: f.x + f.w, y: f.y + f.h })
+    expect(r.x + r.w * Math.cos(a) - r.h * Math.sin(a)).toBeCloseTo(far.x, 6)
+    expect(r.y + r.w * Math.sin(a) + r.h * Math.cos(a)).toBeCloseTo(far.y, 6)
+  })
 
   test('a click in one flat of an open floor: the hover glows its whole floor (no closed room there) and stops at the party wall — the next flat\'s stamp claims its side of the gap', () => {
     const { g, text } = openPair()

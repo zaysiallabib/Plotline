@@ -5,8 +5,33 @@ import type { Unit, Wall } from '../core/types'
 import { evalTrace, formatReports, scoreUnit, truthLines, type EvalReport } from './eval'
 import { FIXTURES, SHOTS, loadPgm, writeOverlay } from './evalio'
 import { KNOBS } from './solve'
-import { traceWalls } from './walls'
+import { arcInk, traceWalls } from './walls'
 import type { Gray, Px, WallTrace } from './types'
+
+test('the counted arc contrast agrees with a sorted-median reference, ties included (from Maheer\'s Plotline 2.0)', () => {
+  const g: Gray = { width: 31, height: 29, data: Uint8Array.from({ length: 31 * 29 }, (_, i) => (i * 73 + Math.floor(i / 31) * 41) % 256) }
+  for (const radius of [1, 3, 6])
+    for (const delta of [0, 8, 18, 40]) {
+      const at = arcInk(g, delta, radius)
+      for (let y = radius; y < g.height - radius; y += 3)
+        for (let x = radius; x < g.width - radius; x += 3) {
+          const values = []
+          for (let dy = -radius; dy <= radius; dy++) for (let dx = -radius; dx <= radius; dx++) values.push(g.data[(y + dy) * g.width + x + dx])
+          values.sort((a, b) => a - b)
+          expect(at(x, y)).toBe(g.data[y * g.width + x] <= values[values.length >> 1] - delta)
+        }
+    }
+})
+
+test.each([2, 3])('the arc contrast window takes a radius: on a sheet enlarged %s× a window that much wider covers the same paper (from Maheer\'s Plotline 2.0; the tracer keeps 3 px — measured)', (scale) => {
+  const small: Gray = { width: 100, height: 80, data: new Uint8Array(100 * 80).fill(255) }
+  for (let y = 0; y < small.height; y++) for (let x = 40; x <= 42; x++) small.data[y * small.width + x] = 235
+  const width = small.width * scale, height = small.height * scale, big: Gray = { width, height, data: new Uint8Array(width * height) }
+  for (let y = 0; y < height; y++) for (let x = 0; x < width; x++) big.data[y * width + x] = small.data[Math.floor(y / scale) * small.width + Math.floor(x / scale)]
+  expect(arcInk(small)(41, 40)).toBe(true)
+  expect(arcInk(big)(41 * scale, 40 * scale)).toBe(false)
+  expect(arcInk(big, 18, 3 * scale)(41 * scale, 40 * scale)).toBe(true)
+})
 
 // ---------- synthetic rasters ----------
 const K = 60 // px per m

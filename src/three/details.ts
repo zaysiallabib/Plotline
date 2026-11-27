@@ -801,8 +801,8 @@ export function carriesRoof(w: Wall, sides: (Room | null)[], unit: Unit, rooms: 
 }
 
 /**
- * Where two faces meet along a flush line (heightM 0: no wall to carry a plinth) at different floor levels, the step's
- * vertical face from the lower floor up to the higher, on the line, facing the lower side — a lobby's edge above its lawn,
+ * Where two faces meet at different levels, fill the vertical gap above any wall/kerb that stops below the higher floor,
+ * on the line, facing the lower side — a lobby's edge above its lawn,
  * a ramp's side. Each riser is finished as the upper face's floor. Levels cross along the line (a ramp beside a flat zone):
  * one triangle each side of the crossing.
  */
@@ -810,11 +810,11 @@ export function stepFaces(unit: Unit, rooms: Room[]): { room: Room; geo: THREE.B
   if (!rooms.some((r) => r.levelM || r.slope)) return []
   const out: { room: Room; geo: THREE.BufferGeometry }[] = []
   for (const w of unit.walls) {
-    if (w.heightM > 0) continue
     const f = core.wallFrame(w, unit.vertices)
     if (f.lengthM < 1e-3) continue
     const mid = { x: f.origin.x + (f.dir.x * f.lengthM) / 2, y: f.origin.y + (f.dir.y * f.lengthM) / 2 }
-    const [front, back] = [1, -1].map((s) => core.roomAt({ x: mid.x + f.normal.x * 0.05 * s, y: mid.y + f.normal.y * 0.05 * s }, rooms, unit))
+    const off = w.thicknessM / 2 + 0.05
+    const [front, back] = [1, -1].map((s) => core.roomAt({ x: mid.x + f.normal.x * off * s, y: mid.y + f.normal.y * off * s }, rooms, unit))
     if (!front || !back || isSteps(front, unit) || isSteps(back, unit)) continue // a flight's blocks close its own sides
     const [A, B] = [core.vertexById(unit.vertices, w.a), core.vertexById(unit.vertices, w.b)]
     const lv = (r: Room, p: Pt) => core.roomLevelAt(r, unit, p.x, p.y)
@@ -823,6 +823,18 @@ export function stepFaces(unit: Unit, rooms: Room[]): { room: Room; geo: THREE.B
     if (Math.abs(da) < 1e-3 && Math.abs(db) < 1e-3) continue
     // one face (a tri or a quad) between plan points p..q, floors lo / hi at each, the upper side = sign (+1 front)
     const face = (p: Pt, q: Pt, lo: [number, number], hi: [number, number], sign: number) => {
+      // A real wall already fills its own height. A low kerb may cover only part of a sloping boundary: clip at
+      // the actual crossing instead of stretching a triangular patch past the point where the gap closes.
+      const gaps = [hi[0] - lo[0] - w.heightM, hi[1] - lo[1] - w.heightM]
+      if (Math.max(...gaps) < 1e-3) return
+      lo = [lo[0] + w.heightM, lo[1] + w.heightM]
+      if (gaps[0] < 0 || gaps[1] < 0) {
+        const t = gaps[0] / (gaps[0] - gaps[1])
+        const at = { x: p.x + t * (q.x - p.x), y: p.y + t * (q.y - p.y) }
+        const level = hi[0] + t * (hi[1] - hi[0])
+        if (gaps[0] < 0) { p = at; lo[0] = hi[0] = level }
+        else { q = at; lo[1] = hi[1] = level }
+      }
       const v = [
         [p.x, lo[0], p.y],
         [q.x, lo[1], q.y],
@@ -1051,6 +1063,15 @@ export function wellParts(hole: Pt[], top: number, bottom: number): { edge: [Pt,
 }
 /** how far a well's walls stand in from its hole (wellParts): in front of the slab's and the walls' faces there, never in a tie */
 export const WELL_INSET = 0.003
+
+/** A covered zone's slab has a closed edge, not a paper-thin soffit. Plan XY becomes world XZ; underside at -depth. */
+export function coverSlabGeometry(poly: Pt[], depth: number): THREE.BufferGeometry {
+  const shape = new THREE.Shape(poly.map((p) => new THREE.Vector2(p.x, p.y)))
+  const geo = new THREE.ExtrudeGeometry(shape, { depth, bevelEnabled: false, steps: 1 }).rotateX(Math.PI / 2)
+  // The roof also merges indexed wall boxes and room planes. ExtrudeGeometry emits unindexed triangles.
+  geo.setIndex(Array.from({ length: geo.attributes.position.count }, (_, i) => i))
+  return meterUVs(geo)
+}
 
 /** A sloped face steeper than this (rise / run) is a flight of steps, not a ramp: stepGeometry. */
 export const STEPS_GRADE = 1 / 3

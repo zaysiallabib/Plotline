@@ -31,6 +31,21 @@ const close = (g: { vertices: Vertex[]; walls: Wall[] }, labels: CloseLabel[], g
 const SIZE = { aM: 3.87, bM: 2.94 }
 
 describe('close.ts: open printed rooms closed on evidence, kept only at their printed size', () => {
+  test.each([0, Math.PI/6])('colour-backed glazing closes a dimensioned room on a dark floor at angle %s', (angle) => {
+    const g=threeWalls(), c=Math.cos(angle),s=Math.sin(angle)
+    const turn=(p:{x:number;y:number})=>({x:3+p.x*c-p.y*s,y:1+p.x*s+p.y*c})
+    const gray:Gray={width:600,height:600,data:new Uint8Array(600*600).fill(185)}
+    const glass=new Uint8Array(gray.width*gray.height)
+    const a=turn({x:1,y:1}),b=turn({x:5,y:1})
+    for(let i=0;i<=800;i++)glass[Math.round((a.y+(b.y-a.y)*i/800)*K)*gray.width+Math.round((a.x+(b.x-a.x)*i/800)*K)]=1
+    const vertices=g.vertices.map(p=>({...p,...turn(p)})), at=turn({x:3,y:2.5})
+    const run=(mask:Uint8Array|undefined,dims=SIZE)=>closeRooms(vertices,g.walls,[{at,name:'Bedroom',kind:'bed',dims}],{...opts(gray),glass:mask,th0:angle},make)
+    expect(run(undefined).closed).toHaveLength(0)
+    expect(run(glass).closed).toHaveLength(1)
+    expect(run(glass,{aM:8,bM:7}).closed).toHaveLength(0)
+    glass.fill(0)
+    expect(run(glass).closed).toHaveLength(0)
+  })
   test('two thin parallel lines across the open side: a glass wall (full-height glazing), the room at its printed size', () => {
     const r = close(threeWalls(), [{ at: { x: 3, y: 2.5 }, name: 'Bed 2', kind: 'bed', dims: SIZE }], sheet([0.96, 1.04]))
     expect(r.closed).toHaveLength(1)
