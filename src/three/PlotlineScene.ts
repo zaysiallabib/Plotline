@@ -1682,7 +1682,7 @@ export class PlotlineScene {
       o.userData.floorM = floor
       o.rotation.set(0, -THREE.MathUtils.degToRad(p.rotationDeg), 0) // about the vertical only (fitSelection)
       o.userData.roomId = p.roomId
-      o.userData.outside = p.outside
+      o.userData.outside = p.outside || p.onCap // (on a cap: lit as the open air too)
       this.readDaylight(o) // moved to a darker or a brighter spot, another room: lit as it, at once
       o.visible = !p.removed
     }

@@ -226,7 +226,7 @@ export const OUTSIDE_PIECES: Record<string, KitAsset> = {
   fins_vertical: OUT('fins_vertical', 'Vertical fins, aluminium (1.5 m)', 'screen', 1.5, 1.6, 0.3, 0.85, 'cover'),
   louvre_screen: OUT('louvre_screen', 'Louvre screen, aluminium (1.5 m)', 'screen', 1.5, 1.4, 0.12, 0.85, 'cover'),
   jaali_screen: OUT('jaali_screen', 'Jaali screen, perforated (1.5 m)', 'screen', 1.5, 1.4, 0.06, 0.85, 'cover'),
-  planter_edge: OUT('planter_edge', 'Planter box for a balcony edge (1.5 m)', 'plant', 1.5, 0.7, 0.3, 0.62),
+  planter_edge: { ...OUT('planter_edge', 'Planter box for a balcony edge (1.5 m)', 'plant', 1.5, 0.7, 0.3, 0.62), onEdge: true },
   fire_escape: OUT('fire_escape', 'Fire escape, one floor, steel (2.4 m)', 'fire-escape', 2.4, 3.2, 1.2, 0),
   name_sign: OUT('name_sign', 'Name sign, brushed steel (1.2 m)', 'sign', 1.2, 0.4, 0.06, 2.4),
   // on the floor: a roof deck, a ground-floor zone (walk under the porch roof: category 'rug' like the pergola)

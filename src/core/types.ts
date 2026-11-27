@@ -228,6 +228,11 @@ export interface FurniturePlacement {
    * `outdoor` go there. Absent = in its room.
    */
   outside?: true
+  /**
+   * Sits ON the cap of a solid low wall of its room (a planter box on a balcony's edge, kit `onEdge`): straddling the wall,
+   * its middle on the wall's line, its bottom on the cap (studio/furniture.ts onEdge). Absent = in its room.
+   */
+  onCap?: true
 }
 
 /**

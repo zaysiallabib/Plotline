@@ -143,3 +143,26 @@ describe('a piece held at its limits beside a wall', () => {
     expect(m.piece.x - 1.47 / 2).toBeLessThan(0.25)
   })
 })
+
+describe("a planter box on a balcony's edge (session 31: after the low-wall lane's caps and railings)", () => {
+  const face: WallFace = { p: { x: 5, y: 5.4 }, n: { x: 0, y: -1 } } // the balcony's front parapet (pB, y 5.5, 1.0 m), from the balcony
+  it("on a solid parapet it sits on its cap: straddling the wall's line, its bottom on the cap's top", () => {
+    const m = placePiece(unit, rooms, [], 'planter_edge', face.p, 0, 'pl', { ...face, y: 0.9 })!
+    expect(m.error).toBeNull()
+    expect(m.piece).toMatchObject({ onCap: true, roomId: 'B', mountY: 1.005 })
+    expect(m.piece.y).toBeCloseTo(5.5, 6) // on the wall's line
+    expect(placePiece(unit, rooms, [], 'planter_edge', face.p, 0, 'pl', { p: { x: 6.1, y: 4.75 }, n: { x: 1, y: 0 }, y: 0.9 })!.piece.onCap).toBe(true) // from outside, the same
+    expect(placePiece(unit, rooms, [], 'planter_edge', { x: 5.6, y: 5.4 }, 0, 'pl', { p: { x: 5.6, y: 5.4 }, n: { x: 0, y: -1 }, y: 0.9 })!.error).toBe('Past the end of the wall') // 1.5 m off a 2 m wall's end
+  })
+  it('at a glass front it stands on the balcony floor just inside it, pointed at from inside or out', () => {
+    const glass: Unit = { ...unit, walls: unit.walls.map((w) => (w.id === 'pB' ? { ...w, lowKind: 'glass' as const } : w)) }
+    const r = deriveRooms(glass)
+    for (const w of [face, { p: { x: 5, y: 5.6 }, n: { x: 0, y: 1 } }]) {
+      const m = placePiece(glass, r, [], 'planter_edge', w.p, 0, 'pl', { ...w, y: 0.9 })!
+      expect(m.error).toBeNull()
+      expect(m.piece).toMatchObject({ roomId: 'B', mountY: 0, rotationDeg: 180 })
+      expect(m.piece.onCap).toBeUndefined()
+      expect(m.piece.y).toBeCloseTo(5.4 - 0.15 - 0.005, 6) // its back on the glass front's inner face
+    }
+  })
+})
