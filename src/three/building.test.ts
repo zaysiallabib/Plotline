@@ -945,6 +945,23 @@ describe('the rooms behind the glass take none of the walked flat’s lamps (ses
     expect(used.has(materialFor(EXTERIOR_PLASTER))).toBe(false) // never the walk's own
     b.dispose()
   })
+  test("session 31 outside2: the tower's pictures laid by the scene's metres (a brick course runs on over a slab's edge), the roof's covering by its own; a brick or tile repeat broken up, the plaster as before — one program", async () => {
+    const THREE = await import('three')
+    const { materialFor, EXTERIOR_PLASTER, TILE } = await import('./materials')
+    const brick = { kind: 'pbr' as const, textureId: 'brick_red' }
+    const wall = materialFor(brick, false, false, true)
+    const cover = materialFor(brick, false, false, true, false, 'cover')
+    expect([wall.userData.faceUv, cover.userData.faceUv, materialFor(brick, false, false, true, false, 'shell').userData.faceUv]).toEqual([true, false, false])
+    expect([wall.userData.tileK, materialFor(brick, false, true).userData.tileK, materialFor(EXTERIOR_PLASTER, false, false, true).userData.tileK]).toEqual([TILE.brick_red, TILE.brick_red, undefined])
+    expect(TILE.roof_clay).toBeGreaterThan(0)
+    const s = { uniforms: {} as Record<string, { value: unknown }>, vertexShader: THREE.ShaderLib.standard.vertexShader, fragmentShader: THREE.ShaderLib.standard.fragmentShader }
+    wall.onBeforeCompile(s as never, undefined as never)
+    expect(s.vertexShader).toMatch(/plUv = abs\(plN\.y\) > 0\.5/)
+    expect(s.vertexShader).toMatch(/vMapUv = \( mapTransform \* vec3\( plUv, 1 \) \)/)
+    expect(s.fragmentShader).toMatch(/plMap\( map, vMapUv, 0\.0 \)/)
+    expect([s.uniforms.faceUv.value, s.uniforms.tileK.value]).toEqual([1, TILE.brick_red])
+    expect([wall.customProgramCacheKey(), cover.customProgramCacheKey()]).toEqual(['outside', 'outside'])
+  })
 })
 
 describe('a code-built piece as a stand-in too (session 31 perf: a curtain’s pleats, a bed’s quilting were 4–11 thousand triangles on Lite)', () => {
@@ -1294,12 +1311,44 @@ describe("the building's outside (session 31 facade): what the tower's walls and
     expect(before).not.toContain('paneTint')
   })
 
-  test("red brick for the whole building: every flat's walls, the parapets and the ground's blocks; the plates and columns stay plaster", async () => {
+  test("red brick for the whole building: every flat's walls, the parapets and the ground's blocks — and its edges (session 31 outside2): the slabs' edges, the balconies' bands, the ground's columns; the plates' rooms stay plaster", async () => {
     const b = await tower({ ...A, floor: 2 }, { s_outside: 'fo_out_brick_red' })
     expect(count(b, BRICK)).toBeGreaterThan(10000)
     expect(count(b, BRICK, 9)).toBeGreaterThan(0) // the roof's parapet
-    expect(count(b, PLASTER)).toBeGreaterThan(1000) // the floor plates, the columns
+    expect(count(b, PLASTER)).toBeGreaterThan(1000) // the floor plates' rooms (their tops under the floors, their soffits)
     expect(count(await tower({ ...A, floor: 2 }), BRICK)).toBe(0)
+    // the edges: what was plaster with the walls brick is brick now, and the plaster that is left is the plates' rooms only
+    const walls = await tower({ ...A, floor: 2 }, { s_outside: 'fo_out_brick_red', s_edges: 'fo_edge_plaster' })
+    expect(count(b, BRICK)).toBeGreaterThan(count(walls, BRICK) + 2000)
+    expect(count(b, BRICK, 0)).toBeGreaterThan(count(walls, BRICK, 0)) // the ground's columns
+    expect(count(walls, PLASTER)).toBe(count(b, PLASTER) + count(b, BRICK) - count(walls, BRICK))
+  })
+
+  test("a glass wall's spandrel on the tower (session 31 outside2): a dark band at each storey's foot, its glass above it; none set, as before", async () => {
+    const DARK = '1e2427'
+    const glass = (u: Unit, patch: object): Unit => ({ ...u, walls: u.walls.map((w) => ({ ...w, openings: w.openings.map((o) => (o.kind === 'window' ? { ...o, sillM: 0, heightM: 2.4, ...patch } : o)) })) })
+    const t = bti as unknown as { FLATS: Record<string, { unit: Unit }> }
+    const save = t.FLATS['type-b'].unit
+    try {
+      t.FLATS['type-b'].unit = glass(save, { spandrelM: 0.9 })
+      const b = await tower({ ...A, floor: 2 })
+      expect([3, 5, 8].map((k) => count(b, DARK, k) > 0)).toEqual([true, true, true])
+      t.FLATS['type-b'].unit = glass(save, { spandrelM: 0.9, spandrel: 'outside' })
+      expect(count(await tower({ ...A, floor: 2 }, { s_outside: 'fo_out_brick_red' }), DARK)).toBe(0)
+      t.FLATS['type-b'].unit = glass(save, {})
+      expect(count(await tower({ ...A, floor: 2 }), DARK)).toBe(0)
+    } finally {
+      t.FLATS['type-b'].unit = save
+    }
+  })
+
+  test('the edges in their own finish (concrete, metal) whatever the walls: a plaster tower with concrete edges keeps its walls plaster', async () => {
+    const CONC = 'd4d8d8' // (fair-faced concrete's tint)
+    const b = await tower({ ...A, floor: 2 }, { s_edges: 'fo_edge_concrete' })
+    const brickEdges = await tower({ ...A, floor: 2 }, { s_outside: 'fo_out_brick_red' })
+    const walls = await tower({ ...A, floor: 2 }, { s_outside: 'fo_out_brick_red', s_edges: 'fo_edge_plaster' })
+    expect(count(b, CONC)).toBe(count(brickEdges, BRICK) - count(walls, BRICK)) // the very same edges
+    expect(count(b, BRICK)).toBe(0)
   })
 
   test('one wall: its run on every floor its drawing stands on; one floor: only that floor; the wall beats the floor', async () => {
@@ -1346,5 +1395,48 @@ describe("the building's outside (session 31 facade): what the tower's walls and
       const u = Object.values(bti.FLATS).find((f) => f.unit.id === h!.wall!.drawing)!.unit
       expect([...outerRuns(u).values()]).toContain(h!.wall!.run)
     }
+  })
+
+  test("session 31 outside2: what wears the outside at a point of the scene (an architect's shape dressed a wall at a time): its storey, and the drawing's wall within 40 cm of its face", async () => {
+    const THREE = await import('three')
+    const { outerRuns } = await import('../furnish/finishes')
+    const b = (await tower({ ...A, floor: 2 })) as unknown as Group & { pickAt(r: InstanceType<typeof THREE.Raycaster>): { k: number; wall?: { drawing: string; run: string } } | null; levelOf(k: number): number; outsideAt(p: InstanceType<typeof THREE.Vector3>): { k: number; drawing?: string; run?: string } | null }
+    const mid = new THREE.Box3().setFromObject(b).getCenter(new THREE.Vector3())
+    const y = b.levelOf(6) + 1.4
+    const r = new THREE.Raycaster(new THREE.Vector3(mid.x, y, mid.z).addScaledVector(new THREE.Vector3(1, 0, 0), -80), new THREE.Vector3(1, 0, 0))
+    const hit = r.intersectObject(b, true).find((h) => h.object.visible && h.object.userData.level === 6)!
+    expect(hit).toBeTruthy()
+    // 30 cm out from that face (a cladding's): the same wall, floor 6
+    const at = b.outsideAt(hit.point.clone().addScaledVector(new THREE.Vector3(1, 0, 0), -0.3))!
+    expect(at.k).toBe(6)
+    const u = Object.values(bti.FLATS).find((f) => f.unit.id === at.drawing)!.unit
+    expect([...outerRuns(u).values()]).toContain(at.run)
+    // a metre out: the floor, no wall
+    expect(b.outsideAt(hit.point.clone().addScaledVector(new THREE.Vector3(1, 0, 0), -1.2))).toEqual({ k: 6 })
+  })
+
+  test("session 31 outside2: the shape's outer walls a wall at a time (shell.ts dressShell's `at`): its upright triangles by what is chosen there, one run per material; nothing local: one material, its index as read", async () => {
+    const THREE = await import('three')
+    const { dressShell } = await import('./shell')
+    const { materialFor } = await import('./materials')
+    const { OUTSIDE_SLOT } = await import('../furnish/finishes')
+    const opt = (id: string) => OUTSIDE_SLOT.options.find((o) => o.id === id)!.material
+    const file = new THREE.MeshStandardMaterial({ name: 'plotline:out:fo_out_brick_red:main' })
+    const geo = new THREE.BoxGeometry(4, 6, 0.3).translate(0, 3, 0) // two storeys of wall, its top and bottom flat
+    const m = new THREE.Mesh(geo, file)
+    const g = new THREE.Group().add(m)
+    const index0 = Array.from(geo.index!.array)
+    // the upper storey (y > 3) chose stone: its upright triangles stone, the rest the building's brick
+    const at = (p: InstanceType<typeof THREE.Vector3>) => (p.y > 3 ? opt('fo_out_stone') : opt('fo_out_brick_red'))
+    expect(dressShell(g, () => opt('fo_out_brick_red'), undefined, at)).toBe(1)
+    const mats = m.material as unknown as InstanceType<typeof THREE.Material>[]
+    expect(mats).toHaveLength(2)
+    expect(mats).toContain(materialFor(opt('fo_out_stone'), true, false, true, false, 'shell'))
+    expect(geo.groups.reduce((n, x) => n + x.count, 0)).toBe(index0.length)
+    expect([...geo.index!.array].sort((p, q) => p - q)).toEqual([...index0].sort((p, q) => p - q))
+    // nothing local any more: back to one material, the index as read
+    dressShell(g, () => opt('fo_out_brick_red'))
+    expect(m.material).toBe(materialFor(opt('fo_out_brick_red'), true, false, true, false, 'shell'))
+    expect([geo.groups.length, Array.from(geo.index!.array)]).toEqual([0, index0])
   })
 })

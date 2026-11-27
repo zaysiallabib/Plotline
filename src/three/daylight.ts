@@ -16,8 +16,8 @@
  */
 import * as THREE from 'three'
 import * as core from '../core'
-import type { Id, Pt, Room, RoomKind, Unit, Wall } from '../core'
-import { isGlazing } from './openings'
+import type { Id, LowWallKind, Pt, Room, RoomKind, Unit, Wall } from '../core'
+import { isGlazing, spandrelOf } from './openings'
 
 /** plan x, plan y, height */
 type V3 = [number, number, number]
@@ -47,6 +47,13 @@ export const SHORT_WALL_M = 0.3
  * bake counts them on every window, a pair deleted or slid away included); a door stands ajar
  */
 const TAU: Record<string, number> = { window: 0.6, slider: 0.7, door: 0.3, passage: 1, gap: 1 }
+/**
+ * A low wall that is no solid wall (core.railOf; session 31 outside2): what of the light reaching it comes through, up to
+ * its top — a glass balustrade's 12 mm panes as a glass wall's (0.85), a railing's 16 mm bars 11.5 cm apart and a chain-link's
+ * wires mostly air, the Dhaka grille's bars and band a little less, timber balusters about two thirds, a board fence little.
+ * lowwall left every one solid: a glass-fronted balcony and the room behind it were as dark as behind a parapet.
+ */
+export const RAIL_TAU: Record<LowWallKind, number> = { glass: 0.85, railing: 0.85, chainlink: 0.85, grille: 0.75, timber: 0.6, fence: 0.2 }
 /** radiance below the horizon (street, the blocks opposite) / the sky's: a ceiling sees the window's lower view */
 const GROUND = 0.3
 /** mean interior albedo: bounce = ρ / (1 − ρ) × the room's mean direct light */
@@ -343,9 +350,17 @@ export function* bakeSteps(unit: Unit, rooms: Room[], cover: Pt[][] = [], blocks
       const through = (tau: number, u0: number, u1: number, z0: number, z1: number) =>
         outdoor(other) ? rect(w, u0, u1, z0, z1, tau * skyOf(other, cover), null, s[0]?.id === r.id ? -1 : 1) : rect(w, u0, u1, z0, z1, tau, other)
       // a glass wall (openings.ts isGlazing) lets more through than a window's sashes and curtains
-      for (const o of w.openings) through(isGlazing(o) ? 0.85 : (TAU[o.kind] ?? 0.5), o.offsetM, o.offsetM + o.widthM, o.sillM, o.sillM + o.heightM)
+      // (a glass wall's spandrel band, openings.ts spandrelOf: opaque)
+      for (const o of w.openings) through(isGlazing(o) ? 0.85 : (TAU[o.kind] ?? 0.5), o.offsetM, o.offsetM + o.widthM, o.sillM + spandrelOf(o), o.sillM + o.heightM)
       // a parapet / planter wall lower than the room: open above it
       if (w.heightM < h - 0.05) through(TAU.gap, 0, frames.get(id)!.lengthM, w.heightM, h)
+      // a railing, a glass front, a fence: through it too, up to its top (its gates, the openings above, are passages already)
+      const rail = core.railOf(w)
+      if (rail) {
+        let runs: [number, number][] = [[0, frames.get(id)!.lengthM]]
+        for (const o of w.openings) runs = runs.flatMap(([a, b]) => [[a, Math.min(b, o.offsetM)], [Math.max(a, o.offsetM + o.widthM), b]] as [number, number][])
+        for (const [a, b] of runs) if (b - a > 0.05) through(RAIL_TAU[rail], a, b, 0, Math.min(w.heightM, h))
+      }
     }
     if (openToSky(r, cover)) {
       const poly = core.roomInnerPolygon(r, unit)
@@ -648,6 +663,36 @@ export function nightPatch(s: { uniforms: Record<string, THREE.IUniform>; vertex
     #include <lights_physical_fragment>`,
   )
 }
+/**
+ * A textured outside finish's repeat broken up (session 31 outside2: the clay roof showed its 2.5 m tile from the street, the
+ * brick its 2 m — a picture's lighter and darker rows came back every tile as stripes). Its colour picture levelled: each
+ * point × the picture's mean ÷ the picture blurred to 8 × 8 a tile there, so what varies over a quarter tile and more (the
+ * stripes) is gone and each brick and tile, its joints and texture, stay; then a weathering shade of its own, ± `tileK`, in
+ * blotches about three tiles across that never repeat. From afar the picture is its own mean and the shade. A uniform per
+ * material (tileK 0: as before — the plaster, every finish without a TILE entry): no new program. plMap(picture, uv, mip bias).
+ */
+export const TILE_GLSL = /* glsl */ `
+uniform float tileK;
+float plHash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
+float plNoise(vec2 p) {
+  vec2 i = floor(p), f = fract(p), u = f * f * (3.0 - 2.0 * f);
+  return mix(mix(plHash(i), plHash(i + vec2(1.0, 0.0)), u.x), mix(plHash(i + vec2(0.0, 1.0)), plHash(i + vec2(1.0, 1.0)), u.x), u.y);
+}
+vec4 plMap(sampler2D t, vec2 uv, float bias) {
+  vec4 a = texture2D(t, uv, bias);
+  if (tileK <= 0.0) return a;
+  vec3 blur = textureLod(t, uv, log2(float(textureSize(t, 0).x)) - 3.0).rgb;
+  a.rgb *= textureLod(t, vec2(0.5), 16.0).rgb / max(blur, vec3(0.02));
+  float n = plNoise(uv * 0.31 + vec2(11.3, 2.9)) * 0.6 + plNoise(uv * 0.83 + vec2(5.2, 1.4)) * 0.4;
+  a.rgb *= 1.0 + tileK * (n - 0.5) * 2.0;
+  return a;
+}
+`
+/** a material's TILE_GLSL uniform, read each frame from its userData (materials.ts sets tileK by its picture) */
+export function tileUniforms(s: { uniforms: Record<string, THREE.IUniform> }, m: THREE.Material): void {
+  s.uniforms.tileK = { get value() { return (m.userData.tileK as number | undefined) ?? 0 } }
+}
+
 /** the atlas shown (setDaylight) and its texture's bytes: setLampShare rewrites their lamp channel */
 let shown: { d: Daylight; rg: Uint8Array; tex: THREE.DataTexture } | null = null
 
@@ -773,11 +818,12 @@ export function daylit(m: THREE.MeshStandardMaterial, on = true): void {
     s.uniforms.mottleK = { value: m.userData.mottle?.k ?? 0 }
     s.uniforms.mottleUv = { value: m.userData.mottle?.uv ?? 1 }
     s.uniforms.dayCut = { get value() { return m.userData.solid ? -1 : m.alphaTest } } // (read each frame, as three's own alphaTest)
+    tileUniforms(s, m) // (an outer face's brick or tiles: their repeat broken up, TILE_GLSL)
     nightPatch(s, { value: m.userData.nightOut ? 1 : 0 }) // an outer face (materials.ts EXTERIOR_PLASTER): the city's night light; a room's: none
     s.vertexShader = `attribute vec2 dayUv;\nvarying vec2 vDayUv;\n${s.vertexShader}`.replace('#include <uv_vertex>', '#include <uv_vertex>\nvDayUv = dayUv;')
     // (the baked lamps' picture declared only where it is read: Firefox counts every declared picture against the 16 a program may)
-    s.fragmentShader = `${lampBake.on ? '#define LAMP_BAKE\n' : ''}uniform sampler2D dayMap;\nuniform float dayMix;\nuniform vec3 lampOutSky;\nuniform vec3 lampOutGround;\nuniform sampler2D mottleMap;\nuniform float mapBias;\n${lampBake.on ? 'uniform sampler2D lampMap;\n' : ''}uniform vec3 lampColor;\nuniform float dayPiece;\nuniform float dayOn;\nuniform float mottleK;\nuniform float mottleUv;\nuniform float dayCut;\nvarying vec2 vDayUv;\n${s.fragmentShader}`
-      .replace('#include <map_fragment>', THREE.ShaderChunk.map_fragment.replace('texture2D( map, vMapUv )', 'texture2D( map, vMapUv, mapBias )'))
+    s.fragmentShader = `${lampBake.on ? '#define LAMP_BAKE\n' : ''}${TILE_GLSL}uniform sampler2D dayMap;\nuniform float dayMix;\nuniform vec3 lampOutSky;\nuniform vec3 lampOutGround;\nuniform sampler2D mottleMap;\nuniform float mapBias;\n${lampBake.on ? 'uniform sampler2D lampMap;\n' : ''}uniform vec3 lampColor;\nuniform float dayPiece;\nuniform float dayOn;\nuniform float mottleK;\nuniform float mottleUv;\nuniform float dayCut;\nvarying vec2 vDayUv;\n${s.fragmentShader}`
+      .replace('#include <map_fragment>', THREE.ShaderChunk.map_fragment.replace('texture2D( map, vMapUv )', 'plMap( map, vMapUv, mapBias )'))
       .replace('#include <alphatest_fragment>', THREE.ShaderChunk.alphatest_fragment.replaceAll('alphaTest', 'dayCut'))
       .replace(
       '#include <aomap_fragment>',

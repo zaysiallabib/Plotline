@@ -7,22 +7,23 @@
  */
 import { useEffect, useMemo, useReducer, useRef, useState, useSyncExternalStore } from 'react'
 import * as core from '../core'
-import type { Configuration, FinishOption, FinishSlot, FurniturePlacement, Id, Opening, OpeningKind, Pt, Room, Unit, Wall } from '../core'
+import type { Configuration, FinishOption, FinishSlot, FurniturePlacement, Id, Opening, OpeningKind, Pt, RailColor, Room, Unit, Wall } from '../core'
 import { coverOf, floorIn, levelName, projectUnit, roleIn, roofIn, saveRoof, stairOnFloor, stairsDown, stairTo, stemIn, streetOf, topFloor, towerOf, type Tower } from '../data/building'
 import type { Roof } from '../data/building/roof'
 import { buildingOf, keptAt, outsideRecord, placesIn, readFinishes } from '../data/building/apartments'
 import { readProjects, sharedAt, slotsText } from '../data/building/projects'
 import { arriveBy, isStair, isStairRoom } from '../furnish/stairs'
-import { FRAMES_SLOT, OUTSIDE_SLOT, faceWallId, frameKey, outerRuns, outsideOf, roomKey, wallKey } from '../furnish/finishes'
+import { EDGES_SLOT, FRAMES_SLOT, OUTSIDE_SLOT, faceWallId, frameKey, outerRuns, outsideOf, roomKey, wallKey } from '../furnish/finishes'
 import { placementLabel, placementSize } from '../furnish/kit'
 import { onOwnChange, ownVersion, refreshOwnOptions, withOwnOptions } from '../furnish/own'
+import { isGlazing } from '../furnish/presets'
 import { deletePiece, layoutFor, movePiece, pieceQuad, refurnish, resizeAxes, resizePiece, surfaceOf, type Move } from '../studio/furniture'
 import { buyer, flushOutbox, selectionPayload, sendEvent, setBuyerName } from '../lib/events'
 import { learnCarried } from '../lib/library'
 import { configured as sharingConfigured, fetchSharedUnit } from '../lib/supabase'
 import { LinkOff, NoPreview, NotFound, Offline, Skeleton, Slate } from '../lib/pages'
 import { pageTitle } from '../lib/route'
-import { LOW_KINDS, WALL_TYPES, findOpening, initialState, isUnit, normalizeUnit, reducer, wallTypeOf, type Action, type StudioState } from '../studio/model'
+import { LOW_KINDS, RAIL_COLOR_WORDS, SPANDREL_WORDS, WALL_TYPES, findOpening, initialState, isUnit, normalizeUnit, reducer, wallTypeOf, type Action, type StudioState } from '../studio/model'
 import { preloadModels } from '../three/furniture'
 import { PlotlineScene, type ArrangeEvent, type OpeningEvent, type PickHit, type SceneMode } from '../three/PlotlineScene'
 import type { TowerHit } from '../three/building'
@@ -512,9 +513,10 @@ function FtIn({ label, m, onSet }: { label: string; m: number; onSet: (m: number
   )
 }
 
-type LowPatch = { kind?: (typeof LOW_KINDS)[number][0]; cornice?: boolean }
-/** A low wall's Made of (model LOW_KINDS) and a solid one's Cornice: Edit openings' card and the Building view's balcony edge */
+type LowPatch = { kind?: (typeof LOW_KINDS)[number][0]; cornice?: boolean; color?: RailColor }
+/** A low wall's Made of (model LOW_KINDS), a solid one's Cornice, a railing's Colour: Edit openings' card and the Building view's balcony edge */
 function MadeOf({ w, onLowKind }: { w: Wall; onLowKind: (patch: LowPatch) => void }) {
+  const rail = core.railOf(w)
   return (
     <div className="arrange-row made-of">
       <label className="ftin">
@@ -530,6 +532,18 @@ function MadeOf({ w, onLowKind }: { w: Wall; onLowKind: (patch: LowPatch) => voi
       {!w.lowKind && (
         <label className="ftin-check" title="A stepped band under the wall's cap, as on a classical parapet">
           <input type="checkbox" checked={!!w.cornice} onChange={(e) => onLowKind({ cornice: e.target.checked })} /> Cornice
+        </label>
+      )}
+      {rail && core.railColors(rail).length > 0 && (
+        <label className="ftin">
+          Colour
+          <select value={core.railColorOf(w) ?? ''} onChange={(e) => onLowKind({ color: e.target.value as RailColor })}>
+            {core.railColors(rail).map((c) => (
+              <option key={c} value={c}>
+                {RAIL_COLOR_WORDS[c]}
+              </option>
+            ))}
+          </select>
         </label>
       )}
     </div>
@@ -574,7 +588,7 @@ function OpeningPanel(p: {
   refused: boolean
   canUndo: boolean
   onKind: (k: OpeningKind) => void
-  onSize: (patch: Partial<Pick<Opening, 'widthM' | 'heightM' | 'sillM'>>) => void
+  onSize: (patch: Partial<Pick<Opening, 'widthM' | 'heightM' | 'sillM' | 'spandrelM' | 'spandrel'>>) => void
   onWall: (patch: { lengthM?: number; heightM?: number }) => void
   /** what the low wall is made of (model LOW_KINDS), a solid one's cornice */
   onLowKind: (patch: LowPatch) => void
@@ -616,6 +630,23 @@ function OpeningPanel(p: {
             <FtIn label="Height" m={o.heightM} onSet={(heightM) => p.onSize({ heightM })} />
             <FtIn label="Sill" m={o.sillM} onSet={(sillM) => p.onSize({ sillM })} />
           </div>
+          {isGlazing(o) && (
+            <div className="arrange-row">
+              <FtIn label="Solid band" m={o.spandrelM ?? 0} onSet={(m) => p.onSize({ spandrelM: m > 0.01 ? m : undefined })} />
+              {(o.spandrelM ?? 0) > 0 && (
+                <label className="ftin">
+                  Band of
+                  <select value={o.spandrel ?? 'dark'} onChange={(e) => p.onSize({ spandrel: e.target.value as NonNullable<Opening['spandrel']> })}>
+                    {SPANDREL_WORDS.map(([k, w]) => (
+                      <option key={k} value={k}>
+                        {w}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              )}
+            </div>
+          )}
           {p.frame && (
             <label className="ftin">
               Frame
@@ -780,7 +811,7 @@ function Viewer({ first }: { first: Shown }) {
   const ownV = useSyncExternalStore(onOwnChange, ownVersion)
   useMemo(() => refreshOwnOptions(unit.finishSlots), [unit.finishSlots, ownV])
   /** the outside's two slots (what the walls are clad in, the window frames) with the staff's own options in them */
-  const outSlots = useMemo(() => withOwnOptions([OUTSIDE_SLOT, FRAMES_SLOT]), [ownV]) // eslint-disable-line react-hooks/exhaustive-deps
+  const outSlots = useMemo(() => withOwnOptions([OUTSIDE_SLOT, FRAMES_SLOT, EDGES_SLOT]), [ownV]) // eslint-disable-line react-hooks/exhaustive-deps
   // the outside into the 3D: before the unit (setUnit builds the tower with it), then each change (the tower built again)
   useEffect(() => scene?.setOutside(outsideOf(outside, outSlots)), [scene, outside, outSlots])
   /** the floor the walked flat stands on in its tower: the outside card's "This floor" */

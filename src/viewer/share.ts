@@ -98,7 +98,7 @@ export function keepConfig(raw: unknown, slots: FinishSlot[], keys?: FinishKeys)
 export function keepOutside(raw: unknown): Configuration {
   const out: Configuration = {}
   for (const [key, opt] of Object.entries(raw && typeof raw === 'object' && !Array.isArray(raw) ? raw : {}))
-    if (/^(s_outside|s_frames|out:.+|frame:.+)$/.test(key) && key.length <= 200 && typeof opt === 'string' && opt.length <= 80) out[key] = opt
+    if (/^(s_outside|s_frames|s_edges|out:.+|frame:.+)$/.test(key) && key.length <= 200 && typeof opt === 'string' && opt.length <= 80) out[key] = opt
   return out
 }
 

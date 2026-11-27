@@ -182,6 +182,15 @@ describe("a European IFC's core (s31 bigifc): its stair, lift and corridor belon
   })
 })
 
+test("railColorOf (session 31 outside2): its own colour when its kind offers it, else its kind's own; a solid wall or a chain-link fence none", () => {
+  const c = (lowKind?: core.LowWallKind, railColor?: core.RailColor, heightM = 1.1) => core.railColorOf({ heightM, lowKind, railColor })
+  expect([c('railing'), c('grille'), c('glass'), c('timber'), c('fence')]).toEqual(['silver', 'black', 'silver', 'teak', 'weathered'])
+  expect([c('railing', 'black'), c('grille', 'white'), c('glass', 'anthracite'), c('timber', 'walnut'), c('fence', 'white')]).toEqual(['black', 'white', 'anthracite', 'walnut', 'white'])
+  expect([c('railing', 'teak'), c('timber', 'silver')]).toEqual(['silver', 'teak']) // not offered for that kind: its own
+  expect([c(), c(undefined, 'black'), c('chainlink', 'black'), c('railing', 'black', 3)]).toEqual([null, null, null, null])
+  for (const k of ['glass', 'railing', 'grille', 'timber', 'fence'] as const) expect(new Set(core.railColors(k)).size).toBe(core.railColors(k).length)
+})
+
 test('railOf: a low wall is what its kind says over a kerb and under 2.4 m; absent, a kerb or a storey wall: solid', () => {
   const w = (heightM: number, lowKind?: core.LowWallKind) => core.railOf({ heightM, lowKind })
   expect([w(1.1, 'glass'), w(0.45, 'grille'), w(1.8, 'chainlink'), w(2.39, 'fence')]).toEqual(['glass', 'grille', 'chainlink', 'fence'])

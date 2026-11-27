@@ -4,7 +4,7 @@
  * in one place: data/building/apartments.ts — the Studio's tool F arranges the drawing's own), the undo stack, and where a
  * drag in the 3D view puts a piece.
  */
-import { newId, takesLowKind, vertexById, wallFrame, type FurniturePlacement, type Id, type LowWallKind, type Pt, type Room, type Unit } from '../core'
+import { newId, takesLowKind, vertexById, wallFrame, type FurniturePlacement, type Id, type LowWallKind, type Pt, type RailColor, type Room, type Unit } from '../core'
 import { finishesKey, keptAt, layoutKey, placesIn, saveLayout } from '../data/building/apartments'
 import type { Tower } from '../data/building'
 import { PROJECTS_KEY, forkFloor, keepApartments, parseProjects, sharedAt, stemOf, syncUnit } from '../data/building/projects'
@@ -384,7 +384,7 @@ export function outsideOnEveryFloor(u: Unit, rooms: Room[], changed: FurniturePl
  * Studio would write the old one back). Returns the drawing as it is now and its stem on floor `k`; null when `stem` is no
  * project flat, the wall takes no Made of, or the browser would not save.
  */
-export function madeOfOnTower(stem: string, k: number, wallId: Id, patch: { kind?: LowWallKind | 'solid'; cornice?: boolean }, one: boolean, store?: Store): { unit: Unit; stem: string } | null {
+export function madeOfOnTower(stem: string, k: number, wallId: Id, patch: { kind?: LowWallKind | 'solid'; cornice?: boolean; color?: RailColor | null }, one: boolean, store?: Store): { unit: Unit; stem: string } | null {
   const s = store ?? localStorage
   try {
     let ps = parseProjects(s.getItem(PROJECTS_KEY))

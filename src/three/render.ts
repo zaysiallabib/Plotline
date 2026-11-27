@@ -18,7 +18,7 @@ import { GTAOPass } from 'three/addons/postprocessing/GTAOPass.js'
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js'
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js'
 import * as core from '../core'
-import type { Id, Pt, Room, Unit } from '../core'
+import type { Id, MaterialRef, Pt, Room, Unit } from '../core'
 import type { Street } from '../data/building'
 import { kitAsset, lightOf, placementSize } from '../furnish/kit'
 import { bottomOf } from '../studio/furniture'
@@ -28,8 +28,8 @@ import { buildContactShadows, buildStreet, haze, outdoorFill, setHaze, STREET_LI
 import { dayMix, isCovered, LAMP_RANGE, lampBake, lampOut, nightOut, openToSky, setLampDirect, setLampShare, type BakedLamp } from './daylight'
 import { carriesRoof, coverSlabGeometry, junctionShade, roomCeiling, storeyTop, wallLift } from './details'
 import { EXTERIOR_PLASTER, isBlank, materialFor } from './materials'
-import { meterUVs, PANES, setGlassSky } from './openings'
-import { balconyEdges } from './rails'
+import { PANES, setGlassSky } from './openings'
+import { balconyEdgeParts, faceUvs } from './rails'
 
 /**
  * high: GTAO + 4× MSAA buffer, up to 2× pixels, 2048 shadow map, 12 lamps (3 casting). low: 1× pixels with MSAA, no AO,
@@ -187,6 +187,62 @@ export const drawWide = (moved: boolean, waited: number): boolean => !moved || w
 
 /** the frusta of the flat's own shadow maps — the sun's sharp one and each lamp's (Look, markSharp) — wideOnly's meshes are never drawn into */
 const flatMaps = new WeakSet<THREE.Frustum>()
+
+/** a wall's stretch of the walked flat's slab: its foot box, a balcony's band under it — triangles start … start + count (index order) */
+export interface EdgeRange {
+  id: Id
+  start: number
+  count: number
+}
+/** g's upright faces' texture coordinates as `dy` higher (a part built at 0 and placed at dy): its pictures laid as at its height. */
+function atHeight(g: THREE.BufferGeometry, dy: number): THREE.BufferGeometry {
+  const n = g.attributes.normal
+  const uv = g.attributes.uv
+  for (let i = 0; i < uv.count; i++) if (Math.abs(n.getY(i)) < 0.5) uv.setY(i, uv.getY(i) + dy)
+  uv.needsUpdate = true
+  return g
+}
+
+/** Look's slab or roof (userData.slabEdges: its walls' ranges, its index as built) in the building's Edges and caps (edgeGroups); none: as built. */
+function dressSlab(slab: THREE.Mesh, refOf: (wallId: Id) => MaterialRef | null): void {
+  const { ranges, index } = slab.userData.slabEdges as { ranges: EdgeRange[]; index: ArrayLike<number> }
+  const g = slab.geometry
+  const d = edgeGroups(index, ranges, refOf)
+  g.clearGroups()
+  const now = g.index!.array as Uint16Array | Uint32Array
+  now.set(d?.index ?? index)
+  g.index!.needsUpdate = true
+  if (!d) return void (slab.material = materialFor(EXTERIOR_PLASTER))
+  for (const x of d.groups) g.addGroup(x.start, x.count, x.materialIndex)
+  slab.material = d.refs.map((r) => (r ? materialFor(r, false, false, false, true) : materialFor(EXTERIOR_PLASTER)))
+}
+
+/**
+ * The walked flat's slab in the building's Edges and caps (session 31 outside2: a brick tower had a plaster seam at every
+ * floor): its index rearranged so each material's triangles are one run — the rest of the slab (its rooms' undersides, a
+ * wall whose edge is the plaster) the first group, then one group per material `refOf` names for a wall's ranges (null: the
+ * plaster). null: every range the plaster — the slab as built, one material.
+ */
+export function edgeGroups(index: ArrayLike<number>, ranges: EdgeRange[], refOf: (wallId: Id) => MaterialRef | null): { index: number[]; groups: { start: number; count: number; materialIndex: number }[]; refs: (MaterialRef | null)[] } | null {
+  const by = new Map<MaterialRef | null, [number, number][]>([[null, []]])
+  const add = (r: MaterialRef | null, a: number, b: number) => b > a && by.set(r, [...(by.get(r) ?? []), [a, b]])
+  let at = 0
+  for (const r of ranges) {
+    add(null, at, r.start)
+    add(refOf(r.id), r.start, r.start + r.count)
+    at = r.start + r.count
+  }
+  add(null, at, index.length)
+  if (by.size === 1) return null
+  const out: number[] = []
+  const groups: { start: number; count: number; materialIndex: number }[] = []
+  for (const spans of by.values()) {
+    const start = out.length
+    for (const [a, b] of spans) for (let i = a; i < b; i++) out.push(index[i])
+    groups.push({ start, count: out.length - start, materialIndex: groups.length })
+  }
+  return { index: out, groups, refs: [...by.keys()] }
+}
 export const markSharp = (light: THREE.DirectionalLight | THREE.SpotLight): void => void flatMaps.add(light.shadow.getFrustum())
 /** a wideOnly mesh's culling test: never in the flat's maps, otherwise as three tests it (the view, the sun's wide map) */
 function exceptSharp(this: THREE.Mesh, f: THREE.Frustum): boolean {
@@ -732,7 +788,16 @@ export class Look {
   private towerStreet = false
   private groundY = 0
 
+  /**
+   * The building's Edges and caps on this flat's slab (PlotlineScene.applyMaterials): each wall's stretch of the slab's edge and
+   * a balcony's band under it in what `refOf` says (null: the plaster); every one the plaster — one material, as built.
+   */
+  dressEdges(refOf: (wallId: Id) => MaterialRef | null): void {
+    this.unitGroup.traverse((o) => void (o.userData.slabEdges && dressSlab(o as THREE.Mesh, refOf)))
+  }
+
   /** The street plane, and this flat's own slab / lights / street: hidden while the Building view shows a level below them. */
+
   showGround(plane: boolean, flat = plane): void {
     this.ground.visible = plane
     this.unitGroup.visible = flat && !this.leaving // a floor built for a stair stays hidden until swap()
@@ -794,7 +859,7 @@ export class Look {
       const [a, b] = [u0 - (u0 <= 1e-9 ? w.thicknessM / 2 : 0), (u1 ?? f.lengthM) + ((u1 ?? f.lengthM) >= f.lengthM - 1e-9 ? w.thicknessM / 2 : 0)]
       const m = new THREE.Matrix4().makeBasis(new THREE.Vector3(f.dir.x, 0, f.dir.y), new THREE.Vector3(0, 1, 0), new THREE.Vector3(-f.dir.y, 0, f.dir.x))
       m.setPosition(f.origin.x + (f.dir.x * (a + b)) / 2, y - (SLAB_M + 0.001) / 2, f.origin.y + (f.dir.y * (a + b)) / 2)
-      return meterUVs(new THREE.BoxGeometry(b - a, SLAB_M - 0.001, w.thicknessM).applyMatrix4(m)) // the plaster scan, not stretched 0..1 per face
+      return faceUvs(new THREE.BoxGeometry(b - a, SLAB_M - 0.001, w.thicknessM).applyMatrix4(m)) // the plaster scan (a brick edge: Edges and caps), not stretched 0..1 per face — along the wall at any angle
     }
     /** the stretches of wall w under the cover (0.5 m steps by their middles) */
     const underCover = (w: Unit['walls'][number]): [number, number][] => {
@@ -814,24 +879,28 @@ export class Look {
     const wallParts = unit.walls.map((w) => box(w, 0))
     // under the floors: each wall's box under its lower side's floor; none under a flush line (the floors meet on it, and a
     // box there poked up through a ramp beside it)
-    const footParts = unit.walls.flatMap((w) => (w.heightM > 0 ? [box(w, Math.min(...wallLift(w, unit, rooms).foot))] : []))
+    const footWalls = unit.walls.filter((w) => w.heightM > 0)
+    const footParts = footWalls.map((w) => box(w, Math.min(...wallLift(w, unit, rooms).foot)))
     // the roof closes no wall that stands only among open zones (a kerb, a boundary wall, a screen in a lawn): a beam at the
     // storey's top over it would hang in the sky and stripe the lawn with its shadow
     const open = (r: Room | null) => !r || r.kind === 'shaft' || (core.isOutdoor(r.kind) && !isCovered(r, cover)) // a void in a roof deck too
     // — and a wall among zones only (a boundary wall, a ramp's side) closes the roof only where the cover is over it: a
     // drive half under the tower kept a beam along its whole wall, out into the sky
-    const roofWalls = unit.walls.flatMap((w, i) => {
+    const roofWalls = unit.walls.flatMap((w, i): [Id, THREE.BufferGeometry][] => {
       const s = sidesOf(w)
       if (!(w.heightM > 0) || !carriesRoof(w, s, unit, rooms, this.topY) || (s.some((r) => r && core.isOutdoor(r.kind)) && s.every(open))) return []
-      return s.some((r) => r) && s.every((r) => !r || core.isOutdoor(r.kind)) ? underCover(w).map(([u0, u1]) => box(w, 0, u0, u1)) : [wallParts[i]]
+      return (s.some((r) => r) && s.every((r) => !r || core.isOutdoor(r.kind)) ? underCover(w).map(([u0, u1]) => box(w, 0, u0, u1)) : [wallParts[i]]).map((g): [Id, THREE.BufferGeometry] => [w.id, g])
     })
     // (a drawing with nothing traced yet — a set's floor still a picture to trace — has no parts: an empty slab, not a crash)
     const merged = (gs: THREE.BufferGeometry[]) => (gs.length ? mergeGeometries(gs) : new THREE.BufferGeometry())
     // its balconies' slab edges standing out past their fronts (rails.ts; not under an architect's shape: its own slabs show)
-    const edges = unit.shell ? null : balconyEdges(unit, rooms)
-    edges?.setIndex([...Array(edges.attributes.position.count).keys()]) // (the slab's parts are indexed)
-    const slabGeo = merged([...underFloors, ...footParts, ...(edges ? [edges] : [])])
-    edges?.dispose()
+    const edges = unit.shell ? [] : balconyEdgeParts(unit, rooms)
+    for (const [, g] of edges) g.setIndex([...Array(g.attributes.position.count).keys()]) // (the slab's parts are indexed)
+    const slabGeo = merged([...underFloors, ...footParts, ...edges.map(([, g]) => g)])
+    // each wall's stretch of its edge, for the building's Edges and caps (dressEdges)
+    let at = underFloors.reduce((n, g) => n + g.index!.count, 0)
+    const ranges: EdgeRange[] = [...footParts.map((g, i): [Id, THREE.BufferGeometry] => [footWalls[i].id, g]), ...edges].map(([id, g]) => ({ id, start: (at += g.index!.count) - g.index!.count, count: g.index!.count }))
+    edges.forEach(([, g]) => g.dispose())
     // the roof's room undersides (single planes the shadow map stores) sit ROOF_LIFT higher than its wall boxes: 5 mm over
     // the wall tops, the shadow biases reached past them and lit the top few mm of every wall facing the sun — a thin sun
     // streak at the ceiling (founder, 2026-10-04). The boxes still close the wall tops, so no low sun gets in between.
@@ -840,13 +909,30 @@ export class Look {
     // (a solid slab, its edge and both faces: the one-sided soffit it was vanished seen from the side — from Maheer's Plotline 2.0)
     const over = cover.map((poly) => coverSlabGeometry(poly, SLAB_M))
     // (a room under the cover: the cover's own plane is its roof — two coplanar planes fought in stripes)
-    const lifted = [...roomParts.filter((_, i) => !openToSky(rooms[i], cover) && !cover.some((c) => core.pointInPolygon(rooms[i].centroid, c))), ...over].map((g) => g.clone().translate(0, ROOF_LIFT, 0))
-    const roofGeo = merged([...lifted, ...roofWalls])
-    ;[...roomParts, ...underFloors, ...wallParts, ...footParts, ...lifted, ...over, ...roofWalls].forEach((g) => g.dispose())
+    // (raised to the storey's top: its upright faces' pictures laid as at that height, so a brick course runs on from the
+    // walls under it — the Building view shows it as the slab's edge, Edges and caps)
+    const up0 = this.topY + ROOF_M
+    const lifted = [...roomParts.filter((_, i) => !openToSky(rooms[i], cover) && !cover.some((c) => core.pointInPolygon(rooms[i].centroid, c))), ...over].map((g) => atHeight(g.clone().translate(0, ROOF_LIFT, 0), up0))
+    for (const [, g] of roofWalls) atHeight(g, up0)
+    const roofGeo = merged([...lifted, ...roofWalls.map(([, g]) => g)])
+    // (the slab over the flat: its walls' boxes are the slab's edge above this floor — the building's Edges and caps too)
+    let up = lifted.reduce((n, g) => n + (g.index?.count ?? 0), 0)
+    // and the slab of the floor above over a zone (coverSlabGeometry): its sides are that slab's edge, of no one wall ('')
+    let start = 0
+    const sides = lifted.flatMap((g, i) => {
+      const at = start
+      start += g.index?.count ?? 0
+      const s = i >= lifted.length - over.length ? g.groups[1] : undefined // (ExtrudeGeometry: the caps, then the sides)
+      return s ? [{ id: '', start: at + s.start, count: s.count }] : []
+    })
+    const roofRanges: EdgeRange[] = [...sides, ...roofWalls.map(([id, g]) => ({ id, start: (up += g.index!.count) - g.index!.count, count: g.index!.count }))]
+    ;[...roomParts, ...underFloors, ...wallParts, ...footParts, ...lifted, ...over, ...roofWalls.map(([, g]) => g)].forEach((g) => g.dispose())
     const slab = new THREE.Mesh(slabGeo, materialFor(EXTERIOR_PLASTER))
     slab.castShadow = slab.receiveShadow = true
+    if (slabGeo.index) slab.userData.slabEdges = { ranges, index: slabGeo.index.array.slice() }
     // the storey above: ceilings don't cast, so without it the sun pours in through every ceiling
     const roof = new THREE.Mesh(roofGeo, slab.material)
+    if (roofGeo.index && lifted.every((g) => g.index)) roof.userData.slabEdges = { ranges: roofRanges, index: roofGeo.index.array.slice() }
     roof.position.y = this.topY + ROOF_M // underside 5 mm above the ceiling plane: no z-fight
     roof.castShadow = true
     this.indoor.add(roof)
@@ -1127,7 +1213,7 @@ export class Look {
     nightOut.streetY.value = this.ground.position.y // (the street's level: the tower's, a level's, this flat's)
     const under = this.camera.getWorldPosition(this.v).y < this.topY
     this.sky.position.copy(this.v)
-    this.indoor.visible = under
+    this.indoor.visible = under || this.outside // (the Building view: the slab over the flat is the slab edge under the floor above, which starts on it — building.ts lid)
     this.catcher.visible = !under && this.shadows
     if (!this.shadows) {
       const openSky = this.openSky.some((p) => core.pointInPolygon({ x: this.v.x, y: this.v.z }, p))

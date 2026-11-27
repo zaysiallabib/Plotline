@@ -174,6 +174,27 @@ describe('what a low wall is made of (Made of, Cornice)', () => {
     const more = run(glass, { type: 'chain-start', at: at(2, 0) }, { type: 'chain-add', at: at(4, 0) }, { type: 'chain-end' })
     expect(more.unit.walls.map((w) => w.lowKind ?? 'solid').sort()).toEqual(['glass', 'solid'])
   })
+
+  it("a railing's colour (session 31 outside2): one step; kept through a change of kind that offers it, dropped by one that does not; none on a solid wall", () => {
+    let s = rect(scaled())
+    s = run(s, { type: 'set-wall-type', ids: s.unit.walls.slice(0, 2).map((w) => w.id), wall: 'low' })
+    const [a, b] = s.unit.walls.map((w) => w.id)
+    s = reducer(s, { type: 'low-wall', ids: [a, b], kind: 'railing' })
+    const n = s.history.past.length
+    s = reducer(s, { type: 'low-wall', ids: [a], color: 'black' })
+    s = reducer(s, { type: 'low-wall', ids: [b], color: 'silver' })
+    expect(s.unit.walls.slice(0, 2).map((w) => w.railColor)).toEqual(['black', 'silver'])
+    expect(s.history.past).toHaveLength(n + 2)
+    expect(reducer(s, { type: 'low-wall', ids: [a], color: 'black' })).toBe(s) // nothing to change
+    expect(reducer(s, { type: 'low-wall', ids: [a], color: 'teak' }).unit.walls[0].railColor).toBe('black') // a metal railing has no teak
+    s = reducer(s, { type: 'low-wall', ids: [a, b], kind: 'timber' })
+    expect(s.unit.walls.slice(0, 2).map((w) => w.railColor)).toEqual(['black', undefined]) // timber painted black; no silver timber
+    s = reducer(s, { type: 'low-wall', ids: [a], color: null })
+    expect('railColor' in s.unit.walls[0]).toBe(false)
+    s = reducer(s, { type: 'low-wall', ids: [a], color: 'walnut' })
+    s = reducer(s, { type: 'low-wall', ids: [a], kind: 'solid' })
+    expect(s.unit.walls[0].railColor).toBeUndefined()
+  })
 })
 
 describe('walls that stand alone', () => {

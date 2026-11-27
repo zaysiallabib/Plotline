@@ -448,3 +448,37 @@ describe('a big floor bakes in bounded work (s31 bigifc: the LTU A-House floor n
     expect(day.ms).toBeLessThan(3000)
   })
 })
+
+test("a glass wall's spandrel band is solid to the daylight (session 31 outside2): less light, none of it at the floor", () => {
+  const u = TEST_UNIT
+  const rooms = core.deriveRooms(u)
+  const w = u.walls.find((x) => x.openings.some((o) => o.kind === 'window'))!
+  const as = (patch: Partial<core.Opening>): Unit => ({ ...u, walls: u.walls.map((x) => (x !== w ? x : { ...x, openings: x.openings.map((o) => (o.kind === 'window' ? { ...o, sillM: 0, heightM: Math.min(2.4, x.heightM), ...patch } : o)) })) })
+  const room = rooms.find((r) => r.wallIds.includes(w.id) && r.kind !== 'balcony')!
+  const sum = (x: Unit) => Array.from(bakeDaylight(x, core.deriveRooms(x)).regions.get(`floor:${room.id}`)!.E).reduce((a, b) => a + b, 0)
+  expect(sum(as({ spandrelM: 1 }))).toBeLessThan(sum(as({})) * 0.95)
+  expect(sum(as({ spandrelM: 0 }))).toBeCloseTo(sum(as({})), 6)
+})
+
+describe('daylight through a glass front (session 31 outside2: lowwall left a glass or railing low wall solid)', () => {
+  const base = typeA as unknown as Unit
+  const rooms = core.deriveRooms(base)
+  const veranda = rooms.find((r) => r.name === 'Veranda (living)')!
+  const living = rooms.find((r) => r.name === 'Living room')!
+  const low = new Set(veranda.wallIds.filter((id) => core.takesLowKind(base.walls.find((w) => w.id === id)!)))
+  const as = (patch: Partial<core.Wall>): Unit => ({ ...base, walls: base.walls.map((w) => (low.has(w.id) ? { ...w, ...patch } : w)) })
+  const mean = (u: Unit, r: core.Room) => {
+    const e = bakeDaylight(u, core.deriveRooms(u)).regions.get(`floor:${r.id}`)!.E
+    return Array.from(e).reduce((a, b) => a + b, 0) / e.length
+  }
+  test("a glass-fronted or railed veranda is all but as bright as an open one; a parapet's is darker; a fence of boards in between; the room behind as before", () => {
+    const [solid, glass, railing, fence, open] = [base, as({ lowKind: 'glass' }), as({ lowKind: 'railing' }), as({ lowKind: 'fence' }), as({ heightM: 0 })].map((u) => mean(u, veranda))
+    expect(low.size).toBeGreaterThan(0)
+    expect(glass).toBeGreaterThan(solid * 1.4)
+    expect(glass).toBeGreaterThan(open * 0.88)
+    expect(railing).toBeCloseTo(glass, 6)
+    expect(fence).toBeGreaterThan(solid)
+    expect(fence).toBeLessThan(glass)
+    expect(mean(as({ lowKind: 'glass' }), living)).toBeCloseTo(mean(base, living), 6) // (it sees the sky through the veranda as before)
+  })
+})

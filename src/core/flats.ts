@@ -16,7 +16,7 @@
 import { roomAt } from './geometry'
 import { flatTypeOf } from './graph'
 import { isOutdoor } from './index'
-import type { Id, LowWallKind, Room, RoomKind, Unit, Wall } from './types'
+import type { Id, LowWallKind, RailColor, Room, RoomKind, Unit, Wall } from './types'
 
 export interface Flat {
   /** its first room's id: stable while that room stays in it */
@@ -44,6 +44,15 @@ export const LOW_KIND_MAX_M = 2.4
 export const takesLowKind = (w: Pick<Wall, 'heightM'>): boolean => w.heightM > 0.2 && w.heightM < LOW_KIND_MAX_M
 /** What low wall w is made of when it is not solid plaster; null: solid (no kind, or too tall / a kerb for one). */
 export const railOf = (w: Pick<Wall, 'heightM' | 'lowKind'>): LowWallKind | null => (w.lowKind && takesLowKind(w) ? w.lowKind : null)
+/** The colours a railing of kind k may take (Wall.railColor), its own first (how it is drawn when none is chosen: stainless, the Dhaka grille's black enamel, oiled teak, weathered boards); a chain-link fence none. */
+export const railColors = (k: LowWallKind): RailColor[] =>
+  k === 'chainlink' ? [] : k === 'timber' ? ['teak', 'walnut', 'oak', 'weathered', 'white', 'black'] : k === 'fence' ? ['weathered', 'teak', 'walnut', 'oak', 'white', 'black'] : k === 'grille' ? ['black', 'anthracite', 'white', 'silver'] : ['silver', 'black', 'anthracite', 'white']
+/** What colour railing w is drawn in: its own when its kind offers it, else its kind's; null: no railing, or one that takes none. */
+export const railColorOf = (w: Pick<Wall, 'heightM' | 'lowKind' | 'railColor'>): RailColor | null => {
+  const k = railOf(w)
+  const all = k ? railColors(k) : []
+  return w.railColor && all.includes(w.railColor) ? w.railColor : (all[0] ?? null)
+}
 
 export const isCore = (r: Pick<Room, 'kind' | 'name'>): boolean => CORE_KINDS.has(r.kind) || isOutdoor(r.kind) || (r.kind === 'other' && CORE_NAME.test(r.name))
 

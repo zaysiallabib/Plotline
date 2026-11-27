@@ -37,7 +37,7 @@ import { GAP_PREFIX, KERB_M, bayLineGeometry, bayMarkings, buildSkirtings, close
 import { bakeSteps, daylit, isCovered, lightPiece, mapDaylight, pieceDayUv, setDaylight, type BakeKeep, type Daylight } from './daylight'
 import { buildFurniture, preloadModels, warmStandins } from './furniture'
 import { bottomOf } from '../studio/furniture'
-import { CONCRETE, EDGE_PLASTER, MORE_PICTURES, PAINT, PICTURES, SOLID_CUT, isBlank, litePlain, loading, materialFor, resolveFinish, samePictures, setMaxAnisotropy, zoneFinishRef } from './materials'
+import { CONCRETE, EDGE_PLASTER, EXTERIOR_PLASTER, MORE_PICTURES, PAINT, PICTURES, SOLID_CUT, isBlank, litePlain, loading, materialFor, resolveFinish, samePictures, setMaxAnisotropy, zoneFinishRef } from './materials'
 import { PANES, WATER } from './openings'
 import { capGeometry, railParts } from './rails'
 import { Look, type LookKept, SITE_REACH_M, TIERS, forcedScale, lensFov, lightsOn, needsFrame, pixelRatioFor, skyLight, slowFrames, type LightsMode, type Quality, type Well } from './render'
@@ -498,7 +498,8 @@ interface Surface {
   /** `ref`: a fixed material by rule (a kerb's concrete, a zone's riser), not the room's finish */
   /** `wallId`: a wall's side — the wall its face is chosen by (finishes.ts faceWallId), for a buyer's one-wall choice */
   /** `outer`: a side outside (toward no room, a balcony or an outdoor zone) — the wall run its outside finish is chosen by (finishes.ts outerRuns) */
-  sides: ({ roomId: Id | null; target: FinishSlot['target']; edge?: true; ref?: MaterialRef; wallId?: Id; outer?: Id } | null)[]
+  /** `cap`: an edge of the building (a low wall's cap, a ground column): it wears the building's Edges and caps (finishes.ts Outside.edge) */
+  sides: ({ roomId: Id | null; target: FinishSlot['target']; edge?: true; ref?: MaterialRef; wallId?: Id; outer?: Id; cap?: true } | null)[]
 }
 
 export class PlotlineScene {
@@ -873,6 +874,8 @@ export class PlotlineScene {
     }
     yield
     this.look.setUnit(present(unit), this.rooms, this.cover, this.building ? null : street, this.wells, this.holding) // fixtures, lights, slab, shadow fit box, the street
+    this.dressSlab()
+    if (this.outside.local) this.dressShell() // (the shape a wall at a time needs the tower: it may have come in before it)
     if (!this.holding) this.aroundFlat() // (a stair's floor: as it shows, spawnAt)
     this.setTimeOfDay(this.hour)
     if (this.windMonth && !this.holding) this.setWind(this.windMonth) // an opening edited: the arrows go through it as it is now
@@ -1012,6 +1015,7 @@ export class PlotlineScene {
     if (JSON.stringify(this.cover) !== JSON.stringify(this.builtFrom!.cover)) {
       this.look.setUnit(present(this.unit), this.rooms, this.cover, this.building ? null : (this.street ?? { walls: core.unitBounds(this.unit) }), this.wells, true)
       this.builtFrom = { ...this.builtFrom!, cover: this.cover }
+      this.dressSlab()
     }
     this.setTimeOfDay(this.hour) // the new tower lit for the hour (the sun stays fitted to the one on screen)
   }
@@ -2143,7 +2147,11 @@ export class PlotlineScene {
     const roof = t ? roofIn(t) : undefined
     const choose = (d: Dress): MaterialRef | null =>
       !d.main ? null : d.slot === 'out' ? this.outside.wall(null, null) : d.slot === 'frame' ? this.outside.frame(null, null) : roof?.covering ? coveringOf(roof).material : null
-    dressShell(this.shell, choose, this.shellClip)
+    // one wall's or one floor's own outside (This wall / This floor on the shape, as on Plotline's own walls): what the tower
+    // says is there, triangle by triangle (Building.outsideAt); none chosen: the building's, one material as before
+    const b = this.building
+    const at = this.outside.local && b ? (p: THREE.Vector3) => { const h = b.outsideAt(p); return h ? this.outside.wall(h.drawing, h.run, h.k) : null } : undefined
+    dressShell(this.shell, choose, this.shellClip, at)
   }
 
   private buildWall(wall: Wall, unit: Unit): void {
@@ -2220,7 +2228,7 @@ export class PlotlineScene {
         sides: [
           { roomId: front, target: 'wall', ...face(front), ...kerb, ...outer(front) },
           { roomId: back, target: 'wall', ...face(back), ...kerb, ...outer(back) },
-          { roomId: front ?? back, target: 'wall', edge: true, ...face(front ?? back), ...(planter ? { ref: CONCRETE } : kerb) },
+          { roomId: front ?? back, target: 'wall', edge: true, ...face(front ?? back), ...(planter ? { ref: CONCRETE } : { ...outer(back), ...outer(front), ...kerb }) },
         ],
       })
       // a solid low wall's cap (rails.ts), finished as its top — daylit and stood on its floor as the wall is (build)
@@ -2230,7 +2238,9 @@ export class PlotlineScene {
         top.castShadow = top.receiveShadow = true
         top.userData = { ...mesh.userData }
         this.staticGroup.add(top)
-        this.surfaces.push({ mesh: top, sides: [{ roomId: front ?? back, target: 'wall', edge: true, ...face(front ?? back), ...(planter ? { ref: CONCRETE } : {}) }] })
+        // (outside: the building's Edges and caps once an outside is chosen — a brick parapet's cap brick)
+        const out = { ...outer(back), ...outer(front) }
+        this.surfaces.push({ mesh: top, sides: [{ roomId: front ?? back, target: 'wall', edge: true, ...face(front ?? back), ...(planter ? { ref: CONCRETE } : { ...out, ...(out.outer ? { cap: true as const } : {}) }) }] })
       }
     }
     wall.openings.forEach((o, i) => {
@@ -2267,7 +2277,10 @@ export class PlotlineScene {
       mesh.castShadow = !skirting
       if (!skirting) mesh.userData = { kind: 'wall', id: p.id, front: room, back: room, roomId: room, label: 'Column', objectKind: 'wall' }
       this.staticGroup.add(mesh)
-      this.surfaces.push({ mesh, sides: list.map((x) => (x.part === 'top' ? null : { roomId: x.room?.id ?? null, target: skirting ? 'floor' : 'wall' })) })
+      // (a ground-floor column's face toward the open air or a zone: the building's Edges and caps once an outside is chosen)
+      const open = (r: Room | null) => !r || core.isOutdoor(r.kind)
+      const cap = !skirting && this.storeyOf() === 0 ? { outer: '', cap: true as const } : {}
+      this.surfaces.push({ mesh, sides: list.map((x) => (x.part === 'top' ? null : { roomId: x.room?.id ?? null, target: skirting ? 'floor' : 'wall', ...(open(x.room ?? null) ? cap : {}) })) })
     }
   }
 
@@ -2367,8 +2380,34 @@ export class PlotlineScene {
     }
   }
 
+  /** The walked flat's floor in its building (the outside's floor bands): its tower's floor for it, else its own. */
+  private storeyOf(): number | undefined {
+    const u = this.builtFrom?.unit ?? this.unit
+    const t = u && towerOf(u)
+    const stem = t && stemIn(t, u)
+    return t && stem ? floorIn(t, stem, this.unit!.floor) : this.unit?.floor
+  }
+
+  /**
+   * The walked flat's slab (Look) in the building's Edges and caps: each wall's stretch of the slab's edge and a balcony's band
+   * as that wall's edges (finishes.ts Outside.edge, by its run of the drawing as given); nothing chosen: the plaster, as built.
+   */
+  private dressSlab(): void {
+    const u = this.builtFrom?.unit ?? this.unit
+    if (!u) return
+    const runs = outerRuns(u)
+    const floor = this.storeyOf()
+    this.look.dressEdges((id) => {
+      if (!this.outside.sig) return null
+      const plan = id.startsWith(GAP_PREFIX) ? id.slice(GAP_PREFIX.length).split('|')[0] : id
+      const r = this.outside.edge(u.id, runs.get(plan) ?? plan, floor)
+      return r === EXTERIOR_PLASTER ? null : r
+    })
+  }
+
   private applyMaterials(): void {
     if (!this.unit) return
+    this.dressSlab()
     // wall ends and tops: pushed back in depth so they lose ties to the faces they meet (an end cap at a
     // junction sits edge-on against the room face and won the tie along it: a one-pixel hairline)
     const plaster = materialFor(EDGE_PLASTER, true, true)
@@ -2383,10 +2422,10 @@ export class PlotlineScene {
     const stem = t && stemIn(t, u)
     const floor = t && stem ? floorIn(t, stem, this.unit.floor) : this.unit.floor // (a stair's next floor of it: that floor's band)
     const outer = (side: NonNullable<Surface['sides'][number]>): THREE.MeshStandardMaterial | null => {
-      if (!side.outer || !this.outside.sig || (side.roomId && zones.has(side.roomId) && deck)) return null
+      if (side.outer === undefined || !this.outside.sig || (side.roomId && zones.has(side.roomId) && deck)) return null
       const r = side.roomId && this.rooms.find((x) => x.id === side.roomId)
       if (r && r.kind === 'balcony' && ((side.wallId && this.cfg[wallKey(side.wallId, r.id)]) || this.cfg[roomKey(r.id, 'wall')])) return null
-      const ref = this.outside.wall(u.id, side.outer, floor)
+      const ref = side.cap ? this.outside.edge(u.id, side.outer || null, floor) : this.outside.wall(u.id, side.outer, floor)
       return ref && materialFor(ref, side.edge, true, false, true)
     }
     for (const s of this.surfaces) {
@@ -2408,6 +2447,14 @@ export class PlotlineScene {
       if (!BUILT.has(m)) BUILT.set(m, m.material as THREE.Material)
       const ref = this.outside.frame(u.id, id)
       m.material = ref ? materialFor(ref) : BUILT.get(m)!
+    })
+    // a glass wall's spandrel panels in the outside finish (openings.ts): its wall's, as the wall's outer face wears it
+    const runs = outerRuns(u)
+    this.staticGroup.traverse((o) => {
+      if (!o.userData.spandrel) return
+      const wallId = o.parent?.userData.wallId as Id | undefined
+      const ref = wallId ? this.outside.wall(u.id, runs.get(wallId) ?? wallId, floor) : null
+      ;(o as THREE.Mesh).material = materialFor(ref ?? EXTERIOR_PLASTER)
     })
   }
 

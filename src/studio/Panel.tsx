@@ -1,16 +1,17 @@
 import { useEffect, useMemo, useState } from 'react'
-import { FT, flatTypeOf, formatFeetInches, parseLength, sqmToSqft, takesLowKind, wallFrame } from '../core'
-import type { Flat, FurniturePlacement, Opening, OpeningKind, Room, RoomKind, Shell, Slope, Unit, Wall } from '../core'
+import { FT, flatTypeOf, formatFeetInches, parseLength, railColorOf, railColors, railOf, sqmToSqft, takesLowKind, wallFrame } from '../core'
+import type { Flat, FurniturePlacement, Opening, OpeningKind, RailColor, Room, RoomKind, Shell, Slope, Unit, Wall } from '../core'
 import { deleteShell } from './shells'
 import { towerOf } from '../data/building'
 import { buildingOf, outsideRecord, readFinishes, saveFinishes } from '../data/building/apartments'
 import { FRAMES_SLOT, OUTSIDE_SLOT, frameKey, outerRuns, outsideKey } from '../furnish/finishes'
 import { withOwnOptions } from '../furnish/own'
+import { isGlazing } from '../furnish/presets'
 import { LOCAL_AI_KEY, START_CMD, START_LINE, isLocalUrl, localAISettings, testLocalAI, type AiNote, type LocalAI } from './localAI'
 import { placementLabel, placementRange, placementSize } from '../furnish/kit'
 import { resizeAxes, surfaceOf } from './furniture'
 import { LibraryPanel } from './LibraryPanel'
-import { EXTERIOR_M, LOW_KINDS, PARTITION_M, WALL_TYPES, findEntity, formatLevel, openingDefaults, parseLevel, rampDirs, selectionText, shared, wallTypeOf, type StudioIssue, type StudioState, type WallType } from './model'
+import { EXTERIOR_M, LOW_KINDS, PARTITION_M, RAIL_COLOR_WORDS, SPANDREL_WORDS, WALL_TYPES, findEntity, formatLevel, openingDefaults, parseLevel, rampDirs, selectionText, shared, wallTypeOf, type StudioIssue, type StudioState, type WallType } from './model'
 import { AI_KEY, LOOKS_RIGHT, SHOW_ME, TRACKER_KEY, answerId, fewRooms, roomCount, type StudioAction as Action } from './review'
 import { groupRows, REVIEW_KIND, type Bulk, type Fix, type Mark, type MarkFixes, type Severity } from './issues'
 import type { AutoTraceStats } from '../trace/types'
@@ -804,6 +805,7 @@ function Selection({ state, dispatch, rooms, flats }: { state: StudioState; disp
           <LenInput valueM={toB} onCommit={(m) => patch({ offsetM: L - o.widthM - m })} />
         </Row>
         {(o.kind === 'window' || o.kind === 'slider') && <OutsidePick unit={unit} ids={[o.id]} frame />}
+        {isGlazing(o) && <Spandrel o={o} patch={patch} />}
         {o.kind === 'door' && (
           <>
             <Row label="Hinge">
@@ -1109,6 +1111,12 @@ function MadeOf({ walls, dispatch }: { walls: Wall[]; dispatch: (a: Action) => v
   const kinds = new Set(low.map((w) => w.lowKind ?? 'solid'))
   const kind = kinds.size === 1 ? [...kinds][0] : ''
   const solid = low.filter((w) => !w.lowKind)
+  // a railing's colour: when every one picked is a railing offering the same colours (metal ones, or timber ones)
+  const rails = low.filter((w) => railOf(w))
+  const offer = rails.length === low.length ? railColors(railOf(rails[0])!) : []
+  const sameOffer = offer.length > 0 && rails.every((w) => railColors(railOf(w)!).join() === offer.join())
+  const colors = new Set(rails.map(railColorOf))
+  const color = colors.size === 1 ? [...colors][0]! : ''
   return (
     <>
       <Row label="Made of">
@@ -1121,10 +1129,44 @@ function MadeOf({ walls, dispatch }: { walls: Wall[]; dispatch: (a: Action) => v
           ))}
         </select>
       </Row>
+      {sameOffer && (
+        <Row label="Colour">
+          <select value={color} aria-label="The railing's colour" onChange={(e) => e.target.value && dispatch({ type: 'low-wall', ids: rails.map((w) => w.id), color: e.target.value as RailColor })}>
+            {!color && <option value="">mixed</option>}
+            {offer.map((c) => (
+              <option key={c} value={c}>
+                {RAIL_COLOR_WORDS[c]}
+              </option>
+            ))}
+          </select>
+        </Row>
+      )}
       {solid.length > 0 && (
         <label className="check" title="A stepped band under the wall's cap, as on a classical parapet">
           <input type="checkbox" checked={solid.every((w) => w.cornice)} onChange={(e) => dispatch({ type: 'low-wall', ids: solid.map((w) => w.id), cornice: e.target.checked })} /> Cornice under the cap
         </label>
+      )}
+    </>
+  )
+}
+
+/** A glass wall's spandrel (Opening.spandrelM): a solid band at the foot of its glass on every floor, and what it is made of. */
+function Spandrel({ o, patch }: { o: Opening; patch: (p: Partial<Omit<Opening, 'id'>>) => void }) {
+  return (
+    <>
+      <Row label="Solid band">
+        <LenInput valueM={o.spandrelM ?? 0} placeholder="0 = glass to the floor" onCommit={(m) => patch({ spandrelM: m > 0.01 ? m : undefined })} />
+      </Row>
+      {(o.spandrelM ?? 0) > 0 && (
+        <Row label="Band of">
+          <select value={o.spandrel ?? 'dark'} aria-label="What the solid band is made of" onChange={(e) => patch({ spandrel: e.target.value as NonNullable<Opening['spandrel']> })}>
+            {SPANDREL_WORDS.map(([k, w]) => (
+              <option key={k} value={k}>
+                {w}
+              </option>
+            ))}
+          </select>
+        </Row>
       )}
     </>
   )

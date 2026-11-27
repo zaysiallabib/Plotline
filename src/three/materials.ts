@@ -9,7 +9,7 @@ import * as THREE from 'three'
 import type { Configuration, FinishSlot, Id, MaterialRef, RoomKind } from '../core'
 import { OUTSIDE_PLASTER, roomKey, slotFor, wallKey } from '../furnish/finishes'
 import { textureSet, type TextureSet } from '../furnish/textures'
-import { daylit as daylitPatch, mottleMap, nightPatch } from './daylight'
+import { TILE_GLSL, daylit as daylitPatch, mottleMap, nightPatch, tileUniforms } from './daylight'
 
 /**
  * The flat's lamps (render.ts's pool of spot lights) light its own rooms only. What is outside them — the street and its
@@ -173,6 +173,49 @@ function mottle(m: THREE.MeshStandardMaterial, set: TextureSet): void {
  */
 const PORE_BLUR = 5
 
+/**
+ * The outside finishes whose repeat is broken up (daylight.ts TILE_GLSL: the picture levelled, a weathering shade of its own),
+ * by picture: the shade's ±. The roofs' coverings and the walls' brick, stone, concrete and timber; not the plaster (as
+ * before), not on Lite (two more readings of the picture a pixel).
+ */
+export const TILE: Record<string, number> = {
+  roof_clay: 0.1,
+  roof_slate: 0.06,
+  roof_shingles: 0.08,
+  brick_red: 0.08,
+  brick_painted: 0.05,
+  stone_blocks: 0.06,
+  concrete_fair: 0.05,
+  concrete_precast: 0.05,
+  timber_slats: 0.04,
+  timber_clapboard: 0.04,
+}
+/**
+ * The tower's outside program (materialFor `outside`): a surface's pictures laid by where it stands in the world, not by its
+ * own frame (`userData.faceUv`, a uniform): a wall along itself and up, a slab's edge, a column, a flat face by plan x / z —
+ * as wallGeometry lays them, but in the scene's metres, so a brick course runs on from one storey's wall over the slab's edge
+ * into the next storey's (each storey's shell is one geometry placed at its height: its own frame put a seam at every slab).
+ * The roof's covering keeps its own (along the eaves, up the slope): 'cover'.
+ */
+function faceUvPatch(s: { uniforms: Record<string, THREE.IUniform>; vertexShader: string; fragmentShader: string }, m: THREE.Material): void {
+  s.uniforms.faceUv = { get value() { return m.userData.faceUv ? 1 : 0 } }
+  tileUniforms(s, m)
+  const chunk = THREE.ShaderChunk.uv_vertex.replace(/\b[A-Z]+MAP_UV\b|\bMAP_UV\b/g, 'plUv')
+  s.vertexShader = `uniform float faceUv;\n${s.vertexShader}`.replace(
+    '#include <uv_vertex>',
+    `vec2 plUv = uv;
+    if (faceUv > 0.5) {
+      vec3 plP = (modelMatrix * vec4(position, 1.0)).xyz;
+      vec3 plN = normalize(mat3(modelMatrix) * normal);
+      vec2 plA = vec2(-plN.z, plN.x);
+      if (plA.x < 0.0 || (plA.x == 0.0 && plA.y < 0.0)) plA = -plA;
+      plUv = abs(plN.y) > 0.5 ? plP.xz : vec2(dot(plA, plP.xz) / max(length(plA), 1e-4), plP.y);
+    }
+    ${chunk}`,
+  )
+  s.fragmentShader = `${TILE_GLSL}${s.fragmentShader}`.replace('#include <map_fragment>', THREE.ShaderChunk.map_fragment.replace('texture2D( map, vMapUv )', 'plMap( map, vMapUv, 0.0 )'))
+}
+
 /** Flat colour that stands in for a texture set that is not on disk yet. */
 export function fallbackColor(textureId: string): string {
   if (/wood|oak|teak|deck|timber/.test(textureId)) return '#8a6a4a'
@@ -237,12 +280,18 @@ export function materialFor(ref: MaterialRef, edge = false, daylit = false, outs
     }
   }
   samePictures(m)
+  // an outside finish's repeat broken up (TILE): never on Lite
+  const tile = ref.kind === 'pbr' && !lite.on ? TILE[ref.textureId] : undefined
+  if (tile) m.userData.tileK = tile
+  // the tower's surfaces laid by the scene's metres (faceUvPatch); the roof's covering and the architect's shape keep their own
+  if (outside) m.userData.faceUv = own !== 'cover' && own !== 'shell'
   if (edge) Object.assign(m, { polygonOffset: true, polygonOffsetFactor: 1, polygonOffsetUnits: 1 })
   m.userData.nightOut = outer || key.startsWith(OUTER) // the walked flat's outer faces take the city's night light, as the tower's (daylight.ts nightOut)
   if (daylit) daylitPatch(m)
   if (outside && !lite.on) {
     m.onBeforeCompile = (s) => {
       nightPatch(s) // the tower at night: the sky's glow and the street's lamps (qa3 P10)
+      faceUvPatch(s, m) // laid by the scene's metres; a brick or tile repeat broken up
       s.vertexShader = noSpots(s.vertexShader)
       s.fragmentShader = noSpots(s.fragmentShader)
     }

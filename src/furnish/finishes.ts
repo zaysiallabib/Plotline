@@ -291,8 +291,32 @@ export const FRAMES_SLOT: FinishSlot = {
   ],
 }
 
+/** "Same as the walls" (EDGES_SLOT's first option): each edge wears its own wall's outside — a brick tower's slab edges brick */
+export const EDGE_SAME = 'fo_edge_walls'
+const edge = (id: string, brand: string, label: string, sku: string, material: MaterialRef): FinishOption => ({ id: `fo_edge_${id}`, brand, sku, label, priceDeltaBdt: 0, material })
+/**
+ * The building's edges and caps (session 31 outside2): the floor slabs' edges between the storeys, a balcony's slab edge, the
+ * cap on a solid low wall, the ground floor's columns, the roof's cornice. The first follows the walls (a brick tower: brick
+ * edges, no plaster seams); or the plaster, fair-faced concrete, anthracite metal for every edge of the building. Its
+ * material is only its swatch's: what "same as the walls" wears is each wall's own (Outside.edge).
+ */
+export const EDGES_SLOT: FinishSlot = {
+  id: 's_edges',
+  label: 'Edges and caps',
+  target: 'wall',
+  roomIds: [],
+  defaultOptionId: EDGE_SAME,
+  options: [
+    edge('walls', 'Outside walls', 'Same as the walls', 'EDGE-AS-WALLS', OUTSIDE_PLASTER),
+    edge('plaster', 'Render', 'Plaster', 'EDGE-PLASTER', OUTSIDE_PLASTER),
+    edge('concrete', 'Concrete', 'Fair-faced concrete', 'EDGE-CONC', pbr('concrete_fair', '#d4d8d8')),
+    edge('metal', 'Metal', 'Anthracite metal', 'EDGE-METAL', { kind: 'color', color: '#3a4045', roughness: 0.45, metalness: 0.15 }),
+  ],
+}
+
 /**
  * The building's outside record (a Configuration) holds: OUTSIDE_SLOT's id (every outer wall), FRAMES_SLOT's (every frame),
+ * EDGES_SLOT's (every edge and cap),
  * one wall's outside on every floor its drawing stands on, one floor's outer walls (a plinth band), one window's frame.
  */
 export const outsideKey = (drawing: Id, run: Id): string => `out:${drawing}:${run}`
@@ -303,18 +327,23 @@ export const frameKey = (drawing: Id, openingId: Id): string => `frame:${drawing
 export interface Outside {
   /** wall run `run` (outerRuns) of drawing `drawing` on floor `floor`: its own choice, its floor's, the building's */
   wall(drawing?: Id | null, run?: Id | null, floor?: number): MaterialRef | null
+  /** the edges of wall run `run` on floor `floor` (its slab edge, its cap, a balcony's band; no run: a ground column): the building's Edges and caps, else as wall() */
+  edge(drawing?: Id | null, run?: Id | null, floor?: number): MaterialRef | null
   /** opening `openingId`'s frame: its own choice, the building's */
   frame(drawing?: Id | null, openingId?: Id | null): MaterialRef | null
   /** the record's choices, sorted ('' = none): two equal ones draw alike */
   sig: string
   /** some frame is chosen (the building's or one window's): the tower's panes carry a colour each */
   framed: boolean
+  /** some outer wall or floor has its own outside (not only the building's): an architect's shape is dressed a wall at a time */
+  local: boolean
 }
 
-/** `rec` (the building's outside record) over `slots` (OUTSIDE_SLOT and FRAMES_SLOT with staff's own options: own.ts withOwnOptions); a choice not among the options is ignored. */
-export function outsideOf(rec: Configuration, slots: FinishSlot[] = [OUTSIDE_SLOT, FRAMES_SLOT]): Outside {
+/** `rec` (the building's outside record) over `slots` (OUTSIDE_SLOT, FRAMES_SLOT and EDGES_SLOT with staff's own options: own.ts withOwnOptions); a choice not among the options is ignored. */
+export function outsideOf(rec: Configuration, slots: FinishSlot[] = [OUTSIDE_SLOT, FRAMES_SLOT, EDGES_SLOT]): Outside {
   const walls = slots.find((s) => s.id === OUTSIDE_SLOT.id) ?? OUTSIDE_SLOT
   const frames = slots.find((s) => s.id === FRAMES_SLOT.id) ?? FRAMES_SLOT
+  const edges = slots.find((s) => s.id === EDGES_SLOT.id) ?? EDGES_SLOT
   const pick = (slot: FinishSlot, keys: (string | null)[]): MaterialRef | null => {
     for (const k of keys) {
       const o = k !== null && rec[k] !== undefined ? slot.options.find((x) => x.id === rec[k]) : undefined
@@ -323,11 +352,14 @@ export function outsideOf(rec: Configuration, slots: FinishSlot[] = [OUTSIDE_SLO
     return null
   }
   const entries = Object.entries(rec).sort()
+  const wall: Outside['wall'] = (drawing, run, floor) => pick(walls, [drawing && run ? outsideKey(drawing, run) : null, floor !== undefined ? outsideFloorKey(floor) : null, walls.id])
   return {
-    wall: (drawing, run, floor) => pick(walls, [drawing && run ? outsideKey(drawing, run) : null, floor !== undefined ? outsideFloorKey(floor) : null, walls.id]),
+    wall,
+    edge: (drawing, run, floor) => (rec[edges.id] !== EDGE_SAME && pick(edges, [edges.id])) || wall(drawing, run, floor),
     frame: (drawing, openingId) => pick(frames, [drawing && openingId ? frameKey(drawing, openingId) : null, frames.id]),
     sig: entries.length ? JSON.stringify(entries) : '',
     framed: entries.some(([k]) => k === frames.id || k.startsWith('frame:')),
+    local: entries.some(([k]) => k.startsWith('out:')),
   }
 }
 
