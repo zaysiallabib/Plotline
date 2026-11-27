@@ -1656,6 +1656,7 @@ function Viewer({ first }: { first: Shown }) {
     setFinishesOpen((v) => !v)
     setCommenting(false)
     setDraft(null)
+    if (finger) scene?.forgetTowerHover() // the last tap's card on the tower would stand over the sheet's top edge (phoneqa)
   }
   const toggleComment = () => {
     setCommenting((v) => !v)
