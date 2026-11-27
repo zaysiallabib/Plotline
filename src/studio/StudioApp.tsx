@@ -1756,7 +1756,8 @@ export default function StudioApp() {
     // it is sent waits for it)
     let sent = false, early: TraceIn | null = null
     // hover: one preview in flight at a time, the latest spot sent as soon as it is back (the worker's pace is the throttle)
-    let ready = false, busy = false, picked = false, want: Pt | null = null, seq = 0
+    // (`read`: how far the sheet's reading got — a click before it is ready carries it on, never back to 0 %)
+    let ready = false, busy = false, picked = false, want: Pt | null = null, seq = 0, read = 0
     const next = () => {
       if (!ready || busy || picked || !want) return
       busy = true
@@ -1812,7 +1813,7 @@ export default function StudioApp() {
       picked = true
       setFlatPreview(null)
       // ready: only the flat's own steps are left; else the sheet's progress carries on in the card
-      setTrace({ stage: ready ? (px ? 'flat' : 'whole floor') : 'Reading the plan', fraction: ready ? 0.8 : 0 })
+      setTrace({ stage: ready ? (px ? 'flat' : 'whole floor') : 'Reading the plan', fraction: ready ? 0.8 : read })
       cancelTrace.current = () => {
         stop()
         toast('Auto-trace cancelled')
@@ -1823,7 +1824,10 @@ export default function StudioApp() {
     }
     worker.onmessage = (e: MessageEvent<TraceMsg>) => {
       const m = e.data
-      if (m.type === 'progress') return picked ? setTrace({ stage: m.stage, fraction: m.fraction }) : setPrep(`${m.stage} · ${Math.round(m.fraction * 100)} %`)
+      if (m.type === 'progress') {
+        read = m.fraction
+        return picked ? setTrace({ stage: m.stage, fraction: m.fraction }) : setPrep(`${m.stage} · ${Math.round(m.fraction * 100)} %`)
+      }
       if (m.type === 'ready') {
         ready = true
         setPrep(null)
