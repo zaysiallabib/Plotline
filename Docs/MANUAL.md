@@ -1481,7 +1481,10 @@ they make rooms); **Trace it instead** undoes it. The border, the title block an
 read, and so are the sheet's own symbols: the elevation and section markers round the plan (a circle with its number and
 its triangle), grid bubbles, door and window tags, north arrows, the stair's UP / DN arrow and every note's arrow, and the
 zigzag break line where the plan cuts through a stair. A door drawn open at 45° comes in as a door, hinged where it is
-drawn. **The floors stand over each other:** the lowest drawn floor is where the building stands, and every other floor
+drawn. What the architect drew with a wall's pen but is no wall is left out too: stair treads (four or more like lines at
+tread spacing), bath and kitchen fixtures (a tub, a WC, a counter: a closed shape on its own), a porch roof drawn outside
+the outer walls on the floor above (when a roof's words — ROOF, SLOPE, 4/12 — stand out there), and the rest of a lighter
+pen that drew mostly those; the message after the page says how many of each. **The floors stand over each other:** the lowest drawn floor is where the building stands, and every other floor
 read at a known scale is put on the floor it shares the most walls with (outer walls, the stair and lift shafts,
 columns) — the message says how many were stacked. A floor that is a picture to trace is lined up the same way, so what
 you trace on it lands over the floor below. A floor that shares too little with the others (a roof plan of slopes, a

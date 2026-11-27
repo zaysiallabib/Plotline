@@ -8,7 +8,7 @@
  * plain words.
  */
 import { deriveRooms, type Pt } from '../core'
-import { bezierArc, buildPlan, penRoles, sheetScale, sheetSymbols, type ArcPrim, type Drawing, type Fills, type Seg, type TextPrim } from './plan2d'
+import { bezierArc, buildPlan, notWallLines, penRoles, sheetScale, sheetSymbols, type ArcPrim, type Drawing, type Fills, type Seg, type TextPrim } from './plan2d'
 import { emptyUnit } from '../studio/model'
 import type { ImportResult } from './types'
 import type { Box, SheetPage, SheetText } from './sheets'
@@ -298,9 +298,18 @@ export async function importPdf(src: ArrayBuffer | PdfDoc, name: string, pageNo 
     return { format: 'pdf', storeys: [{ name: 'Floor', elevationM: 0, unit: { ...emptyUnit(), name: name.replace(/\.pdf$/i, '') } }], notes, unitScale: 1, origin: { x: 0, y: 0 } }
   }
   const pens = penRoles(segs, fills, scale)
-  const drawing: Drawing = { segs: segs.map((g) => ({ ...g, layer: pens.walls.has(g.layer) ? 'WALL' : '' })), arcs, texts, loops: [], scale }
+  // the wall pens' lines that are not walls: stair treads, bath fixtures, a porch roof outside the outer wall ring (notWallLines)
+  const wallSegs = segs.filter((g) => pens.walls.has(g.layer))
+  const heavy = [...pens.walls].filter((p) => p.startsWith('pen ')).sort((p, q) => Number(q.split(' ')[1]) - Number(p.split(' ')[1]))[0]
+  const not = notWallLines(wallSegs, scale, heavy, texts)
+  const dropped = new Set([...not.keys()].map((i) => wallSegs[i]))
+  const drawing: Drawing = { segs: segs.map((g) => ({ ...g, layer: pens.walls.has(g.layer) && !dropped.has(g) ? 'WALL' : '' })), arcs, texts, loops: [], scale }
   const plan = buildPlan(drawing, name.replace(/\.pdf$/i, ''))
   notes.push(pens.walls.size ? `Layers: a PDF has none — its lines were sorted by pen: the heaviest (${pens.words}) taken as walls, the rest as doors, windows and the like.` : 'Layers: a PDF has none and its lines are all one pen — walls are any parallel line pair 5–60 cm apart; a door is a quarter-circle swing drawn as a curve.')
+  if (dropped.size) {
+    const n = (k: string) => [...not.values()].filter((x) => x === k).length
+    notes.push(`${dropped.size} lines drawn with a wall's pen are no walls: ${[n('tread') && `${n('tread')} of stair treads`, n('fixture') && `${n('fixture')} of bath and kitchen fixtures`, n('outside') && `${n('outside')} outside the outer walls (a roof below)`, n('pen') && `${n('pen')} more of a pen that drew those`].filter(Boolean).join(', ')}.`)
+  }
   notes.push(...plan.notes)
   return { format: 'pdf', storeys: [{ name: 'Floor', elevationM: 0, unit: plan.unit }], notes, unitScale: scale, origin: plan.origin }
 }

@@ -192,9 +192,14 @@ Shots: `lboro-set.png`, `lboro-built.png`, `lboro-building.png` (two storeys sta
 - **The key plan.** A brochure's flat page shows where its flat stands in a small outline of the floor; it is not read, so
   joined flats are side by side, not in place (Torukabbo). The typical floor plan, when the brochure has one, is still the
   better drawing.
-- **The farmhouse's upper floor stays a picture.** Its stair treads, bath fixtures and the porch roof drawn with the same pen
-  as the walls pair into 184 "walls" for 5 rooms; a rule for stair treads (equal parallel lines at tread spacing) would be the
-  next step.
+- ~~The farmhouse's upper floor stays a picture.~~ Done (session 31 polish3, `plan2d.ts notWallLines`): lines drawn with a
+  wall's pen that are stair treads (4+ like lines at tread spacing), fixtures (a closed shape on its own, 0.35–2.6 m, full),
+  a porch roof outside the outer walls (with a roof's words out there) and the rest of a lighter pen mostly made of those are
+  no walls. Farmhouse 2ND FLOOR PLAN 184 → 60 walls, 5 rooms, built from its lines (was a picture); every other plan page of
+  the PDF sets (46 views: the farmhouse, the school, Quinta, Casa Steiner, twindo, the six brochures) as many rooms and
+  names as before or more, 7 with fewer walls (White Lake's four typical floors lose 32–33 stair treads each, 88–96 walls
+  fewer). Left: its stair hall and the bedroom read as one room (the bedroom door's wall piece is not bridged) and a long
+  stray wall crosses the main bedroom (both from before).
 - **Brochure pages are not stacked**: they have no scale; once the person sets each picture's scale (S), lining them up is
   the Studio's own "Use its scale and position" or by hand.
 - **Floors with no page** (Sanctuary's 2nd, 3rd, 5th …) are not guessed from the nearest page: the Building view stands the

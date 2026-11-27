@@ -7,7 +7,7 @@ import { describe, expect, it } from 'vitest'
 import { validate } from '../core'
 import type { Unit, Wall } from '../core'
 import { emptyUnit, initialState, reducer } from '../studio/model'
-import { nodeGraph, settleImport, zonesOntoWalls } from './plan2d'
+import { nodeGraph, notWallLines, settleImport, zonesOntoWalls, type Seg } from './plan2d'
 
 /** walls as [x0, y0, x1, y1, thickness, height]; corners within a millimetre are one */
 function unitOf(walls: [number, number, number, number, number, number][], openings: Record<number, Wall['openings']> = {}): Unit {
@@ -101,5 +101,34 @@ describe('settleImport', () => {
     const again = reducer(initialState(), { type: 'load-unit', unit: s }).unit
     expect(crossings(again)).toBe(0)
     expect(again.walls).toHaveLength(s.walls.length)
+  })
+})
+
+describe("lines drawn with a wall's pen that are no walls (session 31 polish3: the farmhouse's upper floor)", () => {
+  const W = 'pen 1.08 #000000', T = 'pen 0.36 #000000'
+  const S = (ax: number, ay: number, bx: number, by: number, layer = T): Seg => ({ a: { x: ax, y: ay }, b: { x: bx, y: by }, layer })
+  const rect = (x0: number, y0: number, x1: number, y1: number, layer = T): Seg[] => [S(x0, y0, x1, y0, layer), S(x1, y0, x1, y1, layer), S(x1, y1, x0, y1, layer), S(x0, y1, x0, y0, layer)]
+  // the outer walls: a 10 × 6 m ring, both faces (metres: scale 1)
+  const ring = [...rect(0, 0, 10, 6, W), ...rect(0.25, 0.25, 9.75, 5.75, W)]
+  it('a stair: eight treads 0.9 m long, 0.28 m apart, are treads; two faces of a wall are not', () => {
+    const treads = Array.from({ length: 8 }, (_, k) => S(4, 1 + 0.28 * k, 4.9, 1 + 0.28 * k))
+    const wall = [S(6, 1, 6, 4), S(6.15, 1, 6.15, 4)]
+    const not = notWallLines([...ring, ...treads, ...wall], 1, W)
+    expect([...not].filter(([, k]) => k === 'tread').length).toBe(8)
+    expect(not.has(ring.length + 8) || not.has(ring.length + 9)).toBe(false)
+  })
+  it("a bath tub (0.75 × 1.6 m, closed, on its own) is a fixture; an L of 0.15 m walls drawn as its outline is not, nor the walls' own pen", () => {
+    const tub = rect(1, 1, 1.75, 2.6)
+    const L = [S(3, 1, 4.2, 1), S(4.2, 1, 4.2, 2.2), S(4.2, 2.2, 4.05, 2.2), S(4.05, 2.2, 4.05, 1.15), S(4.05, 1.15, 3, 1.15), S(3, 1.15, 3, 1)]
+    const not = notWallLines([...ring, ...tub, ...L], 1, W)
+    expect(tub.map((_, i) => not.get(ring.length + i))).toEqual(['fixture', 'fixture', 'fixture', 'fixture'])
+    expect(L.some((_, i) => not.has(ring.length + 4 + i))).toBe(false)
+    expect(notWallLines([...ring, ...rect(1, 1, 1.75, 2.6, W), ...tub], 1, W).has(ring.length)).toBe(false) // (a box of the heaviest pen: walls)
+  })
+  it('a porch roof drawn outside the outer walls goes when a roof\'s words stand out there; a porch without them stays', () => {
+    const porch = [...rect(0, 6, 10, 9), S(0, 6, 3, 9), S(10, 6, 7, 9)]
+    const roof = notWallLines([...ring, ...porch], 1, W, [{ at: { x: 5, y: 8 }, text: 'FRONT PORCH ROOF', layer: '', height: 0.2 }])
+    expect(porch.filter((_, i) => roof.get(ring.length + i) === 'outside').length).toBe(5) // (its top edge lies on the wall face: kept)
+    expect(notWallLines([...ring, ...porch], 1, W, [{ at: { x: 5, y: 8 }, text: 'FRONT PORCH', layer: '', height: 0.2 }]).size).toBe(0)
   })
 })
