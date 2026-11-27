@@ -370,11 +370,19 @@ export default function SetPanel({ files, onRead, onOpenOne, onBuild, onClose, o
             {k === 'plan' && flatsOfFloor.length > 1 && (
               <label className="check set-ask">
                 <input type="checkbox" checked={joinFlats} onChange={(e) => setJoinFlats(e.target.checked)} />
-                <span>
-                  {flatsOfFloor.length} plans are flats of the same floors ({flatsOfFloor.map((r) => r.view.flat).join(', ')}), and nothing on their pages says where each
-                  stands on the floor. Tick to put them side by side on one floor drawing (move each into place in the Studio); else only {flatsOfFloor[0].view.flat} goes on
-                  those floors.
-                </span>
+                {flatsOfFloor.every((r) => r.view.key) ? (
+                  <span>
+                    {flatsOfFloor.length} plans are flats of the same floors ({flatsOfFloor.map((r) => r.view.flat).join(', ')}), and each page's key plan shows where its flat
+                    stands. Tick to put them on one floor drawing where their key plans show them ({flatsOfFloor.reduce((a, r) => a + r.view.key!.marks.length, 0)} flats — a plan its key shows in
+                    several places goes in each); else only {flatsOfFloor[0].view.flat} goes on those floors.
+                  </span>
+                ) : (
+                  <span>
+                    {flatsOfFloor.length} plans are flats of the same floors ({flatsOfFloor.map((r) => r.view.flat).join(', ')}), and nothing on their pages says where each
+                    stands on the floor. Tick to put them side by side on one floor drawing (move each into place in the Studio); else only {flatsOfFloor[0].view.flat} goes on
+                    those floors.
+                  </span>
+                )}
               </label>
             )}
             {k === 'plan' && storeys && (

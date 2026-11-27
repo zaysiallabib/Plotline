@@ -161,7 +161,7 @@ A brochure that prints a page a flat for the same floors asks once (a tick at th
 
 | Brochure | flats on a typical floor | placed before | placed after | |
 |---|---|---|---|---|
-| Rangs Torukabbo (TYPE-A, B, C/G/K, D/H/L, E/I/M, F/J/N; LEVEL 1 to 11) | 14 (6 drawings, four used three times) | 1 (TYPE-A only) | ticked: 6 drawings side by side on floors 1–11, one picture to trace (shot `toru-floor.png`) | not where they stand: each page's key plan (the flat dark in a small outline of the towers) is not read yet — the person moves them |
+| Rangs Torukabbo (TYPE-A, B, C/G/K, D/H/L, E/I/M, F/J/N; LEVEL 1 to 11) | 14 (6 drawings, four used three times) | 1 (TYPE-A only) | ticked: 6 drawings side by side on floors 1–11, one picture to trace (shot `toru-floor.png`); **polish3: all 14 flats where each page's key plan shows them**, one picture to trace | each page's key plan read (keyplan.ts): 14 / 14 in place |
 | Rangs White Lake, Rangs Noorani Heights | 2 (TYPE A + TYPE B on each floor's page) | 2 | 2 | a whole floor a page: nothing to join |
 | Akter Aleena | its Typical Floor Plan holds every flat | the typical plan | the typical plan | one drawing already: its flat pages ("1400 sft South-East facing") name no type and are left out |
 
@@ -189,9 +189,18 @@ Shots: `lboro-set.png`, `lboro-built.png`, `lboro-building.png` (two storeys sta
 
 ### Still not done
 
-- **The key plan.** A brochure's flat page shows where its flat stands in a small outline of the floor; it is not read, so
-  joined flats are side by side, not in place (Torukabbo). The typical floor plan, when the brochure has one, is still the
-  better drawing.
+- ~~The key plan.~~ Done (session 31 polish3, `src/import/keyplan.ts`): a flat page's key plan is read from its fills — the
+  plan (its walls' dark poché and its floor), the mark (the one saturated fill outside the plan, small), the key's own corner
+  (gathered from the lines round the marks: Torukabbo's TYPE-E page moves its key 22 points right) — and the joined flats are
+  laid where their marks say, at the brochure's one scale, turned with their tower, slid to cover their mark best; a plan
+  marked in several places is laid in each. **Measure** (flats of a floor placed where the brochure shows them, a flat
+  counted right when its footprint covers its key mark, IoU ≥ 0.8): Rangs Torukabbo **0 / 14 before** (6 drawings side by
+  side, the 8 repeats not drawn) → **14 / 14 after** (IoU 0.88–0.98; the four towers round their cores, shot
+  `E:/dev/plotline-shots/s31/polish3/i2-03-floor-picture.png`). The other 44 brochures: 6 more print flat pages — White
+  Lake and Noorani Heights a whole floor a page, Akter Aleena / Residence Park / Mir Sarwar one flat page (nothing to join),
+  Rangs Ixora two flats a spread with a key each but on different floors (not one floor: not joined) — so none to place.
+  Left: a key whose mark is a picture or a hatch, two flats on one page (Ixora's spreads), a flat drawn a quarter turn from
+  its mark, and flat pages read from their lines (a printed scale) stay side by side.
 - ~~The farmhouse's upper floor stays a picture.~~ Done (session 31 polish3, `plan2d.ts notWallLines`): lines drawn with a
   wall's pen that are stair treads (4+ like lines at tread spacing), fixtures (a closed shape on its own, 0.35–2.6 m, full),
   a porch roof outside the outer walls (with a roof's words out there) and the rest of a lighter pen mostly made of those are

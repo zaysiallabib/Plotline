@@ -58,6 +58,7 @@ import type { SetHeights } from '../import/heights'
 import PrintBox from './PrintBox'
 import { SAMPLES, sampleLine, type Sample } from './samples'
 import { CONVERTED_PICTURE, toPlanPicture } from '../import/picture'
+import { keyPlace, type KeyPlan } from '../import/keyplan'
 import type { PdfDoc } from '../import/pdf'
 import type { Box } from '../import/sheets'
 import { IMPORT_ACCEPT, expandZips, filesOfDrop, importFile, importFormatOf, lockedFormatOf, mainFile, siblingsOf, type DropFile, type ImportResult, type ImportedStorey, type LayerRole, type LayerRoles } from '../import'
@@ -1299,6 +1300,8 @@ export default function StudioApp() {
     let pictures = 0
     let stacked = 0
     let sideBySide = 0
+    /** flats put where their pages' key plans show them (a flat used in three towers counts three times) */
+    let keyed = 0
     try {
       // every plan read first, then the floors stacked on what they share (session 31 levels): the lowest drawn floor is the
       // building's frame, each other floor read at a known scale lands on the floor it shares most walls with — the page's own
@@ -1349,19 +1352,55 @@ export default function StudioApp() {
             }
           } else {
             const docs = group.map(({ m }) => ({ m, doc: files[m.file].doc! })).filter((g) => g.doc)
-            const W = docs.reduce((a, { m }) => a + m.frame.x1 - m.frame.x0, 0), H = Math.max(...docs.map(({ m }) => m.frame.y1 - m.frame.y0))
-            const gap = 0.1 * H
-            const k = Math.min(4000 / (W + gap * (docs.length - 1)), 4000 / H)
-            const parts = []
-            for (const { m, doc } of docs) parts.push((await pdf.renderView(doc, m.page, m.frame, k * Math.max(m.frame.x1 - m.frame.x0, m.frame.y1 - m.frame.y0))).canvas)
-            const canvas = document.createElement('canvas')
-            canvas.width = Math.ceil(parts.reduce((a, c) => a + c.width, 0) + gap * k * (parts.length - 1))
-            canvas.height = Math.ceil(Math.max(...parts.map((c) => c.height)))
-            const g = canvas.getContext('2d')!
-            g.fillStyle = '#ffffff'
-            g.fillRect(0, 0, canvas.width, canvas.height)
-            let px = 0
-            for (const c of parts) g.drawImage(c, px, 0), (px += c.width + gap * k)
+            // each page's key plan read (keyplan.ts): every flat drawn where its key shows it, as often as it shows it, turned with
+            // its tower — just its plan, cut from the page; else the pages side by side, as before
+            const keys = docs.map(({ m }) => m.view.key)
+            const places = keys.every((x) => x) ? keyPlace(keys as KeyPlan[]) : null
+            let canvas: HTMLCanvasElement
+            let k: number
+            if (places) {
+              const size = (i: number) => ({ w: keys[i]!.plan.x1 - keys[i]!.plan.x0, h: keys[i]!.plan.y1 - keys[i]!.plan.y0 })
+              const corners = places.flatMap((q) => {
+                const { w, h } = size(q.flat)
+                const a = (q.deg * Math.PI) / 180
+                return [-1, 1].flatMap((sx) => [-1, 1].map((sy) => ({ x: q.x + (sx * w * Math.cos(a)) / 2 - (sy * h * Math.sin(a)) / 2, y: q.y + (sx * w * Math.sin(a)) / 2 + (sy * h * Math.cos(a)) / 2 })))
+              })
+              const [x0, y0] = [Math.min(...corners.map((c) => c.x)), Math.min(...corners.map((c) => c.y))]
+              const [W, H] = [Math.max(...corners.map((c) => c.x)) - x0, Math.max(...corners.map((c) => c.y)) - y0]
+              k = Math.min(4000 / W, 4000 / H)
+              const parts = []
+              for (const [i, { m, doc }] of docs.entries()) parts.push((await pdf.renderView(doc, m.page, keys[i]!.plan, k * Math.max(size(i).w, size(i).h))).canvas)
+              canvas = document.createElement('canvas')
+              canvas.width = Math.ceil(W * k)
+              canvas.height = Math.ceil(H * k)
+              const g = canvas.getContext('2d')!
+              g.fillStyle = '#ffffff'
+              g.fillRect(0, 0, canvas.width, canvas.height)
+              g.globalCompositeOperation = 'darken' // (a plan's white margin never covers its neighbour's walls)
+              for (const q of places) {
+                const { w, h } = size(q.flat)
+                g.setTransform(1, 0, 0, 1, (q.x - x0) * k, (q.y - y0) * k)
+                g.rotate((q.deg * Math.PI) / 180)
+                g.drawImage(parts[q.flat], (-w * k) / 2, (-h * k) / 2, w * k, h * k)
+              }
+              g.setTransform(1, 0, 0, 1, 0, 0)
+              keyed += places.length
+            } else {
+              const W = docs.reduce((a, { m }) => a + m.frame.x1 - m.frame.x0, 0), H = Math.max(...docs.map(({ m }) => m.frame.y1 - m.frame.y0))
+              const gap = 0.1 * H
+              k = Math.min(4000 / (W + gap * (docs.length - 1)), 4000 / H)
+              const parts = []
+              for (const { m, doc } of docs) parts.push((await pdf.renderView(doc, m.page, m.frame, k * Math.max(m.frame.x1 - m.frame.x0, m.frame.y1 - m.frame.y0))).canvas)
+              canvas = document.createElement('canvas')
+              canvas.width = Math.ceil(parts.reduce((a, c) => a + c.width, 0) + gap * k * (parts.length - 1))
+              canvas.height = Math.ceil(Math.max(...parts.map((c) => c.height)))
+              const g = canvas.getContext('2d')!
+              g.fillStyle = '#ffffff'
+              g.fillRect(0, 0, canvas.width, canvas.height)
+              let px = 0
+              for (const c of parts) g.drawImage(c, px, 0), (px += c.width + gap * k)
+              sideBySide += group.length
+            }
             const scale = docs.every(({ m }) => m.view.scale && m.view.scale === docs[0].m.view.scale) ? docs[0].m.view.scale! * (0.0254 / 72) : 0
             const pic: PlanImage = { dataUrl: canvas.toDataURL('image/webp', 0.9), naturalW: canvas.width, naturalH: canvas.height, name: `${name} ${group.map(({ m }) => m.view.flat).join(' ')}.webp` }
             u = { ...u, ...(scale ? { planImage: { src: pic.name, pxPerM: k / scale, originPx: { x: 0, y: 0 } } } : {}) }
@@ -1374,7 +1413,7 @@ export default function StudioApp() {
           const free = r.slots.filter((s) => !skip.has(s))
           for (const s of free) p = setSlot(p, s, u)
           if (!free.length) p = { ...p, units: { ...p.units, [u.id]: u } }
-          sideBySide += group.length
+          if (drawn) sideBySide += group.length
           first ??= u.id
           continue
         }
@@ -1437,7 +1476,7 @@ export default function StudioApp() {
       toast(into ? `${name}'s floors taken out of ${into.name}` : `The project ${name} is gone`)
     }
     const drawings = plans.filter((r) => !r.with).length
-    toast(`${name}: ${drawings} drawing${drawings === 1 ? '' : 's'} on their floors${into ? ` of ${into.name}` : ''}${pictures ? ` (${pictures} as pictures to trace)` : ''}${stacked ? `, ${stacked} stacked on the floor${stacked === 1 ? '' : 's'} they share walls with` : ''}${sideBySide ? `, ${sideBySide} flats side by side on one floor (move each into place)` : ''}, ${kept.length} kept with the project${heights ? `, every storey as tall as its sections print (${heights.from.length} drawing${heights.from.length === 1 ? '' : 's'})` : ''} — the list on the right`, { label: 'Undo', onClick: undo })
+    toast(`${name}: ${drawings} drawing${drawings === 1 ? '' : 's'} on their floors${into ? ` of ${into.name}` : ''}${pictures ? ` (${pictures} as pictures to trace)` : ''}${stacked ? `, ${stacked} stacked on the floor${stacked === 1 ? '' : 's'} they share walls with` : ''}${keyed ? `, ${keyed} flats on one floor where the brochure's key plans show them` : ''}${sideBySide ? `, ${sideBySide} flats side by side on one floor (move each into place)` : ''}, ${kept.length} kept with the project${heights ? `, every storey as tall as its sections print (${heights.from.length} drawing${heights.from.length === 1 ? '' : 's'})` : ''} — the list on the right`, { label: 'Undo', onClick: undo })
   }
   useEffect(() => {
     if (!sheetView) return

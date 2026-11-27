@@ -1502,9 +1502,15 @@ this browser, and online for your company when signed in).
 ("GROUND FLOOR PLAN (LEFT PART)" / "(RIGHT PART)", "PART A" / "PART B") are one drawing, as two halves under one title
 already were; two titled apart ("Ground Floor" and "Ground Floor – Enhanced Accessible") stay two ways to build it. A
 brochure that prints a page a flat for the same floors ("TYPE-A", "TYPE-B" … each "LEVEL 1 to 11") asks in one row at the
-top of Plans: tick it to put those flats **side by side on one floor drawing** (each named by its page; their own lines when
-every one makes a plan, else one picture of them all to trace) — nothing on the pages says where each flat stands, so you
-move each into place in the Studio; left unticked, only the first flat goes on those floors, as before.
+top of Plans. **When every page prints a key plan** — the small drawing of the whole floor in a corner with that flat's
+place filled in (Rangs Torukabbo: dark green in the towers' outlines) — the row says so, and the tick puts the flats **on
+one floor drawing where their key plans show them**: each plan cut from its page and laid where its key marks it, all at
+the brochure's one scale, turned with a tower set at an angle, and a plan its key marks in several places (TYPE-C/G/K: one
+in each of three towers) laid in each — Torukabbo's 6 pages make its whole floor of 14 flats round their cores, ready to
+set the scale (S) once and trace. Otherwise the tick puts them **side by side on one floor drawing** (each named by its
+page; their own lines when every one makes a plan, else one picture of them all to trace) and you move each into place in
+the Studio. Left unticked, only the first flat goes on those floors, as before. The message after Build says which ("14
+flats on one floor where the brochure's key plans show them").
 
 **With a project open,** Build the project asks first: "Add the set's floors (G, 1, 2) to the project open now? Or make
 a new project" — **Add to this project**, **New project** or **Cancel** (Esc). Added, the set's floors stack on the

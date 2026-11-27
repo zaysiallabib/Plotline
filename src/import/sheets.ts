@@ -23,6 +23,7 @@
 import { flatTypeOf, type Pt } from '../core'
 import type { ArcPrim, Seg } from './plan2d'
 import { printedScale } from './plan2d'
+import { readKey, type KeyPlan } from './keyplan'
 
 /** 'roof': a plan of the roof's slopes (a house's ROOF PLAN: SLOPE 4/12, RIDGE, GUTTER) — kept like an elevation, never a floor (qa4fix) */
 export type SheetKind = 'plan' | 'elevation' | 'section' | 'roof' | 'site' | 'schedule' | 'detail' | 'interior' | 'title' | 'other'
@@ -80,6 +81,8 @@ export interface View {
   by: 'words' | 'number' | 'shape'
   /** the flat a page of one plan draws, as it prints it ("TYPE-A", "TYPE-C/G/K"): a brochure's page a flat */
   flat?: string
+  /** that page's key plan (keyplan.ts): its plan's box and footprint, and where the key shows the flat */
+  key?: KeyPlan
 }
 
 export interface SheetRead {
@@ -474,7 +477,9 @@ export function readSheet(page: SheetPage): SheetRead {
   // a page of one plan that names its flat in big letters ("TYPE-A" over "TOWER-1 LEVEL 1 to 11"): a flat's page
   const plans = r.views.filter((v) => v.kind === 'plan')
   const flat = plans.length === 1 ? [...page.texts].sort((a, b) => b.height - a.height).find((t) => t.text.trim().length <= 24 && flatTypeOf({ name: t.text, kind: 'other' })) : undefined
-  const views = (flat ? r.views.map((v) => (v === plans[0] ? { ...v, flat: flat.text.trim() } : v)) : r.views).map((v) => (ofSlopes(v, page.texts) ? { ...v, kind: 'roof' as const } : v))
+  // (and where it stands: the page's key plan, when it prints one — keyplan.ts)
+  const key = flat ? readKey(page) : null
+  const views = (flat ? r.views.map((v) => (v === plans[0] ? { ...v, flat: flat.text.trim(), ...(key ? { key } : {}) } : v)) : r.views).map((v) => (ofSlopes(v, page.texts) ? { ...v, kind: 'roof' as const } : v))
   return { ...r, views, ...(storeys ? { storeys } : {}) }
 }
 
