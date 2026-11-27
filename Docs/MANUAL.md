@@ -700,6 +700,12 @@ Works in Walk and Dollhouse; the mouse stays free, so drag empty space to look r
   shows it at once. To make a balcony glass-fronted: **Edit ▾ → Openings**, click the balcony's edge, **Made of → Glass**
   (each side of the balcony is its own low wall: click the next one and do the same). A solid one has **Cornice**: a
   stepped band under its cap. A passage in a railing or fence stays a gap — a gate.
+- **Quicker, from the Building view** (staff, a building made in the Studio, Finishes closed): point at a balcony's edge
+  on the tower — the card says *Click to choose what it is made of* — and click it. A card opens bottom left ("Low wall ·
+  5'-5" long · 3'-7" high · Floor 5 · Type A") with **Made of** (and Cornice); pick **Glass** and that edge turns glass on
+  every floor with this drawing ("Changes it on all 5 floors with this drawing"), at once. Tick **This floor only** first
+  and that floor gets its own copy of the drawing instead. **Done** closes the card. Three clicks where Edit ▾ →
+  Openings took six.
 - Keys: **Del** removes what is picked · **Ctrl+Z** undoes (one drag = one step) · **Esc** unpicks · **Alt** while
   dragging a low wall's end keeps its corner.
 - A window or a sliding door also has **Frame**: *Same as the building* (Finishes → Window frames), or its own colour —

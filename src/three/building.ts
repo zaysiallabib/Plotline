@@ -219,8 +219,9 @@ export interface FlatRef {
 export interface TowerHit {
   k: number
   flat: FlatRef | null
-  /** the wall it is on (a wall, a parapet, a window's): its drawing's id and its run (finishes.ts outerRuns) — Finishes' outside card */
-  wall?: { drawing: Id; run: Id }
+  /** the wall it is on (a wall, a parapet, a window's): its drawing's id and its run (finishes.ts outerRuns) — Finishes' outside card;
+   *  the wall itself and the stem it stands in — a balcony edge's Made of card (qa4fix) */
+  wall?: { drawing: Id; run: Id; id?: Id; stem?: string }
 }
 
 /** Axis-aligned box, plan x/z and height y ranges (any order), non-indexed so it merges with wallGeometry. */
@@ -1526,14 +1527,14 @@ export class Building extends THREE.Group {
 
   /** The wall of what stands on floor k nearest scene point p, if p is on it (its face, 15 cm slack): `{ wall }`, else nothing. */
   private wallNear(p: THREE.Vector3, k: number): Pick<TowerHit, 'wall'> {
-    let best: { d: number; drawing: Id; run: Id } | null = null
+    let best: { d: number; drawing: Id; run: Id; id: Id; stem: string } | null = null
     for (const s of this.onFloor(k)) {
       const u = this.t.FLATS[s].unit
       const sh = this.shift(s)
       const n = core.nearestWall({ x: p.x - sh.x, y: p.z - sh.y }, u)
-      if (n && n.distanceM <= n.wall.thicknessM / 2 + 0.15 && (!best || n.distanceM < best.d)) best = { d: n.distanceM, drawing: u.id, run: outerRuns(u).get(n.wall.id) ?? n.wall.id }
+      if (n && n.distanceM <= n.wall.thicknessM / 2 + 0.15 && (!best || n.distanceM < best.d)) best = { d: n.distanceM, drawing: u.id, run: outerRuns(u).get(n.wall.id) ?? n.wall.id, id: n.wall.id, stem: s }
     }
-    return best ? { wall: { drawing: best.drawing, run: best.run } } : {}
+    return best ? { wall: { drawing: best.drawing, run: best.run, id: best.id, stem: best.stem } } : {}
   }
 
   /**

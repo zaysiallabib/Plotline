@@ -11,7 +11,7 @@
  * bottom sheets with a grip to pull them down (Grip); under a finger the hint says finger words, never keys (useFinger).
  */
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
-import { sqmToSqft, type Room } from '../core'
+import { sqmToSqft, takesLowKind, type Room, type Wall } from '../core'
 import { levelName, topFloor, type Tower } from '../data/building'
 import type { TowerHit } from '../three/building'
 import type { PlotlineScene, SceneMode } from '../three/PlotlineScene'
@@ -200,7 +200,7 @@ export const railWord = (label: string): { text: string; serif: boolean } => ({ 
  * than the word; a project's floor whose drawing is still a picture to trace (it stands in as a block) "Not traced yet". `act`:
  * what a click (a finger: a second tap) does there — open the flat, walk the level, or pick the floor.
  */
-export function towerCard(t: Tower, h: TowerHit, finger: boolean, outside = false): { title: string; line?: string; act: string } {
+export function towerCard(t: Tower, h: TowerHit, finger: boolean, outside = false, staff = false): { title: string; line?: string; act: string } {
   const title = h.k <= 0 || h.k > topFloor(t) ? levelName(t, h.k) : `Floor ${h.k}`
   const f = t.FLOORS.find((x) => x.floor === h.k)
   const untraced = !!t.UNTRACED?.includes(h.k)
@@ -210,13 +210,22 @@ export function towerCard(t: Tower, h: TowerHit, finger: boolean, outside = fals
   const tap = finger ? 'Tap again' : 'Click'
   // staff with Finishes open (outside): a click chooses for the building's outside there — on the roof itself, its roof
   if (outside) return { title, line, act: h.k > topFloor(t) && !h.wall ? `${tap} to change the roof` : `${tap} to choose its outside` }
+  // staff over a balcony's edge (a railing, a glass front, a parapet) of a project's flat: its Made of card, not the flat
+  if (staff && lowWallAt(t, h)) return { title, line, act: `${tap} to choose what it is made of` }
   return { title, line, act: h.flat ? `${tap} to open it` : level ? `${tap} to walk it` : `${tap} to pick this floor` }
 }
 
+/** The low wall under the pointer on a Studio project's tower (a balcony's front: under 2.4 m, over a kerb) and the flat it is of, on a floor of flats; null elsewhere (qa4fix). */
+export function lowWallAt(t: Tower, h: TowerHit): { stem: string; wall: Wall } | null {
+  const s = h.wall?.stem
+  const w = t.ID && s ? t.FLATS[s]?.unit.walls.find((x) => x.id === h.wall!.id) : undefined
+  return w && takesLowKind(w) && t.FLOORS.some((f) => f.floor === h.k && f.flats.includes(s!)) ? { stem: s!, wall: w } : null
+}
+
 /** The card beside the pointer on the tower (towerCard): it follows the mouse while it shows; a tap puts it by the finger, beside it where it fits, else over it. */
-function TowerCard({ t, hover, finger, outside }: { t: Tower; hover: TowerHit & { x: number; y: number }; finger: boolean; outside?: boolean }) {
+function TowerCard({ t, hover, finger, outside, staff }: { t: Tower; hover: TowerHit & { x: number; y: number }; finger: boolean; outside?: boolean; staff?: boolean }) {
   const ref = useRef<HTMLDivElement>(null)
-  const c = towerCard(t, hover, finger, outside)
+  const c = towerCard(t, hover, finger, outside, staff)
   useLayoutEffect(() => {
     const place = (x: number, y: number) => {
       const el = ref.current
@@ -614,7 +623,7 @@ export default function Hud(p: Props) {
       </div>
 
       {p.hand && p.mode !== 'building' && <HandTag hand={p.hand} locked={p.locked} finger={finger} />}
-      {p.mode === 'building' && p.tower && p.hover && <TowerCard t={p.tower} hover={p.hover} finger={finger} outside={p.outsidePick} />}
+      {p.mode === 'building' && p.tower && p.hover && <TowerCard t={p.tower} hover={p.hover} finger={finger} outside={p.outsidePick} staff={p.staff} />}
       {p.staff && p.locked && p.mode === 'walk' && <div className="dot" />}
       {p.mode === 'building' && p.floors && (
         <div className="floor-rail">

@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest'
 import * as bti from '../data/building/demo-tower'
 import * as banani from '../data/building/banani-tower'
 import * as sheltech from '../data/building/sheltech-tower'
-import { chromeOf, cleanKey, floorTitle, floorWord, hintOf, railWord, towerCard, wakes } from './Hud'
+import { chromeOf, cleanKey, floorTitle, floorWord, hintOf, lowWallAt, railWord, towerCard, wakes } from './Hud'
 import { noteAt } from './Notes'
 import { dayGradient, roseTurn, skyColor } from './SunPill'
 
@@ -92,6 +92,20 @@ describe('hud', () => {
       { text: 'B1', serif: false },
       { text: '12', serif: true },
     ])
+  })
+
+  it('staff over a balcony edge of a project’s flat: "Click to choose what it is made of"; a buyer, a storey-high wall, a built-in tower: as before (qa4fix)', async () => {
+    const { makeProject, projectTower } = await import('../data/building/projects')
+    const a = { ...bti.FLATS['type-a'].unit, id: 'a' }
+    const low = a.walls.find((w) => w.heightM > 0.2 && w.heightM < 2.4)!
+    const full = a.walls.find((w) => w.heightM >= 2.7)!
+    const t = projectTower(makeProject('p', a, 1, 3, 'none'))
+    const at = (id: string) => ({ k: 2, flat: { stem: 'a', floor: 2 }, wall: { drawing: 'a', run: id, id, stem: 'a' } })
+    expect(lowWallAt(t, at(low.id))?.wall.id).toBe(low.id)
+    expect(towerCard(t, at(low.id), false, false, true).act).toBe('Click to choose what it is made of')
+    expect(towerCard(t, at(low.id), false, false, false).act).toBe('Click to open it') // a buyer: the flat
+    expect(towerCard(t, at(full.id), false, false, true).act).toBe('Click to open it')
+    expect(lowWallAt(bti, { k: 2, flat: { stem: 'type-a', floor: 2 }, wall: { drawing: a.id, run: low.id, id: low.id, stem: 'type-a' } })).toBeNull() // a built-in tower: no project to keep it in
   })
 
   it('the card beside the pointer on the tower: the floor as its title, the flat under it with its size, what a click does', () => {

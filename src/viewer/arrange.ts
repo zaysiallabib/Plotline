@@ -4,13 +4,13 @@
  * in one place: data/building/apartments.ts — the Studio's tool F arranges the drawing's own), the undo stack, and where a
  * drag in the 3D view puts a piece.
  */
-import { newId, vertexById, wallFrame, type FurniturePlacement, type Id, type Pt, type Room, type Unit } from '../core'
+import { newId, takesLowKind, vertexById, wallFrame, type FurniturePlacement, type Id, type LowWallKind, type Pt, type Room, type Unit } from '../core'
 import { finishesKey, keptAt, layoutKey, placesIn, saveLayout } from '../data/building/apartments'
 import type { Tower } from '../data/building'
 import { PROJECTS_KEY, forkFloor, keepApartments, parseProjects, sharedAt, stemOf, syncUnit } from '../data/building/projects'
 import { kitAsset, objectKind, placementRange } from '../furnish/kit'
 import { baseOf, deletePiece, hangOn, layoutFor, movePiece, placePiece, surfaceOf, type Move, type WallFace } from '../studio/furniture'
-import { endAlong, isUnit, normalizeUnit, reducer, type StudioState } from '../studio/model'
+import { endAlong, initialState, isUnit, normalizeUnit, reducer, type StudioState } from '../studio/model'
 import { snapMove } from '../studio/snap'
 import type { OpeningEvent } from '../three/PlotlineScene'
 import { pinsKey } from './storage'
@@ -374,4 +374,42 @@ export function outsideOnEveryFloor(u: Unit, rooms: Room[], changed: FurniturePl
     saveLayout(kept.key, withOutside(now, changed), base, store)
   }
   return floors
+}
+
+/**
+ * A balcony's edge clicked on the tower in the Building view (qa4fix: a glass front took ~6 clicks through Edit ▾ →
+ * Openings): low wall `wallId` of the drawing flat `stem` stands in on floor `k` made of `patch` (the Studio's one reducer,
+ * 'low-wall') — in the drawing itself, so on every floor it stands on, or (`one`, "This floor only") in a copy of it for
+ * floor `k` alone (forkHere). Kept in the project, and in the Studio draft and preview when they hold that drawing (else the
+ * Studio would write the old one back). Returns the drawing as it is now and its stem on floor `k`; null when `stem` is no
+ * project flat, the wall takes no Made of, or the browser would not save.
+ */
+export function madeOfOnTower(stem: string, k: number, wallId: Id, patch: { kind?: LowWallKind | 'solid'; cornice?: boolean }, one: boolean, store?: Store): { unit: Unit; stem: string } | null {
+  const s = store ?? localStorage
+  try {
+    let ps = parseProjects(s.getItem(PROJECTS_KEY))
+    let at = stem
+    let id = ps.find((x) => x.flats[stem])?.flats[stem].unitId
+    if (!id) return null
+    if (one) {
+      const f = forkHere(stem, k, s)
+      if (f) ((at = f.stem), (id = f.unit.id), (ps = parseProjects(s.getItem(PROJECTS_KEY))))
+    }
+    const u = ps.find((x) => x.units[id!])?.units[id]
+    const w = u?.walls.find((x) => x.id === wallId)
+    if (!u || !w || !takesLowKind(w)) return null
+    const v = reducer({ ...initialState(), unit: u }, { type: 'low-wall', ids: [wallId], ...patch }).unit
+    const synced = syncUnit(ps, v)
+    if (synced) s.setItem(PROJECTS_KEY, JSON.stringify(synced))
+    for (const key of [DRAFT_KEY, PREVIEW_KEY]) {
+      const d: unknown = JSON.parse(s.getItem(key) ?? 'null')
+      const du = unitIn(d)
+      if (!du || !holds(d, du, id)) continue
+      const x = { ...du, walls: du.walls.map((q) => (q.id === wallId ? v.walls.find((y) => y.id === wallId)! : q)) }
+      s.setItem(key, JSON.stringify(isUnit(d) ? x : { ...(d as object), unit: x }))
+    }
+    return { unit: v, stem: at }
+  } catch {
+    return null
+  }
 }
