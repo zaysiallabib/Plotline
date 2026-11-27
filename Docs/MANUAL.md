@@ -583,8 +583,9 @@ exactly like the built-in ones.
    A .gltf dropped alone says to drop its files together.
 3. The model turns slowly on the left, with its size in feet and inches (and metres) and its triangle count. On the
    right: **Name**; **Kind** (decides its group); **Which side is the front** (click the arrow of the front side until it
-   faces you); **Where it sits** — **Floor**, **Wall** (eye height, like a picture), **Ceiling** (hangs, like a pendant)
-   or **On a table** (like the table lamp); **Real size** — type one side (6'2", 1.9 m or 190 cm) and Enter, the other two
+   faces you); **Where it sits** — **Floor**, **Wall** (eye height, like a picture), **Ceiling** (hangs, like a pendant),
+   **On a table** (like the table lamp) or **Outside wall** (a supplier's AC unit, awning or sign: it hangs on a wall like a
+   picture and may also go on a wall's outside face; listed under **Outside**); **Real size** — type one side (6'2", 1.9 m or 190 cm) and Enter, the other two
    follow so it never squashes; **It gives light** (ticked by itself for the kind "Lamp or light": it lights the room at
    night).
    An **OBJ or STL names no unit**. When its numbers cannot be metres (bigger than 12 m or smaller than 5 cm), Plotline

@@ -105,6 +105,15 @@ describe('a record becomes a kit item like any other', () => {
     expect(kitOf(model({ sits: 'wall' }), '').mount).toBe('wall')
     expect(kitOf(model({ sits: 'ceiling' }), '').mount).toBe('ceiling')
     expect(kitOf(model({ sits: 'table' }), '')).toMatchObject({ onTop: true, mountY: 0.75 })
+    // Outside wall (session 31): hung on a wall, inside or on its outer face (studio/furniture.ts hangOutside)
+    expect(kitOf(model({ sits: 'outside' }), '')).toMatchObject({ mount: 'wall', outdoor: true })
+    expect(kitOf(model({ sits: 'wall' }), '').outdoor).toBeUndefined()
+    registerOwn([model({ category: 'other', sits: 'outside', label: 'Brand X outdoor unit', sizeM: { x: 0.9, y: 0.6, z: 0.35 } })], () => 'blob:o')
+    expect(library().filter((t) => t.items.some((i) => i.id === model().id)).map((t) => t.tab)).toEqual(['Outside']) // listed under Outside
+    const r = deriveRooms(typeA as unknown as Unit)
+    const out = placePiece(typeA as unknown as Unit, r, [], model().id, { x: 15.67, y: 12.27 }, 0, 'o', { p: { x: 15.67, y: 12.27 }, n: { x: 1, y: 0 }, y: 2.62 })!
+    expect(out.error).toBeNull()
+    expect(out.piece.outside).toBe(true) // on Type A's east face, outside Bed-1, over its window
     const lamp = (o: Partial<OwnModel>) => model({ category: 'lamp', sizeM: { x: 0.4, y: 1.5, z: 0.4 }, ...o })
     registerOwn([lamp({ light: true })], () => 'blob:l')
     expect(lightOf(model().id)).toEqual({ kind: 'floor', lumens: 800, bulbM: 1.275 })
