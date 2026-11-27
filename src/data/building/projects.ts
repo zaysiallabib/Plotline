@@ -675,7 +675,7 @@ export function projectTower(p: Project): Tower {
   // tower's listed core does; a traced rooftop draws its own
   const topF = FLOORS.find((f) => f.floor === top)
   const CORE: Tower['CORE'] = roof || isPitched(ROOF_SHAPE) ? [] : [...new Set([...(topF?.flats ?? []), ...(topF?.standIns ?? [])])].flatMap((s) => [...new Set(deriveRooms(FLATS[s].unit).filter(runsUp).map((r) => r.name))].map((n): [string, string] => [s, n]))
-  return { FLOOR_M, FLATS, FLOORS, CORE, GROUND: { plot, roads: [], gardens: [], ramp: [], bays: [], blocks: [], columns }, ROOF: { gardens: [], tanks: [] }, LEVELS, ...(ELEVATIONS ? { ELEVATIONS } : {}), ...(STOREYS ? { STOREYS } : {}), ...(ROOF_SHAPE ? { ROOF_SHAPE } : {}) }
+  return { ID: p.id, FLOOR_M, FLATS, FLOORS, CORE, GROUND: { plot, roads: [], gardens: [], ramp: [], bays: [], blocks: [], columns }, ROOF: { gardens: [], tanks: [] }, LEVELS, ...(ELEVATIONS ? { ELEVATIONS } : {}), ...(STOREYS ? { STOREYS } : {}), ...(ROOF_SHAPE ? { ROOF_SHAPE } : {}) }
 }
 
 /** The tower's floor heights by floor number (the rooftop = top + 1) from an imported building's storey elevations; undefined when the project has none. */

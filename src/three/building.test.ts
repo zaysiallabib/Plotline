@@ -1142,3 +1142,114 @@ describe('the storeys the set prints (session 31 heights: data/building/storeys.
     }
   })
 })
+
+describe("the building's outside (session 31 facade): what the tower's walls and frames wear", () => {
+  const stop = { addColorStop: () => {} }
+  const draw = new Proxy({}, { get: (_, k) => (k === 'getImageData' ? () => ({ data: new Uint8ClampedArray(4) }) : k === 'measureText' ? () => ({ width: 1 }) : () => stop), set: () => true })
+  const g = globalThis as unknown as Record<string, unknown>
+  g.document ??= { createElement: () => ({ width: 0, height: 0, style: {}, getContext: () => draw }), createElementNS: () => ({ addEventListener() {}, removeEventListener() {}, style: {} }) }
+  g.requestAnimationFrame ??= () => 0
+  const A = bti.FLATS['type-a'].unit
+  const B = bti.FLATS['type-b'].unit
+  const tower = async (unit: Unit, rec?: Record<string, string>) => {
+    const { Building } = await import('./building')
+    const { outsideOf } = await import('../furnish/finishes')
+    const b = Building.for(unit, 'high', rec && outsideOf(rec))!
+    for (const _ of b.make()); // eslint-disable-line @typescript-eslint/no-unused-vars
+    ;(b as unknown as Group).updateMatrixWorld(true)
+    return b as unknown as Group
+  }
+  type Mat = { color?: { getHexString(): string }; customProgramCacheKey?: () => string }
+  /** each mesh's groups (one when it has none) with the colour its material is built in (the tint; the texture's own until it loads) */
+  const groupsOf = (b: Group, f: (hex: string, count: number, o: Mesh) => void) =>
+    b.traverse((o) => {
+      const m = o as Mesh
+      const p = m.geometry?.attributes.position
+      if (!p) return
+      const ms = [m.material].flat() as Mat[]
+      for (const gr of m.geometry.groups.length ? m.geometry.groups : [{ start: 0, count: p.count, materialIndex: 0 }]) f(ms[gr.materialIndex ?? 0]?.color?.getHexString() ?? '', gr.count, m)
+    })
+  /** every vertex, where it is drawn, its attributes and the material each part wears, folded into one string */
+  const print = (b: Group) => {
+    let sum = 0
+    const parts: string[] = []
+    b.traverse((o) => {
+      const p = (o as Mesh).geometry?.attributes.position
+      if (!p) return
+      const e = o.matrixWorld.elements
+      for (let i = 0; i < p.count; i++) sum += (((p.getX(i) + e[12]) * 3.1 + (p.getY(i) + e[13]) * 1.7 + (p.getZ(i) + e[14]) * 0.9) * ((i % 7) + 1)) % 1000
+      parts.push(Object.keys((o as Mesh).geometry.attributes).sort().join(','))
+    })
+    groupsOf(b, (hex, n) => parts.push(`${hex}:${n}`))
+    return `${sum.toFixed(1)}|${parts.join(';')}`
+  }
+  const count = (b: Group, hex: string, k?: number) => {
+    let n = 0
+    groupsOf(b, (h, c, o) => void (h === hex && (k === undefined || o.userData.level === k) && !o.userData.proxy && (n += c)))
+    return n
+  }
+  const BRICK = 'a5583f' // brick_red's flat colour until its picture loads (materials.ts fallbackColor)
+  const PLASTER = 'dbd3c6'
+
+  test('nothing chosen, or a choice for nothing here: the very same tower — every vertex, attribute and material', async () => {
+    const before = print(await tower({ ...A, floor: 2 }))
+    expect(print(await tower({ ...A, floor: 2 }, {}))).toBe(before)
+    expect(print(await tower({ ...A, floor: 2 }, { 'out:no-such-drawing:w': 'fo_out_brick_red' }))).toBe(before)
+    expect(print(await tower({ ...A, floor: 2 }, { s_outside: 'fo_out_plaster' }))).toBe(before) // the warm plaster chosen: what was drawn
+    expect(before).not.toContain('paneTint')
+  })
+
+  test("red brick for the whole building: every flat's walls, the parapets and the ground's blocks; the plates and columns stay plaster", async () => {
+    const b = await tower({ ...A, floor: 2 }, { s_outside: 'fo_out_brick_red' })
+    expect(count(b, BRICK)).toBeGreaterThan(10000)
+    expect(count(b, BRICK, 9)).toBeGreaterThan(0) // the roof's parapet
+    expect(count(b, PLASTER)).toBeGreaterThan(1000) // the floor plates, the columns
+    expect(count(await tower({ ...A, floor: 2 }), BRICK)).toBe(0)
+  })
+
+  test('one wall: its run on every floor its drawing stands on; one floor: only that floor; the wall beats the floor', async () => {
+    const { outerRuns, outsideKey, outsideFloorKey } = await import('../furnish/finishes')
+    const runs = outerRuns(B)
+    const run = [...new Set(runs.values())].find((r) => [...runs.values()].filter((x) => x === r).length > 1)!
+    const b = await tower({ ...A, floor: 2 }, { [outsideKey(B.id, run)]: 'fo_out_timber_slats', [outsideFloorKey(5)]: 'fo_out_stone' })
+    const SLATS = '8a6a4a' // (timber_slats' flat colour until it loads)
+    const STONE = 'e6e2da' // (its option's tint)
+    expect([3, 4, 5, 6, 7, 8].map((k) => count(b, SLATS, k) > 0)).toEqual([true, true, true, true, true, true]) // type-b stands on 3–8
+    expect(count(b, STONE, 5)).toBeGreaterThan(0)
+    expect([4, 6].map((k) => count(b, STONE, k))).toEqual([0, 0])
+    // the run's pieces on floor 5 stay slats under the floor's stone
+    expect(count(b, SLATS, 5)).toBe(count(b, SLATS, 4))
+  })
+
+  test("frames: a tower with a frame chosen colours each pane's frame (the building's, one window's own) — none chosen: no colour, the one program", async () => {
+    const { frameKey } = await import('../furnish/finishes')
+    const win = B.walls.flatMap((w) => w.openings).find((o) => o.kind === 'window')!
+    const b = await tower({ ...A, floor: 2 }, { s_frames: 'fo_frame_white', [frameKey(B.id, win.id)]: 'fo_frame_black' })
+    const tints = new Set<string>()
+    let program = ''
+    b.traverse((o) => {
+      const t = (o as Mesh).geometry?.attributes.paneTint
+      if (!t) return
+      program = ((o as Mesh).material as Mat).customProgramCacheKey!()
+      for (let i = 0; i < t.count; i++) tints.add([t.getX(i), t.getY(i), t.getZ(i)].map((v) => v.toFixed(3)).join())
+    })
+    expect(program).toBe('tower-pane-tint')
+    expect(tints.size).toBe(2) // white everywhere, black on that window of type-b
+  })
+
+  test('a click on the tower names the wall it is on: its drawing and its run', async () => {
+    const THREE = await import('three')
+    const { outerRuns } = await import('../furnish/finishes')
+    const b = (await tower({ ...A, floor: 2 })) as unknown as Group & { pickAt(r: InstanceType<typeof THREE.Raycaster>): { k: number; wall?: { drawing: string; run: string } } | null; levelOf(k: number): number }
+    const mid = new THREE.Box3().setFromObject(b).getCenter(new THREE.Vector3())
+    const y = b.levelOf(5) + 1.2
+    const dirs = [new THREE.Vector3(1, 0, 0), new THREE.Vector3(-1, 0, 0), new THREE.Vector3(0, 0, 1), new THREE.Vector3(0, 0, -1)]
+    const named = dirs.map((d) => b.pickAt(new THREE.Raycaster(new THREE.Vector3(mid.x, y, mid.z).addScaledVector(d, -80), d))).filter((h) => h?.wall)
+    expect(named.length).toBeGreaterThan(1)
+    for (const h of named) {
+      expect(h!.k).toBe(5)
+      const u = Object.values(bti.FLATS).find((f) => f.unit.id === h!.wall!.drawing)!.unit
+      expect([...outerRuns(u).values()]).toContain(h!.wall!.run)
+    }
+  })
+})

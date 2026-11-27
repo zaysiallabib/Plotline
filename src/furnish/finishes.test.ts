@@ -10,7 +10,7 @@ import sheltechB from '../data/units/sheltech-b.json'
 import { initialState, normalizeUnit, reducer } from '../studio/model'
 import { floorSlotId } from '../three/details'
 import { resolveFinishRef } from '../three/materials'
-import { FINISH_CATALOG, faceWallId, finishSlotsFor, isLevel } from './finishes'
+import { FINISH_CATALOG, FRAMES_SLOT, OUTSIDE_SLOT, faceWallId, finishSlotsFor, frameKey, isLevel, outerRuns, outsideFloorKey, outsideKey, outsideOf } from './finishes'
 
 const HAND = { 'type-a': typeA, 'type-b': typeB, 'type-c': typeC, 'sheltech-a': sheltechA, 'sheltech-b': sheltechB } as unknown as Record<string, Unit>
 /** the founder's draft as Preview 3D hands it to the viewer: Studio load (Join walls), then the viewer's normalizeUnit */
@@ -177,5 +177,58 @@ describe("finishes on the founder's draft (no slots of its own)", () => {
     }
     expect(withSill).toBeGreaterThan(0)
     expect(without).toBeGreaterThan(0)
+  })
+})
+
+describe('the outside (session 31 facade): a building-wide choice, one floor, one wall; the frames', () => {
+  it('both slots are structured, unique, the first option what was always drawn (the warm plaster, the silver aluminium)', () => {
+    const all = [...FINISH_CATALOG, OUTSIDE_SLOT, FRAMES_SLOT].flatMap((s) => s.options.map((o) => o.id))
+    expect(new Set(all).size).toBe(all.length)
+    for (const s of [OUTSIDE_SLOT, FRAMES_SLOT]) {
+      expect(s.options[0].id).toBe(s.defaultOptionId)
+      for (const o of s.options) expect(o.brand && o.sku && o.label && o.priceDeltaBdt === 0).toBeTruthy()
+    }
+    expect(OUTSIDE_SLOT.options[0].material).toEqual({ kind: 'pbr', textureId: 'plaster_white', tint: '#dbd3c6' })
+    expect(FRAMES_SLOT.options[0].material).toEqual({ kind: 'color', color: '#d5d7d6', roughness: 0.45, metalness: 0.15 }) // openings.ts ALU
+  })
+
+  it('nothing chosen: null everywhere (drawn as before); then the wall beats its floor beats the building', () => {
+    const none = outsideOf({})
+    expect([none.wall('d', 'w', 3), none.frame('d', 'o'), none.sig]).toEqual([null, null, ''])
+    const mat = (id: string) => OUTSIDE_SLOT.options.find((o) => o.id === id)!.material
+    const o = outsideOf({ s_outside: 'fo_out_render_white', [outsideFloorKey(0)]: 'fo_out_stone', [outsideKey('d', 'w')]: 'fo_out_timber_slats', [frameKey('d', 'o')]: 'fo_frame_black', s_frames: 'fo_frame_white' })
+    expect(o.wall('d', 'w', 0)).toEqual(mat('fo_out_timber_slats'))
+    expect(o.wall('d', 'x', 0)).toEqual(mat('fo_out_stone'))
+    expect(o.wall('d', 'x', 3)).toEqual(mat('fo_out_render_white'))
+    expect(o.wall('e', 'w', 3)).toEqual(mat('fo_out_render_white')) // another drawing's wall of that id
+    expect(o.wall(null, null)).toEqual(mat('fo_out_render_white')) // a block of the ground floor, no wall of a drawing
+    expect(o.frame('d', 'o')).toEqual(FRAMES_SLOT.options.find((x) => x.id === 'fo_frame_black')!.material)
+    expect(o.frame('d', 'p')).toEqual(FRAMES_SLOT.options.find((x) => x.id === 'fo_frame_white')!.material)
+    expect(outsideOf({ s_outside: 'no_such' }).wall('d', 'w')).toBeNull() // a choice not offered: as drawn
+    expect(outsideOf({ b: '1', a: '2' }).sig).toBe(outsideOf({ a: '2', b: '1' }).sig)
+  })
+
+  it("staff's own outside option (Finishes → + Add option) is one more option of the slot", () => {
+    const own = { ...OUTSIDE_SLOT, options: [...OUTSIDE_SLOT.options, { id: 'own_x', brand: 'Mine', sku: 'M1', label: 'Our brick', priceDeltaBdt: 0, material: { kind: 'pbr' as const, textureId: 'own_x' } }] }
+    expect(outsideOf({ s_outside: 'own_x' }, [own, FRAMES_SLOT]).wall('d', 'w')).toEqual({ kind: 'pbr', textureId: 'own_x' })
+  })
+
+  it('one wall to look at outside: pieces in line and alike in height are one run (any direction drawn); a parapet in line and a wall meeting it are their own', () => {
+    const v = (id: string, x: number, y: number) => ({ id, x, y })
+    const w = (id: string, a: string, b: string, heightM = 3) => ({ id, a, b, thicknessM: 0.25, heightM, openings: [] })
+    const u = { vertices: [v('a', 0, 0), v('b', 3, 0), v('c', 6, 0), v('d', 8, 0), v('e', 3, 4)], walls: [w('w2', 'a', 'b'), w('w1', 'c', 'b'), w('w3', 'c', 'd', 1.1), w('w4', 'b', 'e')] }
+    expect(Object.fromEntries(outerRuns(u))).toEqual({ w2: 'w1', w1: 'w1', w3: 'w3', w4: 'w4' })
+  })
+
+  it("on Type A every outer wall's run is a wall of it, the same for each piece of the run (a click on any piece: one key)", () => {
+    const u = HAND['type-a']
+    const runs = outerRuns(u)
+    const ids = new Set(u.walls.map((x) => x.id))
+    for (const [id, run] of runs) {
+      expect(ids.has(run)).toBe(true)
+      expect(runs.get(run)).toBe(run)
+      expect(run <= id).toBe(true)
+    }
+    expect(new Set(runs.values()).size).toBeLessThan(u.walls.length) // some outer walls are split by the rooms behind them
   })
 })

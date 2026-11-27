@@ -2,6 +2,10 @@ import { useEffect, useMemo, useState } from 'react'
 import { FT, flatTypeOf, formatFeetInches, parseLength, sqmToSqft, takesLowKind, wallFrame } from '../core'
 import type { Flat, FurniturePlacement, Opening, OpeningKind, Room, RoomKind, Shell, Slope, Unit, Wall } from '../core'
 import { deleteShell } from './shells'
+import { towerOf } from '../data/building'
+import { buildingOf, outsideRecord, readFinishes, saveFinishes } from '../data/building/apartments'
+import { FRAMES_SLOT, OUTSIDE_SLOT, frameKey, outerRuns, outsideKey } from '../furnish/finishes'
+import { withOwnOptions } from '../furnish/own'
 import { LOCAL_AI_KEY, START_CMD, START_LINE, isLocalUrl, localAISettings, testLocalAI, type AiNote, type LocalAI } from './localAI'
 import { placementLabel, placementRange, placementSize } from '../furnish/kit'
 import { resizeAxes, surfaceOf } from './furniture'
@@ -668,6 +672,7 @@ function Selection({ state, dispatch, rooms, flats }: { state: StudioState; disp
             />
             <MadeOf walls={walls.map((w) => w.w)} dispatch={dispatch} />
             <StandsAlone ids={ids} on={walls.every((w) => w.w.standsAlone)} dispatch={dispatch} />
+            <OutsidePick unit={unit} ids={ids} />
           </>
         )}
         {ops.length > 0 && (
@@ -730,6 +735,7 @@ function Selection({ state, dispatch, rooms, flats }: { state: StudioState; disp
         </Row>
         <MadeOf walls={[w]} dispatch={dispatch} />
         <StandsAlone ids={[w.id]} on={!!w.standsAlone} dispatch={dispatch} />
+        <OutsidePick unit={unit} ids={[w.id]} />
         <Row label="Length (moves B)">
           <LenInput valueM={len} onCommit={(m) => dispatch({ type: 'set-wall-length', id: w.id, lengthM: m })} />
         </Row>
@@ -775,6 +781,7 @@ function Selection({ state, dispatch, rooms, flats }: { state: StudioState; disp
         <Row label="From corner B">
           <LenInput valueM={toB} onCommit={(m) => patch({ offsetM: L - o.widthM - m })} />
         </Row>
+        {(o.kind === 'window' || o.kind === 'slider') && <OutsidePick unit={unit} ids={[o.id]} frame />}
         {o.kind === 'door' && (
           <>
             <Row label="Hinge">
@@ -1233,6 +1240,46 @@ function Thickness({ value, onChange }: { value: number; onChange: (t: number) =
           Exterior 10"
         </button>
       </div>
+    </Row>
+  )
+}
+
+/**
+ * The building's outside for the walls or the window picked (session 31 facade): what the outside of these walls is clad in,
+ * or this window's frame — the same record the 3D view's Finishes writes (data/building/apartments.ts outsideRecord: the
+ * drawing's project, else the drawing itself), kept the moment it changes; Preview 3D shows it. "Same as the building":
+ * what Finishes → Outside walls / Window frames chose for all of it.
+ */
+function OutsidePick({ unit, ids, frame }: { unit: Unit; ids: string[]; frame?: boolean }) {
+  const store = outsideRecord(buildingOf(towerOf(unit), unit.id))
+  const [rec, setRec] = useState(() => readFinishes(store) ?? {})
+  useEffect(() => setRec(readFinishes(store) ?? {}), [store])
+  const slot = withOwnOptions([frame ? FRAMES_SLOT : OUTSIDE_SLOT])[0]
+  const keys = ids.map((id) => (frame ? frameKey(unit.id, id) : outsideKey(unit.id, outerRuns(unit).get(id) ?? id)))
+  const values = [...new Set(keys.map((k) => rec[k] ?? ''))]
+  const building = slot.options.find((o) => o.id === (rec[slot.id] ?? slot.defaultOptionId))?.label
+  const pick = (id: string) => {
+    const next = { ...rec }
+    for (const k of keys) if (id) next[k] = id
+    else delete next[k]
+    saveFinishes(store, next)
+    setRec(next)
+  }
+  return (
+    <Row label={frame ? 'Frame' : 'Outside'}>
+      <select value={values.length === 1 ? values[0] : 'mixed'} aria-label={frame ? 'Its frame' : 'What the outside of these walls is clad in'} onChange={(e) => pick(e.target.value)}>
+        {values.length > 1 && (
+          <option value="mixed" disabled>
+            mixed
+          </option>
+        )}
+        <option value="">Same as the building ({building})</option>
+        {slot.options.map((o) => (
+          <option key={o.id} value={o.id}>
+            {o.label}
+          </option>
+        ))}
+      </select>
     </Row>
   )
 }

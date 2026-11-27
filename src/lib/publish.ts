@@ -5,6 +5,8 @@
  * member (lib/auth); else the old staff key, asked for once per browser (until the founder deletes it: Docs/SETUP_ACCOUNTS.md).
  */
 import type { Configuration, Id, Unit } from '../core'
+import { towerOf } from '../data/building'
+import { buildingOf, outsideRecord, readFinishes } from '../data/building/apartments'
 import { projectWith, readProjects } from '../data/building/projects'
 import { askText } from './ask'
 import { myOrg, session } from './auth'
@@ -29,11 +31,15 @@ export const PUBLISH_KEY = 'plotline.staffKey'
 /** the staff key was wrong: forgotten, so the next Share asks again */
 export class WrongKey extends Error {}
 
-/** What a link stores: the flat with its furniture as laid out, the staff's own pieces' records, the finishes it opens with (none: the catalog's). */
-export const linkUnit = (unit: Unit, finishes: Configuration | null, library: unknown[] = []): Unit & { library?: unknown[]; finishes?: Configuration } => ({
+/**
+ * What a link stores: the flat with its furniture as laid out, the staff's own pieces' records, the finishes it opens with (none:
+ * the catalog's), and its building's outside as staff chose it (none: as always drawn).
+ */
+export const linkUnit = (unit: Unit, finishes: Configuration | null, library: unknown[] = [], outside: Configuration | null = null): Unit & { library?: unknown[]; finishes?: Configuration; outside?: Configuration } => ({
   ...unit,
   ...(library.length ? { library } : {}),
   ...(finishes && Object.keys(finishes).length ? { finishes } : {}),
+  ...(outside && Object.keys(outside).length ? { outside } : {}),
 })
 
 /**
@@ -53,7 +59,7 @@ export async function publishLink(unit: Unit, finishes: Configuration | null, at
     }
   }
   // the staff's own pieces / finishes are not in a buyer's browser: their records go with it (their files online first: lib/library.ts)
-  const u = linkUnit(unit, finishes, await forShare(unit))
+  const u = linkUnit(unit, finishes, await forShare(unit), readFinishes(outsideRecord(buildingOf(towerOf(unit), unit.id))))
   try {
     const token = org ? await shareUnit(org.id, u, await at()) : await publishUnit(u, key)
     return `${location.origin}/s/${token}`
