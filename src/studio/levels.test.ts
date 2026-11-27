@@ -149,6 +149,33 @@ describe('wall types: picked before placing, remembered until changed', () => {
   })
 })
 
+describe('what a low wall is made of (Made of, Cornice)', () => {
+  it('low walls only, one undo a change, Solid takes the kind away, a cornice on a solid one; a run of two kinds is never healed into one', () => {
+    let s = rect(scaled())
+    s = run(s, { type: 'set-wall-type', ids: s.unit.walls.slice(0, 3).map((w) => w.id), wall: 'low' })
+    const [a, b, c, tall] = s.unit.walls.map((w) => w.id)
+    const n = s.history.past.length
+    s = reducer(s, { type: 'low-wall', ids: [a, b, tall], kind: 'glass' })
+    expect(s.unit.walls.map((w) => w.lowKind)).toEqual(['glass', 'glass', undefined, undefined]) // (a storey wall takes none)
+    expect(reducer(s, { type: 'low-wall', ids: [a, b], kind: 'glass' })).toBe(s) // nothing to change
+    s = reducer(s, { type: 'low-wall', ids: [b], kind: 'solid' })
+    expect('lowKind' in s.unit.walls[1]).toBe(false)
+    s = reducer(s, { type: 'low-wall', ids: [b, c], cornice: true })
+    expect(s.unit.walls.map((w) => !!w.cornice)).toEqual([false, true, true, false])
+    s = reducer(s, { type: 'low-wall', ids: [c], cornice: false })
+    expect('cornice' in s.unit.walls[2]).toBe(false)
+    expect(s.history.past).toHaveLength(n + 4)
+    expect(reducer(s, { type: 'undo' }).unit.walls[2].cornice).toBe(true)
+    // a glass front split in two pieces in line with a plaster one: the straight-run heal (normalize) keeps them apart
+    const line = run(scaled(), { type: 'pick-wall', wall: 'low' }, { type: 'chain-start', at: at(0, 0) }, { type: 'chain-add', at: at(2, 0) }, { type: 'chain-add', at: at(4, 0) }, { type: 'chain-end' })
+    expect(line.unit.walls).toHaveLength(1) // (drawn in line: one wall)
+    const split = run(scaled(), { type: 'pick-wall', wall: 'low' }, { type: 'chain-start', at: at(0, 0) }, { type: 'chain-add', at: at(2, 0) }, { type: 'chain-end' })
+    const glass = reducer(split, { type: 'low-wall', ids: [split.unit.walls[0].id], kind: 'glass' })
+    const more = run(glass, { type: 'chain-start', at: at(2, 0) }, { type: 'chain-add', at: at(4, 0) }, { type: 'chain-end' })
+    expect(more.unit.walls.map((w) => w.lowKind ?? 'solid').sort()).toEqual(['glass', 'solid'])
+  })
+})
+
 describe('walls that stand alone', () => {
   it('the toggle on selected walls: on / off, one undo each, no `standsAlone: undefined` left behind', () => {
     let s = rect(scaled())

@@ -606,6 +606,12 @@ Works in Walk and Dollhouse; the mouse stays free, so drag empty space to look r
   line (a joined end leaves its corner, opening a gap the Studio lists under Issues with **Extend**; hold **Alt** to keep
   the corner joined, the wall it meets moving with it). Drag the wall itself to move it across. Type **Length** (end B
   moves) and **Height**.
+- **Made of** (a low wall picked): **Solid (plaster)**, **Glass** (clear panels in a steel channel, a steel rail on top),
+  **Metal railing** (posts, rails and thin bars), **Steel grille** (dark bars with a band of crossed flats, as Dhaka
+  balconies have), **Timber railing**, **Timber fence** (boards on posts) or **Chain-link fence**. Pick one and the 3D
+  shows it at once. To make a balcony glass-fronted: **Edit ▾ → Openings**, click the balcony's edge, **Made of → Glass**
+  (each side of the balcony is its own low wall: click the next one and do the same). A solid one has **Cornice**: a
+  stepped band under its cap. A passage in a railing or fence stays a gap — a gate.
 - Keys: **Del** removes what is picked · **Ctrl+Z** undoes (one drag = one step) · **Esc** unpicks · **Alt** while
   dragging a low wall's end keeps its corner.
 - A room nobody arranged is furnished again for its new walls; a room you arranged keeps its pieces. An opening's
@@ -836,7 +842,7 @@ had.
 - The Sheltech levels open with their plan picture already behind them.
 
 **W — Wall**
-- What to draw (keys 1–4): **Wall**, **Low wall** (boundary wall, parapet, railing; type its height), **Kerb** (a 6-inch
+- What to draw (keys 1–4): **Wall**, **Low wall** (boundary wall, parapet, railing; type its height — then pick it for **Made of**: glass, a railing, a grille, timber, a fence), **Kerb** (a 6-inch
   edge, as round a planter), **Zone line** (invisible; only separates two areas, a lawn from a driveway).
 - Click corner after corner; click the first corner again to close the room. While drawing, type a number for the exact
   length (**Tab** switches to the angle); **Backspace** takes back the last piece; **Esc** stops; **T** switches thin
@@ -910,11 +916,13 @@ had.
 
 - **Steps** — the checklist for the drawing open now ("The Steps" above).
 - **Selection** — the details of what you picked, to type exact values: a *corner* (position); a *wall* (Wall / Low wall
-  / Kerb / Zone line, width, height, **Stands alone** — a screen or decoration wall not meant to close a room, length,
-  copy, delete); an *opening* (Door / Sliding door / Window / Passage, width, height, sill, distance from each corner;
+  / Kerb / Zone line, width, height, **Made of** for a low wall — Solid (plaster), Glass, Metal railing, Steel grille,
+  Timber railing, Timber fence, Chain-link fence — and for a solid one **Cornice under the cap**, **Stands alone** — a
+  screen or decoration wall not meant to close a room, length, copy, delete); an *opening* (Door / Sliding door / Window / Passage, width, height, sill, distance from each corner;
   for a door, hinge and swing); a *column* (width, depth, delete); a *room name* (name, kind, **Flat**, printed size,
   floor level, ramp); a *piece* (position, turn, size, height from floor, reset).
-  - **Several things picked:** the walls' type, height, width, Stands alone; the openings' kind, width, height, sill. A
+  - **Several things picked:** the walls' type, height, width, the low walls' Made of and Cornice (pick a whole
+    balcony's edge — a curved one's many short pieces too — and make it glass in one go), Stands alone; the openings' kind, width, height, sill. A
     box shows the value they share; "mixed" means they differ — type a value and every one takes it (one Ctrl+Z). An
     opening the new size does not fit stays as it was, and a note says how many. **Delete them all** removes them.
 - **Issues** — problems in the drawing: red breaks the 3D, amber is worth a look, grey is cosmetic. **Join walls** fixes
@@ -1470,6 +1478,12 @@ The rules Plotline follows without asking, so you know why something came out as
 - A low wall that gets a door or a window becomes full height; an open passage does not raise it (a gate).
 - A wall lower than 1.2 m (planter edge, kerb, low parapet) joins its two sides into one flat, as a door does.
 - Walls drawn across each other are joined.
+- Every solid low wall (parapet, planter edge, boundary wall, under 2.4 m) wears a cap 1 inch proud of both faces.
+- Every balcony's floor slab stands out past its front by 2 inches, its edge showing as a band about a foot deep with a
+  drip under it (the plaster of the outside). A curved balcony gets it round its curve.
+- A railing, glass front or fence (**Made of**) stops at the face of a solid wall it meets; its posts are never more
+  than 1.5 m apart (a grille or timber fence 1.8 m, chain-link 2.5 m), a railing's bars never more than 11.5 cm, glass
+  panels never wider than 1.25 m.
 
 **Openings**
 - A window that starts at the floor and is at least 1.5 m tall is a **glass wall**; a door 1.5 m wide or more is a
@@ -1683,6 +1697,10 @@ Things that are confusing or not finished. Each one is a job on the list.
   floor's own, press **Share** in that floor's 3D view (staff, with the online database).
 - In 3D, walls higher than 1.2 m cannot be moved; sliding a low wall whose end meets the middle of another wall slides
   that piece's doors and windows with it.
+- A low wall's **Made of** is kept in the drawing, the 3D and the Building view, but not in a DXF given back (it comes back
+  solid), and an architect's file (IFC) brings its railings as its own shape, not as a Made of. With Finishes open, a
+  click on a railing or glass front offers the balcony's wall paint (the railing's own colour has no choice yet). The
+  daylight on a balcony is worked out as if its front were solid.
 - Two different "share" buttons: **Share** in the 3D view (staff with the online database: a buyer link of that floor's
   flat as it stands; otherwise a link with your finishes) and **⋯ → Share link** in the Studio (a buyer link of the floor
   plan as Preview 3D shows it). Both feed the change list. The same thing has two names in places: "Slider" (3D) /
@@ -1708,7 +1726,8 @@ is a job (hand-tested 2026-10-05, updated since).
 | Thing | In the 3D view | In the Studio | Cannot be changed anywhere |
 |---|---|---|---|
 | Wall | Its paint, one side at a time (Finishes open, click it) — nothing else | Yes — type, thickness (typed, or a face's dot), height, length, move, copy, delete; curved walls with A | Its paint on the outside |
-| Boundary wall, parapet, low wall | Yes under 1.2 m — Edit openings: drag an end dot, drag it across, type Length / Height, delete | Yes | Its finish |
+| Boundary wall, parapet, low wall | Yes under 1.2 m — Edit openings: drag an end dot, drag it across, type Length / Height, **Made of** (solid, glass, metal railing, steel grille, timber railing, timber fence, chain-link), Cornice, delete | Yes — plus Made of and Cornice up to 2.4 m (a fence, a boundary wall) | Its colour (the plaster, the metal, the timber, the glass tint) |
+| Balcony slab edge | It follows the balcony: every balcony's edge stands out | The same | Its depth and colour |
 | Kerb, free-standing screen | Yes under 1.2 m, as a low wall | Yes | — |
 | Glass wall | Yes — width, height, sill, slide, delete | Yes | Frame, glass colour. Cannot be *added* in 3D |
 | Door, double door, gate, window, passage | Yes — kind, width, height, sill, slide, delete | Yes — plus hinge side and swing | Door material. Cannot be *added* in 3D |
