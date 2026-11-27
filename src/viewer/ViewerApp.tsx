@@ -235,7 +235,10 @@ function resolveUnit(): Unit | null {
       return null
     }
   }
-  return UNITS.find((u) => u.stem === id || u.unit.id === id)?.unit ?? projectUnit(id) // a flat of a building made in the Studio (this browser)
+  // a built-in by its own address (/u/type-a); else a flat of a building made in the Studio (this browser) — before a built-in
+  // of the same id: a project drawing opened from a built-in (Edit → Plan (Studio)) keeps its id, and its floor's page must
+  // show the project's copy as edited (a Made of on the tower, a wall moved), not the file (phoneqa: Edit openings refused)
+  return UNITS.find((u) => u.stem === id)?.unit ?? projectUnit(id) ?? UNITS.find((u) => u.unit.id === id)?.unit ?? null
 }
 
 const spawn = (scene: PlotlineScene, p: Pt, face: Pt, pitch = 0, hfov?: number): void => scene.spawnAt(p, yawFor(face), pitch, hfov)
@@ -1623,6 +1626,7 @@ function Viewer({ first }: { first: Shown }) {
           setFinishesOpen(false)
           setSimOpen(false)
           setStatsOpen(false)
+          setTowerLow(null) // the Building view's balcony-edge card, as its Done
         }
       }
     }

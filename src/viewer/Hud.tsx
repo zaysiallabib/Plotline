@@ -621,11 +621,11 @@ export default function Hud(p: Props) {
               ))}
             </div>
             <p className="menu-note">
-              {p.quality.note ?? p.quality.why} The dot marks the one recommended for this device. Lite is lighter on the computer: fewer pixels, simpler pictures, no potted plants. A new choice reloads the page.
+              {p.quality.note ?? p.quality.why} The dot marks the one recommended for this device. Lite is lighter on the device: fewer pixels, simpler pictures, no potted plants. A new choice reloads the page.
             </p>
             {p.onStats && <div className="menu-rule" />}
             {p.onStats && (
-              <button className="menu-row" role="menuitem" title="What this computer does with the 3D, with a Copy button to send it" onClick={p.onStats}>
+              <button className="menu-row" role="menuitem" title="What this computer does with the 3D, with a Copy button to send it" onClick={() => (setOpen(null), p.onStats?.())}>
                 <span>How fast is it here?</span>
               </button>
             )}

@@ -45,7 +45,7 @@ export const NotFound = ({ what = 'page' }: { what?: 'page' | 'flat' }) =>
 
 /** `/studio` on a phone (under 720 px wide, qa3 P14: its bar's words ran under its buttons, "Start with a plan" one word a line): one card saying so. */
 export const ForAComputer = ({ onAnyway }: { onAnyway: () => void }) => (
-  <Slate eyebrow="The Studio" title="The Studio is for a computer." line="Tracing a floor plan takes a mouse and a wide screen. Open this page on a computer; on this phone you can walk the flats and the building.">
+  <Slate eyebrow="The Studio" title="The Studio is for a computer." line="Making a building from its drawings takes a mouse and a wide screen. Open this page on a computer; on this phone you can walk the flats and the building.">
     <a className="btn primary" href="/u/type-a">
       See a flat
     </a>
