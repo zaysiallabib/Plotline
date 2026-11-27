@@ -398,7 +398,7 @@ export function thinFaces(gray: Gray, o: FaceOpts): ThinFaces {
       cands.forEach((L, i) => {
         if (!alive[i]) return
         const len = Math.abs(L.e[1]!.u - L.e[0]!.u)
-        if (len < 0.3 * k || L.e[1]!.u <= L.e[0]!.u || !reconnect(L, 0, alive) || !reconnect(L, 1, alive)) (alive[i] = false), (ch = true), (fate[i] ||= 'end off its line / too short')
+        if (len < 0.3 * k || L.e[1]!.u <= L.e[0]!.u || !(L.colourGlass ? reconnect : onSeg)(L, 0, alive) || !(L.colourGlass ? reconnect : onSeg)(L, 1, alive)) (alive[i] = false), (ch = true), (fate[i] ||= 'end off its line / too short')
       })
     }
   }
