@@ -675,9 +675,8 @@ function Viewer({ first }: { first: Shown }) {
   /** the level the Building view's picked floor holds (the "Walk this level" button), if any */
   const levelAt = (k: number) => (tower?.FLOORS.find((f) => f.floor === k)?.standIns ?? []).find((s) => tower?.LEVELS?.[s] !== undefined)
   /**
-   * The building's roof (staff; session 31 roof lane): a tower that draws its own (not the architect's shape; over a traced
-   * rooftop it may be pitched) —
-   * its floor, as drawn now (read again after each change), and the Finishes panel's roof block open or not
+   * The building's roof (staff; session 31 roof lane) of a tower that draws its own (not the architect's shape): its floor, the
+   * roof as drawn now (read again after each change) and whether the Finishes panel's roof block is open
    */
   const roofK = tower && !unit.shell ? topFloor(tower) + 1 : null
   const [roofV, bumpRoof] = useReducer((n: number) => n + 1, 0)

@@ -88,9 +88,9 @@ const GREEN: MaterialRef = { kind: 'pbr', textureId: 'turf' }
 const ASPHALT: MaterialRef = { kind: 'color', color: '#5b5955', roughness: 0.95 }
 const PAINT: MaterialRef = { kind: 'color', color: '#e8e6e0', roughness: 0.8 }
 const TANK: MaterialRef = { kind: 'color', color: '#2a2b2c', roughness: 0.6 }
-/** a flat roof's parapet cap (Roof.coping): metal, stone, or the walls' own plaster a little wider */
 /** an overhang's fascia board and soffit, a roof window's flashing: painted white over the plaster (they cast the eaves' shadow) */
 const TRIM: MaterialRef = { kind: 'pbr', textureId: 'plaster_white', tint: '#ece8e0' }
+/** a flat roof's parapet cap (Roof.coping): metal, stone, or the walls' own plaster a little wider */
 const COPING: Record<NonNullable<Roof['coping']>, MaterialRef> = {
   plaster: EXTERIOR_PLASTER,
   metal: { kind: 'pbr', textureId: 'metal_brushed', tint: '#a9aeb2' },
