@@ -1570,8 +1570,9 @@ it again with **Building** → **Or open a project**, a list of your projects by
 Close the drawing you were on stays on the screen and is still the project's copy: what you change on it goes into the
 project. **Start over** then empties the Studio without asking and says so ("An empty Studio — the project BTI Demo
 Tower keeps its copy of Floor plan A").
-**Show building** opens the stacked building in a new tab (start screen, then the tower); a floor with no drawing yet is
-filled with the one below it.
+**Show building** opens the stacked building in a new tab, straight on the tower (no start screen); a floor with no drawing
+yet is filled with the one below it. A floor whose drawing is still a picture to trace (a set's second typical plan you
+have not traced yet) stands empty — a gap in the tower, the roof above it — until you trace it.
 
 **One floor different from the others**
 - A drawing on several floors is ONE drawing: change its walls, doors or windows in the Studio and every floor with it
