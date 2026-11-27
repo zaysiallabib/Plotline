@@ -285,6 +285,8 @@ export interface Outside {
   frame(drawing?: Id | null, openingId?: Id | null): MaterialRef | null
   /** the record's choices, sorted ('' = none): two equal ones draw alike */
   sig: string
+  /** some frame is chosen (the building's or one window's): the tower's panes carry a colour each */
+  framed: boolean
 }
 
 /** `rec` (the building's outside record) over `slots` (OUTSIDE_SLOT and FRAMES_SLOT with staff's own options: own.ts withOwnOptions); a choice not among the options is ignored. */
@@ -303,6 +305,7 @@ export function outsideOf(rec: Configuration, slots: FinishSlot[] = [OUTSIDE_SLO
     wall: (drawing, run, floor) => pick(walls, [drawing && run ? outsideKey(drawing, run) : null, floor !== undefined ? outsideFloorKey(floor) : null, walls.id]),
     frame: (drawing, openingId) => pick(frames, [drawing && openingId ? frameKey(drawing, openingId) : null, frames.id]),
     sig: entries.length ? JSON.stringify(entries) : '',
+    framed: entries.some(([k]) => k === frames.id || k.startsWith('frame:')),
   }
 }
 

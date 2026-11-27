@@ -25,7 +25,8 @@ import { Building, onStorey, type TowerHit } from './building'
 import { LITE_MAX_TRIANGLES, loadShell } from './shell'
 import * as core from '../core'
 import type { Configuration, FinishSlot, FurniturePlacement, Id, MaterialRef, Pillar, Pt, Room, Shell, Unit, Wall } from '../core'
-import { faceWallId } from '../furnish/finishes'
+import { faceWallId, outerRuns, outsideOf, roomKey, wallKey, type Outside } from '../furnish/finishes'
+import { floorIn, stemIn, towerOf } from '../data/building'
 import { kitAsset, lightOf, type ObjectKind } from '../furnish/kit'
 import { LANDING_M, isStair, stairHole, stairSpot, treadBelow } from '../furnish/stairs'
 import { buildProcedural, lean, lite } from '../furnish/procedural'
@@ -157,6 +158,8 @@ const WALK_RADIUS = 0.3
 /** The tallest step the walker takes, up or down (canStep). */
 const MAX_STEP_M = 0.8
 const UP = new THREE.Vector3(0, 1, 0)
+/** a frame's material as openings.ts built it (applyMaterials: back to it when no frame colour is chosen) */
+const BUILT = new WeakMap<THREE.Mesh, THREE.Material>()
 const SIZE = new THREE.Vector3()
 /** a press that drifts at most this far is a click: it selects, never moves a piece or an opening (a hand's click drifts 3–5 px; Studio tool F the same) */
 const CLICK_PX = 6
@@ -490,7 +493,8 @@ interface Surface {
   /** one entry per material slot; null = fixed edge plaster; `edge` = the finish in its depth-offset variant (wall ends and tops) */
   /** `ref`: a fixed material by rule (a kerb's concrete, a zone's riser), not the room's finish */
   /** `wallId`: a wall's side — the wall its face is chosen by (finishes.ts faceWallId), for a buyer's one-wall choice */
-  sides: ({ roomId: Id | null; target: FinishSlot['target']; edge?: true; ref?: MaterialRef; wallId?: Id } | null)[]
+  /** `outer`: a side outside (toward no room, a balcony or an outdoor zone) — the wall run its outside finish is chosen by (finishes.ts outerRuns) */
+  sides: ({ roomId: Id | null; target: FinishSlot['target']; edge?: true; ref?: MaterialRef; wallId?: Id; outer?: Id } | null)[]
 }
 
 export class PlotlineScene {
@@ -539,6 +543,8 @@ export class PlotlineScene {
   private unit: Unit | null = null
   private rooms: Room[] = []
   private cfg: Configuration = {}
+  /** the building's outside as staff chose it (setOutside; furnish/finishes.ts outsideOf): its outer faces, frames and tower */
+  private outside: Outside = outsideOf({})
   private ready = false
   private buildToken = 0
   private mode: SceneMode = 'walk'
@@ -845,7 +851,7 @@ export class PlotlineScene {
     this.applyMaterials()
     yield
     // the rest of the building round it, a floor a step, its street the street (a stair's floor: shown with it, arrive)
-    this.building = tower ?? Building.for(unit, this.tier)
+    this.building = tower ?? Building.for(unit, this.tier, this.outside)
     let flatIn = (): void => {}
     if (this.building && !tower) {
       // a page's first floor: its tower's other flats' rooms and its grounds' pieces come once this flat's furniture is in —
@@ -986,7 +992,7 @@ export class PlotlineScene {
     this.blocks = neighbours(this.unit, this.street ?? { walls: core.unitBounds(this.unit) })
     this.day = yield* this.bake(this.unit)
     yield
-    this.building = Building.for(this.unit, this.tier)
+    this.building = Building.for(this.unit, this.tier, this.outside)
     if (this.building) {
       this.building.onChange = this.wake
       this.building.visible = false
@@ -1160,6 +1166,34 @@ export class PlotlineScene {
     this.cfg = cfg
     this.applyMaterials()
     this.rebatch('static')
+  }
+
+  /**
+   * The building's outside as staff chose it (furnish/finishes.ts outsideOf; set before setUnit, as `cover`): the flat's outer
+   * faces and frames wear it, and the tower round it. A change: the flat's materials swapped, the tower built again round it
+   * (its rooms and furniture behind the glass kept: Building.adopt) — a staff click, a few hundred ms.
+   */
+  setOutside(o: Outside): void {
+    const same = o.sig === this.outside.sig
+    this.outside = o
+    if (same || !this.unit || !this.ready) return
+    this.wake()
+    this.applyMaterials()
+    this.rebatch('static')
+    const old = this.building
+    if (!old || this.holding) return // (a floor on its way builds its tower with it)
+    const b = Building.for(this.unit, this.tier, o)
+    if (!b) return
+    b.adopt(old)
+    b.onChange = this.wake
+    b.visible = false
+    this.scene.add(b)
+    for (const steps = b.make(); !steps.next().done; );
+    old.dispose()
+    this.building = b
+    this.aroundFlat()
+    if (this.mode === 'building') b.highlight(old.pickedFloor)
+    this.setTimeOfDay(this.hour)
   }
 
   /**
@@ -2094,11 +2128,18 @@ export class PlotlineScene {
         const room = this.rooms.find((x) => x.id === r)
         return room ? { wallId: faceWallId(unit, room, planWall) } : {}
       }
+      // a side outside (toward no room, a balcony, an outdoor zone): the building's outside finish, by the run of the drawing as
+      // given (the tower's is: raised heads and gap stand-ins are the 3D's own)
+      const run = outerRuns(this.builtFrom!.unit).get(planWall) ?? planWall
+      const outer = (r: Id | null) => {
+        const k = r && this.rooms.find((x) => x.id === r)?.kind
+        return wall.heightM > KERB_M && (!k || k === 'balcony' || core.isOutdoor(k)) ? { outer: run } : {}
+      }
       this.surfaces.push({
         mesh,
         sides: [
-          { roomId: front, target: 'wall', ...face(front), ...kerb },
-          { roomId: back, target: 'wall', ...face(back), ...kerb },
+          { roomId: front, target: 'wall', ...face(front), ...kerb, ...outer(front) },
+          { roomId: back, target: 'wall', ...face(back), ...kerb, ...outer(back) },
           { roomId: front ?? back, target: 'wall', edge: true, ...face(front ?? back), ...(planter ? { ref: CONCRETE } : kerb) },
         ],
       })
@@ -2109,6 +2150,8 @@ export class PlotlineScene {
       const h = built.openings[i].heightM
       const parts = dressOpening(h === o.heightM ? o : { ...o, heightM: h }, wall, unit, this.rooms) // the same object: dressOpening knows the main door by it
       for (const p of parts) p.position.y += lift.base[0] + t * (lift.base[1] - lift.base[0])
+      // a window's, a slider's or a glass wall's frame: its colour chosen with the outside (applyMaterials)
+      for (const p of parts) p.traverse((x) => void (x.userData.id === `${o.id}/frame` && x.userData.label !== 'Door frame' && x.children.forEach((m) => (m.userData.frame = o.id))))
       local.add(...parts)
     })
   }
@@ -2244,15 +2287,39 @@ export class PlotlineScene {
     // a parking deck: every zone of the level under the slab above (a basement)
     const outdoor = this.rooms.filter((r) => core.isOutdoor(r.kind))
     const deck = outdoor.length > 0 && outdoor.every((r) => isCovered(r, this.cover))
+    // the building's outside (setOutside) on the flat's outer sides — a balcony's too, unless a buyer picked that wall or the
+    // whole balcony; not a parking deck's (its grey paint); nothing chosen: as always
+    const u = this.builtFrom?.unit ?? this.unit
+    const t = towerOf(u)
+    const stem = t && stemIn(t, u)
+    const floor = t && stem ? floorIn(t, stem, u.floor) : u.floor
+    const outer = (side: NonNullable<Surface['sides'][number]>): THREE.MeshStandardMaterial | null => {
+      if (!side.outer || !this.outside.sig || (side.roomId && zones.has(side.roomId) && deck)) return null
+      const r = side.roomId && this.rooms.find((x) => x.id === side.roomId)
+      if (r && r.kind === 'balcony' && ((side.wallId && this.cfg[wallKey(side.wallId, r.id)]) || this.cfg[roomKey(r.id, 'wall')])) return null
+      const ref = this.outside.wall(u.id, side.outer, floor)
+      return ref && materialFor(ref, side.edge, true, false, true)
+    }
     for (const s of this.surfaces) {
       const mats = s.sides.map((side) => {
         if (!side) return plaster
         if (side.ref) return materialFor(side.ref, side.edge, true)
+        const out = outer(side)
+        if (out) return out
         const zone = side.roomId && zones.get(side.roomId) // an outdoor zone: no buyer finish, its look by kind (materials.ts)
         return zone ? materialFor(zoneFinishRef(zone, side.target, deck), side.edge, true) : resolveFinish(this.unit!.finishSlots, this.cfg, side.roomId, side.target, true, side.edge, side.wallId)
       })
       s.mesh.material = mats.length === 1 ? mats[0] : mats
     }
+    // the frames: their colour chosen (one window's, the building's), else as built
+    this.staticGroup.traverse((o) => {
+      const id = o.userData.frame as Id | undefined
+      if (!id) return
+      const m = o as THREE.Mesh
+      if (!BUILT.has(m)) BUILT.set(m, m.material as THREE.Material)
+      const ref = this.outside.frame(u.id, id)
+      m.material = ref ? materialFor(ref) : BUILT.get(m)!
+    })
   }
 
   /**

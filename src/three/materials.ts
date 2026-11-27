@@ -194,10 +194,11 @@ export function fallbackColor(textureId: string): string {
  * `daylit`: the room-surface variant (daylight.ts: indirect light × the unit's daylight atlas); its meshes carry `dayUv`.
  * `outside`: the Building view's tower variant: none of the walked flat's lamps (noSpots) and the city's night light. On Lite,
  * whose shader has no lamp at all, the tower's and the flat's own plain ones are one program, the night light switched on
- * for the tower's only (one program, not two).
+ * for the tower's only (one program, not two). `outer`: a walked flat's outer face in the building's outside finish
+ * (furnish/finishes.ts outsideOf): the city's night light, as the plaster outside always had.
  */
-export function materialFor(ref: MaterialRef, edge = false, daylit = false, outside = false): THREE.MeshStandardMaterial {
-  const key = JSON.stringify(ref) + (edge ? '|edge' : '') + (daylit ? '|day' : '') + (outside ? '|out' : '')
+export function materialFor(ref: MaterialRef, edge = false, daylit = false, outside = false, outer = false): THREE.MeshStandardMaterial {
+  const key = JSON.stringify(ref) + (edge ? '|edge' : '') + (daylit ? '|day' : '') + (outside ? '|out' : '') + (outer ? '|outer' : '')
   const cached = matCache.get(key)
   if (cached) return cached
   let m: THREE.MeshStandardMaterial
@@ -236,7 +237,7 @@ export function materialFor(ref: MaterialRef, edge = false, daylit = false, outs
   }
   samePictures(m)
   if (edge) Object.assign(m, { polygonOffset: true, polygonOffsetFactor: 1, polygonOffsetUnits: 1 })
-  m.userData.nightOut = key.startsWith(OUTER) // the walked flat's outer faces take the city's night light, as the tower's (daylight.ts nightOut)
+  m.userData.nightOut = outer || key.startsWith(OUTER) // the walked flat's outer faces take the city's night light, as the tower's (daylight.ts nightOut)
   if (daylit) daylitPatch(m)
   if (outside && !lite.on) {
     m.onBeforeCompile = (s) => {
