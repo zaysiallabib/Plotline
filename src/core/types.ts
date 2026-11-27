@@ -36,9 +36,11 @@ export interface Opening {
   /**
    * A glass wall's opaque band at the foot of each storey (m; absent or 0: glass from floor to top) — the curtain wall's
    * spandrel panel over the slab — and what it is: dark glass (the default), metal, or the building's outside finish.
+   * `spandrelAt`: where the band is — at the head of the glass (under the next floor's slab), or a band at both; absent: the foot.
    */
   spandrelM?: number
   spandrel?: 'dark' | 'metal' | 'outside'
+  spandrelAt?: 'head' | 'both'
   /** door swing/hinge side hint (kind 'door' only; ignored on sliders); purely visual */
   hinge?: 'a' | 'b'
   swing?: 'in' | 'out'

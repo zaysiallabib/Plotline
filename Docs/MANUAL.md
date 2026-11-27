@@ -999,9 +999,11 @@ had.
   shorter, or split the wall first (W, click on it).
 - A glass wall picked has **Solid band** (0 = glass to the floor): an opaque panel at the foot of its glass on every
   floor it stands on, as an office tower's curtain wall has over each slab — type its height (2'-6" is usual), then
-  **Band of**: **Dark glass** (back-painted, the start), **Metal** (anthracite) or **The outside walls** (the building's
-  outside finish — brick in a brick tower). The 3D card (**Edit ▾ → Openings**, click the glass wall) has the same two.
-  Less daylight comes in where the band is.
+  **Band at**: **Foot** (over the floor, the start), **Head** (under the ceiling, where many curtain walls hide the slab
+  and the ceiling void) or **Foot and head** (a band at each, each at most half the glass), and **Band of**:
+  **Dark glass** (back-painted, the start), **Metal** (anthracite) or **The outside walls** (the building's outside finish —
+  brick in a brick tower). The 3D card (**Edit ▾ → Openings**, click the glass wall) has the same three. Less daylight
+  comes in where a band is.
 - With a door picked: **H** flips the hinge side, **Shift+H** which way it swings.
 - **Curtains:** a window or sliding door in a bed, living, dining or study room gets a pair by itself when the other
   side is outside (a veranda, a shaft, open air); a glass wall never does. Doors and passages get none by themselves.
@@ -1390,7 +1392,8 @@ from the file (gable, hip, shed, flat; a freeform roof keeps the file's own shap
 (IfcRailing) makes the low wall under it glass, metal or timber (**Made of**), or becomes a low wall of its own along a
 balcony's edge, its **Colour** from its material's words ("Steel, Paint Finish, Dark Gray" anthracite, "Iron, Cast" black,
 RAL 9016 white, birch light oak; stainless or aluminium stays silver); a glass front keeps the file's mullion spacing and frame colour, and its solid panels (a curtain wall's
-spandrels) become its **Solid band** — metal when their material says so, else dark glass; a window's frame takes its colour from
+spandrels) become its **Solid band** — metal when their material says so, else dark glass, at the foot or the head of
+each storey's glass (or both) where the file's panels sit; a window's frame takes its colour from
 its names (white, anthracite / RAL 7016, black, timber); a gable wall stops at its eaves (the gable is in the outside
 shape). The outside shape wears the same pictures as Plotline's own walls, and **Finishes** in the 3D view shows each as
 chosen — change the whole building there (it changes the shape's walls too), or one wall, one floor, the frames, the

@@ -32,8 +32,18 @@ export const SPANDREL: Record<'dark' | 'metal', MaterialRef> = {
   dark: { kind: 'color', color: '#1e2427', roughness: 0.12, metalness: 0.2 },
   metal: { kind: 'color', color: '#3a4045', roughness: 0.45, metalness: 0.3 },
 }
-/** A glass wall's opaque band (Opening.spandrelM), at most all but 0.3 m of it: 0 for any other opening or none set. */
-export const spandrelOf = (o: Opening): number => (isGlazing(o) && o.spandrelM && o.spandrelM > 0 ? Math.min(o.spandrelM, o.heightM - 0.3) : 0)
+/** A glass wall's opaque band (Opening.spandrelM), at most all but 0.3 m of it (two bands: half that each): 0 for any other opening or none set. */
+export const spandrelOf = (o: Opening): number => (isGlazing(o) && o.spandrelM && o.spandrelM > 0 ? Math.min(o.spandrelM, (o.heightM - 0.3) / (o.spandrelAt === 'both' ? 2 : 1)) : 0)
+/** Opening o's glass, [from, to] over its sill: over a band at its foot, under one at its head (Opening.spandrelAt), or between two; all of it with none. */
+export const glassOf = (o: Opening): [number, number] => {
+  const b = spandrelOf(o)
+  return [o.spandrelAt === 'head' ? 0 : b, o.heightM - (o.spandrelAt ? b : 0)]
+}
+/** A glass wall's opaque bands, each [from, to] over its sill (none without a spandrel). */
+export const spandrelBands = (o: Opening): [number, number][] => {
+  const [g0, g1] = glassOf(o)
+  return [...(g0 > 0 ? [[0, g0] as [number, number]] : []), ...(g1 < o.heightM ? [[g1, o.heightM] as [number, number]] : [])]
+}
 
 /** Lower than this, a wall's passage is only a gap (a gate in a boundary wall): no lintel, no casing — as the Studio keeps the wall low (model.ts fullHeightIfOpenings). */
 export const LOW_WALL_M = 2
@@ -441,19 +451,23 @@ function buildGlazing(g: THREE.Group, o: Opening, T2: number): void {
   const D = Math.min(0.12, 2 * T2 - 0.02) / 2
   const n = Math.max(1, o.bayM ? Math.round((o.widthM - 2 * F) / o.bayM) : Math.ceil((o.widthM - 2 * F) / 1.4))
   const bay = (o.widthM - 2 * F) / n
-  // a spandrel (Opening.spandrelM): a transom over the band, opaque panels under it between the mullions, glass above
-  const band = spandrelOf(o)
-  const g0 = band ? s + band + F / 2 : s + F
+  // a spandrel (Opening.spandrelM): a transom on the band's edge, opaque panels in it between the mullions, the glass beside it —
+  // a band at the foot (over the slab), at the head (under the next slab) or both (Opening.spandrelAt)
+  const [c0, c1] = glassOf(o)
+  const bands = spandrelBands(o)
+  const g0 = c0 > 0 ? s + c0 + F / 2 : s + F
+  const g1 = c1 < o.heightM ? s + c1 - F / 2 : top - F
   const alu = [slab(u0, u0 + F, s, top, -D, D), slab(u1 - F, u1, s, top, -D, D), slab(u0 + F, u1 - F, top - F, top, -D, D), slab(u0 + F, u1 - F, s, s + F, -D, D)]
-  if (band) alu.push(slab(u0 + F, u1 - F, s + band - F / 2, s + band + F / 2, -D, D))
+  if (c0 > 0) alu.push(slab(u0 + F, u1 - F, s + c0 - F / 2, s + c0 + F / 2, -D, D))
+  if (c1 < o.heightM) alu.push(slab(u0 + F, u1 - F, s + c1 - F / 2, s + c1 + F / 2, -D, D))
   const panes: THREE.BufferGeometry[] = []
   const panels: THREE.BufferGeometry[] = []
   for (let i = 0; i < n; i++) {
     const a = u0 + F + i * bay
     if (i) alu.push(slab(a - F / 2, a + F / 2, s + F, top - F, -D, D))
     const [p0, p1] = [a + (i ? F / 2 : 0), a + bay - (i < n - 1 ? F / 2 : 0)]
-    panes.push(slab(p0, p1, g0, top - F, -0.003, 0.003))
-    if (band) panels.push(slab(p0, p1, s + F, s + band - F / 2, -0.012, 0.012))
+    panes.push(slab(p0, p1, g0, g1, -0.003, 0.003))
+    for (const [z0, z1] of bands) panels.push(slab(p0, p1, s + z0 + (z0 > 0 ? F / 2 : F), s + z1 - (z1 < o.heightM ? F / 2 : F), -0.012, 0.012))
   }
   g.add(part(g, 'frame', 'Glazing frame', 'window-frame', merged(alu, MULLION, true)))
   g.add(part(g, 'glass', 'Glass', 'window-glass', merged(panes, GLAZING_GLASS)))

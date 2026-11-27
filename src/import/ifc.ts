@@ -1059,7 +1059,7 @@ function readModel(W: WebIfc, api: Api, model: number, fileName: string, t0: num
     on: { s: Storey; bottom: number; top: number }[]
     name: string
     /** a window's frame (FRAMES_SLOT option), a glass front's mullion spacing */
-    holes: { seg: number; kind: OpeningKind; u0: number; u1: number; y0: number; y1: number; frame?: string; bayM?: number; spandrelM?: number; spandrel?: 'dark' | 'metal' }[]
+    holes: { seg: number; kind: OpeningKind; u0: number; u1: number; y0: number; y1: number; frame?: string; bayM?: number; spandrelM?: number; spandrel?: 'dark' | 'metal'; spandrelAt?: 'head' | 'both' }[]
     /** its outside finish (an outer wall's, materials.ts); `outer`: an outer wall's (IsExternal, or every wall when the file does not say) */
     finish?: string
     outer?: boolean
@@ -1259,7 +1259,7 @@ function readModel(W: WebIfc, api: Api, model: number, fileName: string, t0: num
         if (y1 - y0 < 0.1) continue
         const sillM = h.kind === 'window' ? y0 : 0
         const L = segLen(chain.pts, h.seg)
-        const o: Opening = { id: newId(), kind: h.kind, offsetM: Math.max(0, Math.min(L - (h.u1 - h.u0), h.u0)), widthM: h.u1 - h.u0, heightM: y1 - sillM, sillM, ...(h.bayM ? { bayM: h.bayM } : {}), ...(h.spandrelM ? { spandrelM: h.spandrelM, spandrel: h.spandrel } : {}) }
+        const o: Opening = { id: newId(), kind: h.kind, offsetM: Math.max(0, Math.min(L - (h.u1 - h.u0), h.u0)), widthM: h.u1 - h.u0, heightM: y1 - sillM, sillM, ...(h.bayM ? { bayM: h.bayM } : {}), ...(h.spandrelM ? { spandrelM: h.spandrelM, spandrel: h.spandrel, ...(h.spandrelAt ? { spandrelAt: h.spandrelAt } : {}) } : {}) }
         if (h.frame) frameOfOpening.set(o.id, h.frame)
         draft.openings.push([h.seg, o])
       }
@@ -1290,24 +1290,33 @@ function readModel(W: WebIfc, api: Api, model: number, fileName: string, t0: num
    * its line, the middle of their gaps — between 0.4 and 4 m, else the glazing's own (≤ 1.4 m bays) — and the frame its
    * members' materials name (FRAMES_SLOT).
    */
-  function glassFront(wall: number, pts: Pt[]): { bayM?: number; frame?: string; spandrelM?: number; spandrel?: 'dark' | 'metal' } {
+  function glassFront(wall: number, pts: Pt[]): { bayM?: number; frame?: string; spandrelM?: number; spandrel?: 'dark' | 'metal'; spandrelAt?: 'head' | 'both' } {
     return { ...mullions(wall, pts), ...spandrels(wall) }
   }
   /**
    * A glass front's spandrel (session 31 outside2: ifcmap left them glass): its panels solid in every piece (no see-through
    * one), their height's middle value between 0.2 and 2 m the band on each storey; metal when their materials say so, else
-   * dark glass. ponytail: the band is drawn at each storey's foot, wherever the file's panels sit (over or under the slab).
+   * dark glass. Where they sit: each panel's middle in the lower half of its storey is a band at the glass's foot (over the
+   * slab), in the upper half at its head (under the next slab); both found: a band at both. ponytail: one height and one place
+   * for the whole front (a panel astride a slab counts where its middle is), per-storey bands if a file needs them.
    */
-  function spandrels(wall: number): { spandrelM?: number; spandrel?: 'dark' | 'metal' } {
+  function spandrels(wall: number): { spandrelM?: number; spandrel?: 'dark' | 'metal'; spandrelAt?: 'head' | 'both' } {
     const hs = [...(parts.get(wall)?.entries() ?? [])]
       .filter(([p]) => solidPanels.has(p) && !clearPanels.has(p))
-      .map(([p, b]) => [p, b.maxY - b.minY] as const)
+      .map(([p, b]) => [p, b.maxY - b.minY, (b.maxY + b.minY) / 2] as const)
       .filter(([, h]) => h >= 0.2 && h <= 2)
       .sort((a, b) => a[1] - b[1])
     if (!hs.length) return {}
     const [p, h] = hs[Math.floor(hs.length / 2)]
     const metal = materialsOf(p).mats.some((m) => /metal|alu|steel|zinc|copper|panel/i.test(m.name))
-    return { spandrelM: Math.round(h * 100) / 100, spandrel: metal ? 'metal' : 'dark' }
+    const at = new Set(
+      hs.map(([, , c]) => {
+        const b = bands.find((x) => c >= x.bottom && c < x.top)
+        const top = b && (Number.isFinite(b.top) ? b.top : b.bottom + WALL_HEIGHT_M)
+        return b && top! > b.bottom && (c - b.bottom) / (top! - b.bottom) >= 0.5 ? 'head' : 'foot'
+      }),
+    )
+    return { spandrelM: Math.round(h * 100) / 100, spandrel: metal ? 'metal' : 'dark', ...(at.has('head') ? { spandrelAt: at.has('foot') ? 'both' : 'head' } : {}) }
   }
   function mullions(wall: number, pts: Pt[]): { bayM?: number; frame?: string } {
     const a = pts[0], b = pts[pts.length - 1]

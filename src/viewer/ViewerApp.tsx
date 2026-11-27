@@ -23,7 +23,7 @@ import { learnCarried } from '../lib/library'
 import { configured as sharingConfigured, fetchSharedUnit } from '../lib/supabase'
 import { LinkOff, NoPreview, NotFound, Offline, Skeleton, Slate } from '../lib/pages'
 import { pageTitle } from '../lib/route'
-import { LOW_KINDS, RAIL_COLOR_WORDS, SPANDREL_WORDS, WALL_TYPES, findOpening, initialState, isUnit, normalizeUnit, reducer, wallTypeOf, type Action, type StudioState } from '../studio/model'
+import { LOW_KINDS, RAIL_COLOR_WORDS, SPANDREL_AT_WORDS, SPANDREL_WORDS, WALL_TYPES, findOpening, initialState, isUnit, normalizeUnit, reducer, wallTypeOf, type Action, type StudioState } from '../studio/model'
 import { preloadModels } from '../three/furniture'
 import { PlotlineScene, type ArrangeEvent, type OpeningEvent, type PickHit, type SceneMode } from '../three/PlotlineScene'
 import type { TowerHit } from '../three/building'
@@ -588,7 +588,7 @@ function OpeningPanel(p: {
   refused: boolean
   canUndo: boolean
   onKind: (k: OpeningKind) => void
-  onSize: (patch: Partial<Pick<Opening, 'widthM' | 'heightM' | 'sillM' | 'spandrelM' | 'spandrel'>>) => void
+  onSize: (patch: Partial<Pick<Opening, 'widthM' | 'heightM' | 'sillM' | 'spandrelM' | 'spandrel' | 'spandrelAt'>>) => void
   onWall: (patch: { lengthM?: number; heightM?: number }) => void
   /** what the low wall is made of (model LOW_KINDS), a solid one's cornice */
   onLowKind: (patch: LowPatch) => void
@@ -633,6 +633,18 @@ function OpeningPanel(p: {
           {isGlazing(o) && (
             <div className="arrange-row">
               <FtIn label="Solid band" m={o.spandrelM ?? 0} onSet={(m) => p.onSize({ spandrelM: m > 0.01 ? m : undefined })} />
+              {(o.spandrelM ?? 0) > 0 && (
+                <label className="ftin">
+                  Band at
+                  <select value={o.spandrelAt ?? 'foot'} onChange={(e) => p.onSize({ spandrelAt: e.target.value === 'foot' ? undefined : (e.target.value as 'head' | 'both') })}>
+                    {SPANDREL_AT_WORDS.map(([k, w]) => (
+                      <option key={k} value={k}>
+                        {w}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              )}
               {(o.spandrelM ?? 0) > 0 && (
                 <label className="ftin">
                   Band of

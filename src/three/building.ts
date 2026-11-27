@@ -43,7 +43,7 @@ import { furnitureGeometry, indoor, inside, interiorMaterial, lampTable, roomsGe
 import { ROOF_M, SITE_REACH_M, TIERS, towerLevel, wideOnly, type Quality } from './render'
 import { batch, CELL_M, HIDDEN } from './batch'
 import { CONCRETE, EXTERIOR_PLASTER, PAINT as BAY_PAINT, fallbackColor, materialFor, noSpots, resolveFinishRef, zoneFinishRef } from './materials'
-import { SPANDREL, WATER, meterUVs, spandrelOf } from './openings'
+import { SPANDREL, WATER, glassOf, meterUVs, spandrelBands } from './openings'
 import { balconyEdgeParts, capGeometry, faceUvs, railParts, type RailPart } from './rails'
 import { roofGeometry } from './roof'
 
@@ -692,7 +692,7 @@ export class Building extends THREE.Group {
             const g = at(p.glass)
             for (let i = g.attributes.position.count / 3; i > 0; i--) own.push(owner)
             put(k, 'glass', g)
-            if (p.band) put(k, p.band[0], at(p.band[1])) // (a glass wall's spandrel)
+            for (const g of p.band?.[1] ?? []) put(k, p.band![0], at(g)) // (a glass wall's spandrel)
           }
       }
     }
@@ -1090,15 +1090,16 @@ export class Building extends THREE.Group {
   }
 
   /**
-   * Opening o's glass on the tower (paneGeo) and, a glass wall with a spandrel (openings.ts spandrelOf), its opaque band at the
-   * foot under the glass: [what it is — dark glass, metal, or the wall's outside on floor k — its geometry]; none: null.
+   * Opening o's glass on the tower (paneGeo) and, a glass wall with a spandrel (openings.ts spandrelBands), its opaque bands at
+   * the foot and / or head of the glass: [what they are — dark glass, metal, or the wall's outside on floor k — their geometry]; none: null.
    */
-  private paneParts(s: string, k: number, w: Wall, u: Unit, o: Opening): { glass: THREE.BufferGeometry; band: [MaterialRef, THREE.BufferGeometry] | null } {
-    const band = spandrelOf(o)
-    const glass = paneGeo(w, u, band ? { ...o, sillM: o.sillM + band, heightM: o.heightM - band } : o, this.frameTint(s, o.id))
-    if (!band) return { glass, band: null }
+  private paneParts(s: string, k: number, w: Wall, u: Unit, o: Opening): { glass: THREE.BufferGeometry; band: [MaterialRef, THREE.BufferGeometry[]] | null } {
+    const bands = spandrelBands(o)
+    const [c0, c1] = glassOf(o)
+    const glass = paneGeo(w, u, bands.length ? { ...o, sillM: o.sillM + c0, heightM: c1 - c0 } : o, this.frameTint(s, o.id))
+    if (!bands.length) return { glass, band: null }
     const ref = o.spandrel === 'outside' ? (this.outRef(s, w.id, k) ?? EXTERIOR_PLASTER) : SPANDREL[o.spandrel === 'metal' ? 'metal' : 'dark']
-    return { glass, band: [ref, alongWall(w, u, o.offsetM, o.offsetM + o.widthM, o.sillM, o.sillM + band, -0.012, 0.012)] }
+    return { glass, band: [ref, bands.map(([z0, z1]) => alongWall(w, u, o.offsetM, o.offsetM + o.widthM, o.sillM + z0, o.sillM + z1, -0.012, 0.012))] }
   }
 
   /** Window `openingId` of flat s: its frame's colour on its pane (linear; none chosen for it: the panes' own grey); undefined: no frame chosen anywhere (paneMaterial untinted). */
@@ -1205,7 +1206,7 @@ export class Building extends THREE.Group {
         const p = this.paneParts(s, k, w, u, o)
         const up = l.foot[0] + t * (l.foot[1] - l.foot[0])
         put('panes', p.glass.translate(0, up, 0)) // bare glass: its rooms lit at night (interiors)
-        if (p.band) put(p.band[0], p.band[1].translate(0, up, 0)) // (a glass wall's spandrel)
+        for (const g of p.band?.[1] ?? []) put(p.band![0], g.translate(0, up, 0)) // (a glass wall's spandrel)
       })
     }
     const storey = Math.min(storeyTop(u, rooms) || WALL_M, cap)
