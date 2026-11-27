@@ -122,7 +122,10 @@ reads in Firefox today, with what fails and why: [SAMPLES.md](SAMPLES.md).
 - A model that keeps its pictures (or a `.gltf` its `.bin`) in other files is dropped as its folder or a `.zip`; dropped
   alone, the notes name what was missing. Compressed models (Draco, meshopt) are unpacked; KTX2 pictures are refused
   with "export it with PNG / JPEG pictures".
-- It stands on the street, centred on the drawing (on every floor the drawing stands on); one far smaller than a
+- It stands on the street (on every floor the drawing stands on), by the file's own origin on a DXF / SVG drawing of the
+  same building (their CAD origin is shared: the model lands over the plan), else centred on the drawing; an OBJ / STL /
+  PLY that names no up axis is turned upright when its header says Z up (3DBAG's Geoflow) or it would lie on its side (the
+  Delft city tile); one far smaller than a
   building (under 8 m across, or well under the drawing — a model made at 1 : 10) asks once how big it is, the answer kept
   for the file's name. A material the file made fully see-through (a Collada habit: the Macky Auditorium vanished) is
   drawn solid; a coloured glass is toned to Plotline's glass.

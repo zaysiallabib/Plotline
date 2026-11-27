@@ -65,6 +65,7 @@ import { PROJECTS_KEY, drawingName, keepApartments, keepReview, newProject, plan
 import { buildingOf, finishesKey, keptFor, layoutKey, outsideRecord, putKept, readFinishes, saveFinishes, splitKept } from '../data/building/apartments'
 import { OUTSIDE_SLOT, outerRuns, outsideKey } from '../furnish/finishes'
 import { plain } from '../import/materials'
+import { modelOffset } from '../import/mesh'
 import { floorIn, roleIn, stemIn, towerOf } from '../data/building'
 import { HARD, snapMove, snapPoint, type Snap } from './snap'
 import { STAFF_KEY, baseOf, planOf, readLayout, saveLayout } from '../viewer/arrange'
@@ -1507,7 +1508,10 @@ export default function StudioApp() {
         if (pick !== null && ks[pick] !== 1 && lastRead.current) return void importArchitect(lastRead.current.file, lastRead.current.siblings, true)
       }
       // (its lowest point on the street: on each floor the drawing stands on, Shell.street)
-      dispatch({ type: 'set-shell', shell: { ...shell, street: true, offset: b ? { x: (b.minX + b.maxX) / 2, y: (b.minY + b.maxY) / 2 } : { x: 0, y: 0 } } })
+      // (by its own origin on a CAD drawing's — the architect's model and plans share it — else centred on the drawing: modelOffset)
+      const place = r.shell ? modelOffset(r.shell.bounds, r.shell.at, b, u.fileOrigin) : { x: 0, y: 0, byOrigin: false }
+      if (place.byOrigin) r.notes.push(`Stood on the drawing by the file's own origin (the drawing's ${u.name.trim() || 'plan'} shares it)`)
+      dispatch({ type: 'set-shell', shell: { ...shell, street: true, offset: { x: place.x, y: place.y } } })
       setImportNotes(r.notes)
       return
     }
@@ -1515,7 +1519,9 @@ export default function StudioApp() {
       const s = r.storeys[0]
       // (one file on an empty Studio: a project of one floor — the frame is the project; read again: where it was)
       const fresh0 = !projRef.current && !hasDrawing(stateRef.current.unit)
-      const u = again ? at(s.unit, s.elevationM) : intoProject(at(s.unit, s.elevationM), fileName, { kind: 'file', line: `from ${where}` })
+      // (a CAD drawing knows where its file's 0, 0 is: a model of the same building dropped on it stands by that origin)
+      const cad = r.format === 'dxf' || r.format === 'svg' ? { ...s.unit, fileOrigin: { x: -r.origin.x * r.unitScale, y: r.origin.y * r.unitScale } } : s.unit
+      const u = again ? at(cad, s.elevationM) : intoProject(at(cad, s.elevationM), fileName, { kind: 'file', line: `from ${where}` })
       // (a project this file just made takes the file's roof; a drawing dropped into a project of its own keeps that project's)
       if (r.roof && fresh0 && !again) storeProjects(readProjects().map((x) => (x.units[u.id] ? { ...x, roof: r.roof } : x)))
       dress(u)

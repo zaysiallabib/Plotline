@@ -291,6 +291,11 @@ export interface Unit {
   priceBdt?: number
   /** the source drawing (public/ path) — used by the Studio as a tracing layer */
   planImage?: { src: string; pxPerM: number; originPx: { x: number; y: number } }
+  /**
+   * Where its CAD file's 0, 0 is on the plan (a drawing read from a DXF or SVG, whose plan starts at the walls' corner): an
+   * architect's 3D model of the same building, dropped on it, stands by that shared origin (import/mesh.ts modelOffset).
+   */
+  fileOrigin?: { x: number; y: number }
   /** where the building stands (Studio → Site), with the map's neighbours and the wind, cached: a buyer link never refetches */
   site?: Site
   /**
