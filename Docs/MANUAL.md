@@ -523,6 +523,8 @@ that flat, open its own address (`/u/…`, or **Preview 3D** in the Studio).
 The roof over the whole building (staff; buyers see it, never its choices). In the **Building** view open **Finishes** and
 click the roof on the tower (or **Change** beside "The roof · the whole building" at the foot of Finishes): the panel's top
 block is the roof.
+- A building that stands in its architect's 3D shape (an IFC's) keeps the file's own roof — its kind and slopes are the
+  file's: the block shows its covering's swatches only ("Its shape is the architect's file's: its covering changes here").
 - **Its covering**, as swatches: a flat roof — **Plain roof slab** (as before), **Gravel**, **Green roof**, **Terracotta
   terrace tiles**; a pitched roof — **Grey metal sheet** (as before), **Clay tiles**, **Slate**, **Zinc standing seam**,
   **Timber shingles**, **Corrugated metal**. The chosen one is the white row; no price (it is not a buyer's choice).

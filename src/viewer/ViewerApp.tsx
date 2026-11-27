@@ -1988,8 +1988,9 @@ function Viewer({ first }: { first: Shown }) {
                   staff={STAFF}
                   kept={KEEP ? kept : null}
                   roof={
-                    STAFF && roofK !== null
+                    STAFF && tower
                       ? {
+                          shape: !!unit.shell, // (an architect's shape: its own roof, the covering chosen here)
                           value: roofNow,
                           read: tower?.STOREYS?.ridgeM !== undefined,
                           open: roofOpen,

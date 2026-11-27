@@ -51,7 +51,8 @@ interface Props {
   /** staff on the flat's own page: the building's outside */
   outside?: OutsideProps
   /** staff, the flat in a building that draws its own roof: the roof as drawn, whether its block is open, and changing it */
-  roof?: { value: Roof | undefined; read: boolean; open: boolean; onOpen: (open: boolean) => void; onChange: (r: Roof) => void } | null
+  /** `shape`: the roof is the architect's 3D shape's (its kind and slopes are the file's): its covering only */
+  roof?: { value: Roof | undefined; read: boolean; open: boolean; onOpen: (open: boolean) => void; onChange: (r: Roof) => void; shape?: boolean } | null
   /** the Building view (qa4fix): the building's outside — its walls, window frames, the roof — comes first, the flat's groups after */
   outsideFirst?: boolean
 }
@@ -79,7 +80,7 @@ function RoofBlock({ roof }: { roof: NonNullable<Props['roof']> }) {
           <Chip key={o.id} o={o} bare on={o.id === now.id} onClick={() => roof.onChange({ ...(roof.value ?? { kind: 'flat' }), covering: o.id })} />
         ))}
       </div>
-      <RoofFields roof={roof.value} read={roof.read} onChange={roof.onChange} />
+      {roof.shape ? <p className="small muted">Its shape is the architect’s file’s: its covering changes here.</p> : <RoofFields roof={roof.value} read={roof.read} onChange={roof.onChange} />}
       <button className="link" onClick={() => roof.onOpen(false)}>
         Done
       </button>
