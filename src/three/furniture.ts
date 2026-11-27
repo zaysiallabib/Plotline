@@ -329,7 +329,7 @@ export async function buildFurniture(p: FurniturePlacement, ceilingM = 3.048, fl
   pivot.position.set(p.x, floorM, p.y)
   pivot.rotation.y = -THREE.MathUtils.degToRad(p.rotationDeg)
   const asset = kitAsset(p.assetId)
-  pivot.userData = { kind: 'furniture', id: p.id, roomId: p.roomId, label: placementLabel(p), objectKind: asset ? objectKind(asset) : 'decor' }
+  pivot.userData = { kind: 'furniture', id: p.id, roomId: p.roomId, label: placementLabel(p), objectKind: asset ? objectKind(asset) : 'decor', outside: p.outside || p.onCap }
 
   // Lite and Low: a scanned plant model (2–6 MB) is left out; the piece stays in the layout (Arrange, the load count), nothing drawn
   if (lean.on && asset?.category === 'plant' && !asset.url.startsWith('procedural:')) return pivot

@@ -198,6 +198,31 @@ describe('the pitched roof (three/roof.ts)', () => {
     // a window too big for its slope is left out, not drawn hanging off it
     expect(roofGeometry(BOX, { x: 1, y: 0 }, { kind: 'gable', pitchDeg: 30, windows: [{ side: 0, along: 0.5, up: 0.5, wM: 0.78, hM: 4 }] }, 0, 0).panes.attributes.position.count).toBe(0)
   })
+
+  test('solar panels and a chimney (session 31 pieces) sit on the roof as drawn: on a flat deck at its height, on a slope on it, tipped as it is', () => {
+    const flat = roofGeometry(BOX, { x: 1, y: 0 }, { kind: 'flat', pieces: [{ kind: 'solar', side: 0, along: 0.5, up: 0.5 }] }, 3, 3).spots
+    expect(flat).toHaveLength(1)
+    expect(flat[0]).toMatchObject({ kind: 'solar', tilt: 0 })
+    expect(flat[0].at[1]).toBe(3) // on the deck
+    const pitch = 30
+    const BIG: Pt[] = [{ x: 0, y: 0 }, { x: 10, y: 0 }, { x: 10, y: 16 }, { x: 0, y: 16 }] // 10 m wide: a 5.8 m slope takes a 1.8 m frame
+    const gable = roofGeometry(BIG, { x: 1, y: 0 }, { kind: 'gable', pitchDeg: pitch, pieces: [{ kind: 'solar', side: 0, along: 0.5, up: 0.5 }, { kind: 'chimney', side: 1, along: 0.8, up: 0.9 }] }, 5, 5).spots
+    expect(gable.map((s) => s.kind)).toEqual(['solar', 'chimney'])
+    for (const s of gable) {
+      expect(s.tilt).toBeCloseTo((pitch * Math.PI) / 180, 6)
+      // on the slope: its height over the eave = its way in from the eave (across the 4 m box) × tan(pitch)
+      const inFromEave = Math.min(s.at[0], 10 - s.at[0])
+      expect(s.at[1]).toBeCloseTo(5 + inFromEave * Math.tan((pitch * Math.PI) / 180), 6)
+      // its front (+z turned by yaw) faces down the slope, out toward that eave
+      expect(Math.sign(Math.sin(s.yaw))).toBe(s.at[0] < 5 ? -1 : 1)
+    }
+    expect(gable[1].at[1]).toBeGreaterThan(gable[0].at[1]) // the chimney nearer the ridge
+    expect(roofGeometry(BOX, { x: 1, y: 0 }, { kind: 'gable', pitchDeg: pitch, pieces: [{ kind: 'solar', side: 0, along: 0.5, up: 0.5 }] }, 5, 5).spots).toEqual([]) // no room up a 2.3 m slope: left out
+    // stored and read back; junk dropped; in plain words
+    const r = parseRoof({ kind: 'gable', pieces: [{ kind: 'solar', side: 1, along: 2, up: 0.3 }, { kind: 'tree' }] })!
+    expect(r.pieces).toEqual([{ kind: 'solar', side: 1, along: 1, up: 0.3 }])
+    expect(roofWords({ kind: 'flat', pieces: [{ kind: 'solar', side: 0, along: 0.3, up: 0.5 }, { kind: 'solar', side: 0, along: 0.6, up: 0.5 }, { kind: 'chimney', side: 0, along: 0.9, up: 0.5 }] })).toContain('2 solar panel frames · 1 chimney')
+  })
 })
 
 describe('the demo tower under a roof set by staff (kept in this browser)', () => {
@@ -223,6 +248,19 @@ describe('the demo tower under a roof set by staff (kept in this browser)', () =
     const s = spans(b, K, b.levelOf(K))
     expect(s).toContainEqual([1.1, 1.13]) // the cap on the 1.1 m parapet
     expect(s).toContainEqual([0, 0.03]) // the gravel over the slab
+    b.dispose()
+    keepRoof('type-a', null)
+  })
+  test('solar panels on the gable the tower draws: over its slope, under its ridge (session 31 pieces)', async () => {
+    storage()
+    keepRoof('type-a', { kind: 'gable', pitchDeg: 30, pieces: [{ kind: 'solar', side: 0, along: 0.5, up: 0.5 }] })
+    const b = await built(bti as Tower, 'type-a', 2)
+    const solar = b.children.filter((o) => o.userData.level === K && !(o as Mesh).isMesh)
+    expect(solar).toHaveLength(1)
+    const y = new THREE.Box3().setFromObject(solar[0])
+    const R = b.levelOf(K)
+    expect(y.min.y).toBeGreaterThan(R - 0.5) // on the roof, not down on the slab of the floor under it
+    expect(y.max.y).toBeLessThan(R + 9) // under the ridge's height range
     b.dispose()
     keepRoof('type-a', null)
   })

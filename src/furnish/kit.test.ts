@@ -28,6 +28,14 @@ describe('kit integrity (the library)', () => {
     const manifest = readFileSync('public/assets/MANIFEST.md', 'utf8')
     for (const a of Object.values(KIT)) {
       expect(existsSync(`public${a.url}`), a.url).toBe(true)
+      if (a.url.endsWith('.glb')) {
+        // one binary file (session 31: the outside's models), pictures inside it, under 1 MB
+        const b = readFileSync(`public${a.url}`)
+        expect(b.subarray(0, 4).toString('latin1'), a.id).toBe('glTF')
+        expect(b.length, a.id).toBe(a.bytes)
+        expect(b.length, a.id).toBeLessThan(1 << 20)
+        continue
+      }
       const g = JSON.parse(readFileSync(`public${a.url}`, 'utf8')) as { buffers?: { uri: string }[]; images?: { uri: string }[] }
       for (const u of [...(g.buffers ?? []), ...(g.images ?? [])]) expect(existsSync(`public${a.url.replace(/[^/]+$/, '')}${u.uri}`), `${a.id}: ${u.uri}`).toBe(true)
       expect(manifest, a.id).toContain(`models/${a.url.split('/')[3]}/`)

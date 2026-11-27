@@ -1541,7 +1541,7 @@ export default function StudioApp() {
     if (!r?.ok) return toast(`Could not fetch the sample ${s.name}`)
     await onDropped([{ path: s.file, data: new File([await r.blob()], s.file) }])
   }
-  if (import.meta.env.DEV) Object.assign(window, { __plotlineStudio: { takeImport } }) // browser tests feed a read file's result in without the file
+  if (import.meta.env.DEV) Object.assign(window, { __plotlineStudio: { takeImport, toScreen } }) // browser tests feed a read file's result in without the file, and aim at a plan point
 
   const exportJson = useCallback(async () => {
     const st = stateRef.current

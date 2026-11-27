@@ -6,7 +6,7 @@
  * field, a window's place when the slider is let go — each change rebuilds the roof once.
  */
 import { useState } from 'react'
-import { COPINGS, DEFAULT_PITCH, ROOF_KINDS, WINDOW_SIZE, coveringOf, coveringsFor, isPitched, spread, type Roof, type RoofKind, type RoofWindow } from '../data/building/roof'
+import { COPINGS, DEFAULT_PITCH, ROOF_KINDS, WINDOW_SIZE, coveringOf, coveringsFor, isPitched, spread, type Roof, type RoofKind, type RoofPiece, type RoofWindow } from '../data/building/roof'
 
 interface Props {
   /** the roof as drawn now (absent: the flat roof and its parapet) */
@@ -61,10 +61,13 @@ export function RoofFields({ roof, read, covering, onChange }: Props) {
   const kind = (k: RoofKind) => {
     // a flat deck's covering is no slope's (and back): the new kind's own first; its skylights stay, now on the slope
     const flip = isPitched({ kind: k }) !== pitched
-    set({ kind: k, ...(flip ? { covering: undefined } : {}), ...(k === 'shed' ? { windows: r.windows?.map((w) => ({ ...w, side: 0 as const })) } : {}) })
+    set({ kind: k, ...(flip ? { covering: undefined } : {}), ...(k === 'shed' ? { windows: r.windows?.map((w) => ({ ...w, side: 0 as const })), pieces: r.pieces?.map((p) => ({ ...p, side: 0 as const })) } : {}) })
   }
   const ws = r.windows ?? []
   const setWindows = (next: RoofWindow[]) => set({ windows: next })
+  const ps = r.pieces ?? []
+  const setPieces = (next: RoofPiece[]) => set({ pieces: next })
+  const addPiece = (kind: RoofPiece['kind']) => setPieces(spread([...ps, { kind, side: 0, along: 0.5, up: 0.5 }], 0))
   const sides = pitched && r.kind !== 'shed'
   return (
     <div className="roof-fields">
@@ -143,6 +146,33 @@ export function RoofFields({ roof, read, covering, onChange }: Props) {
             )}
             <Along value={w.along} onCommit={(v) => setWindows(ws.map((x, j) => (j === i ? { ...x, along: v } : x)))} />
             <button className="link" aria-label={`Take roof window ${i + 1} away`} title="Take it away" onClick={() => setWindows(spread(ws.filter((_, j) => j !== i), w.side))}>
+              ×
+            </button>
+          </div>
+        ))}
+      </div>
+      <div className="roof-windows">
+        <div className="name">
+          <span className="label">On the roof</span>
+          <button className="link" title="A frame of two solar panels (spread evenly; drag it along after)" onClick={() => addPiece('solar')}>
+            + Solar panels
+          </button>
+          <button className="link" title="A chimney stack (spread evenly; drag it along after)" onClick={() => addPiece('chimney')}>
+            + Chimney
+          </button>
+        </div>
+        {ps.map((p, i) => (
+          <div key={i} className="roof-window">
+            {sides ? (
+              <select aria-label="Which slope" value={p.side} onChange={(e) => setPieces(spread(ps.map((x, j) => (j === i ? { ...x, side: Number(e.target.value) as 0 | 1 } : x)), Number(e.target.value) as 0 | 1))}>
+                <option value={0}>{p.kind === 'solar' ? 'Solar' : 'Chimney'} · front</option>
+                <option value={1}>{p.kind === 'solar' ? 'Solar' : 'Chimney'} · back</option>
+              </select>
+            ) : (
+              <span className="muted">{p.kind === 'solar' ? 'Solar' : 'Chimney'}</span>
+            )}
+            <Along value={p.along} onCommit={(v) => setPieces(ps.map((x, j) => (j === i ? { ...x, along: v } : x)))} />
+            <button className="link" aria-label={`Take ${p.kind === 'solar' ? 'the solar panels' : 'the chimney'} ${i + 1} away`} title="Take it away" onClick={() => setPieces(spread(ps.filter((_, j) => j !== i), p.side))}>
               ×
             </button>
           </div>

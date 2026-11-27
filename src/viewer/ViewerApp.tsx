@@ -1156,6 +1156,7 @@ function Viewer({ first }: { first: Shown }) {
     scene?.setHand({ id: h.id, y: surfaceOf(h.assetId ? { assetId: h.assetId } : (pieceOf(h.id) ?? { assetId: '' })) === 'ceiling' ? ceilingM : 0 })
   }
   const startPlacing = (assetId: string) => {
+    setFinishesOpen(false) // (placing and Finishes never at once: Finishes' click on an outer wall opens its outside card)
     grip({ id: core.newId(), assetId, rot: 0, at: null, move: null })
     setAdding(false)
     setSel(null)
@@ -1521,6 +1522,7 @@ function Viewer({ first }: { first: Shown }) {
   }
   /** Finishes and Comment take the same place on the right: one opens, the other closes */
   const toggleFinishes = () => {
+    letGo() // a piece in hand goes back (a new one is let go): with Finishes open a click on an outer wall is its outside card, never a drop (session 31 pieces / facade)
     setFinishesOpen((v) => !v)
     setCommenting(false)
     setDraft(null)

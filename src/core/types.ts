@@ -222,6 +222,17 @@ export interface FurniturePlacement {
    * (negative = short of it) — [the end toward the wall's end a, the end toward b]. Absent = as their opening hangs them.
    */
   endsM?: [number, number]
+  /**
+   * Hung on the OUTER face of one of its room's walls, where no room is (a sunshade over a window, an AC outdoor unit, a
+   * canopy): it stands outside the flat, flush on that face (studio/furniture.ts hangOutside). Only kit pieces marked
+   * `outdoor` go there. Absent = in its room.
+   */
+  outside?: true
+  /**
+   * Sits ON the cap of a solid low wall of its room (a planter box on a balcony's edge, kit `onEdge`): straddling the wall,
+   * its middle on the wall's line, its bottom on the cap (studio/furniture.ts onEdge). Absent = in its room.
+   */
+  onCap?: true
 }
 
 /**

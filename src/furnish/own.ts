@@ -12,8 +12,11 @@ import { OWN_TEXTURES, type TextureSet } from './textures'
 
 type Size3 = { x: number; y: number; z: number }
 export type Front = KitAsset['frontAxis']
-/** where a piece sits: on the floor, hung on a wall, from the ceiling, or on a table / desk / bedside (kit `onTop`) */
-export type Sits = 'floor' | 'wall' | 'ceiling' | 'table'
+/**
+ * where a piece sits: on the floor, hung on a wall, from the ceiling, on a table / desk / bedside (kit `onTop`), or hung on a
+ * wall that may be a wall's OUTSIDE face (kit `outdoor`: a supplier's AC outdoor unit, awning, sign)
+ */
+export type Sits = 'floor' | 'wall' | 'ceiling' | 'table' | 'outside'
 
 /** A file of the library: by its SHA-256 in this browser, and online at `path` (`<org>/<sha-256>.<ext>`, bucket `library`). */
 export interface OwnFile {
@@ -165,7 +168,7 @@ const TABLE_TOP_M = 0.75
 /** The light a lamp of the staff's own gives (kit.ts Lamp), from where it sits. */
 export function lampOf(m: Pick<OwnModel, 'light' | 'sits' | 'sizeM'>): Lamp | undefined {
   if (!m.light) return undefined
-  if (m.sits === 'ceiling' || m.sits === 'wall') return { kind: 'ceiling' }
+  if (m.sits === 'ceiling' || m.sits === 'wall' || m.sits === 'outside') return { kind: 'ceiling' }
   return m.sits === 'table' ? { kind: 'table', lumens: 350, bulbM: mm(m.sizeM.y * BULB.table) } : { kind: 'floor', lumens: 800, bulbM: mm(m.sizeM.y * BULB.floor) }
 }
 
@@ -183,7 +186,7 @@ export function kitOf(m: OwnModel, url: string): KitAsset {
     author: 'Staff',
     license: 'own',
     bytes: m.file.bytes,
-    ...(m.sits === 'wall' ? { mount: 'wall' as const } : m.sits === 'ceiling' ? { mount: 'ceiling' as const } : m.sits === 'table' ? { onTop: true as const, mountY: TABLE_TOP_M } : {}),
+    ...(m.sits === 'wall' ? { mount: 'wall' as const } : m.sits === 'outside' ? { mount: 'wall' as const, outdoor: true as const } : m.sits === 'ceiling' ? { mount: 'ceiling' as const } : m.sits === 'table' ? { onTop: true as const, mountY: TABLE_TOP_M } : {}),
     // a lamp that gives no light is no ceiling fixture (kit.ts objectKind would make a 'lamp' one)
     ...(m.category === 'lamp' ? { kind: light?.kind === 'ceiling' ? ('ceiling-light' as const) : ('lamp' as const) } : {}),
     ...(light ? { light } : {}),
@@ -237,7 +240,7 @@ export function isOwnItem(v: unknown): v is OwnItem {
   const x = v as OwnItem
   if (!x || typeof x !== 'object' || !ID.test(x.id) || !str(x.label) || !x.label.trim() || !str(x.at, 40) || (x.removed !== undefined && x.removed !== true)) return false
   if (x.type === 'model')
-    return CATEGORIES.some((c) => c.id === x.category) && ['+z', '-z', '+x', '-x'].includes(x.front) && ['floor', 'wall', 'ceiling', 'table'].includes(x.sits) && isSize(x.sizeM) && (x.light === undefined || typeof x.light === 'boolean') && Number.isInteger(x.triangles) && x.triangles >= 0 && x.triangles <= MAX_TRIANGLES && isFile(x.file) && x.file.ext === 'glb'
+    return CATEGORIES.some((c) => c.id === x.category) && ['+z', '-z', '+x', '-x'].includes(x.front) && ['floor', 'wall', 'ceiling', 'table', 'outside'].includes(x.sits) && isSize(x.sizeM) && (x.light === undefined || typeof x.light === 'boolean') && Number.isInteger(x.triangles) && x.triangles >= 0 && x.triangles <= MAX_TRIANGLES && isFile(x.file) && x.file.ext === 'glb'
   if (x.type === 'finish') return str(x.slotId, 64) && str(x.brand) && str(x.sku, 64) && Number.isInteger(x.priceDeltaBdt) && Math.abs(x.priceDeltaBdt) <= 1e9 && isLook(x.look)
   return false
 }

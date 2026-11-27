@@ -35,6 +35,19 @@ export interface RoofWindow {
   hM: number
 }
 
+/**
+ * A piece on the roof the tower draws (session 31 pieces): solar panels or a chimney, placed as a roof window is (`side`,
+ * `along`, `up`): on a flat roof standing on its deck, on a slope lying on it (a chimney upright through it).
+ */
+export interface RoofPiece {
+  kind: 'solar' | 'chimney'
+  side: 0 | 1
+  along: number
+  up: number
+}
+/** the library piece each draws as (furnish/procedural.meta.ts) */
+export const ROOF_PIECE_ASSET: Record<RoofPiece['kind'], string> = { solar: 'solar_panel', chimney: 'chimney' }
+
 export interface Roof {
   kind: RoofKind
   /** degrees; absent: what the set's eave and ridge make, else DEFAULT_PITCH */
@@ -50,6 +63,8 @@ export interface Roof {
   /** a band round the building under the roof line */
   cornice?: boolean
   windows?: RoofWindow[]
+  /** solar panels and chimneys on it */
+  pieces?: RoofPiece[]
 }
 
 export const DEFAULT_PITCH = 30
@@ -85,6 +100,7 @@ export function roofWords(r: Roof | undefined, read = false): string {
       r?.coping ? `${r.coping} coping` : '',
       r?.cornice ? 'cornice' : '',
       r?.windows?.length ? `${r.windows.length} skylight${r.windows.length === 1 ? '' : 's'}` : '',
+      ...pieceWords(r),
     ]
       .filter(Boolean)
       .join(' · ')
@@ -96,16 +112,24 @@ export function roofWords(r: Roof | undefined, read = false): string {
     r.overhangM ? `eaves ${r.overhangM.toFixed(2)} m` : '',
     r.cornice ? 'cornice' : '',
     r.windows?.length ? `${r.windows.length} roof window${r.windows.length === 1 ? '' : 's'}` : '',
+    ...pieceWords(r),
   ]
     .filter(Boolean)
     .join(' · ')
 }
 
+/** "2 solar panel frames · 1 chimney" */
+const pieceWords = (r: Roof | undefined): string[] =>
+  (['solar', 'chimney'] as const).flatMap((k) => {
+    const n = r?.pieces?.filter((p) => p.kind === k).length ?? 0
+    return n ? [`${n} ${k === 'solar' ? 'solar panel frame' : 'chimney'}${n === 1 ? '' : 's'}`] : []
+  })
+
 /**
- * Windows on one slope spread evenly along it after one is added or taken away (the person drags one along afterwards): the
- * `side` slope's windows at 1/(n+1), 2/(n+1) …, half way up; the other slope's as they were.
+ * Windows (or pieces) on one slope spread evenly along it after one is added or taken away (the person drags one along
+ * afterwards): the `side` slope's at 1/(n+1), 2/(n+1) …, half way up; the other slope's as they were.
  */
-export function spread(ws: RoofWindow[], side: 0 | 1): RoofWindow[] {
+export function spread<T extends { side: 0 | 1; along: number; up: number }>(ws: T[], side: 0 | 1): T[] {
   const mine = ws.filter((w) => w.side === side)
   let i = 0
   return ws.map((w) => (w.side === side ? { ...w, along: ++i / (mine.length + 1), up: 0.5 } : w))
@@ -121,6 +145,9 @@ export function parseRoof(x: unknown): Roof | null {
   const windows = Array.isArray(r.windows)
     ? r.windows.filter((w) => w && typeof w === 'object').map((w) => ({ side: w.side === 1 ? (1 as const) : (0 as const), along: num(w.along, 0, 1) ?? 0.5, up: num(w.up, 0, 1) ?? 0.5, wM: num(w.wM, 0.3, 4) ?? WINDOW_SIZE.wM, hM: num(w.hM, 0.3, 4) ?? WINDOW_SIZE.hM }))
     : undefined
+  const pieces = Array.isArray(r.pieces)
+    ? r.pieces.filter((p) => p && (p.kind === 'solar' || p.kind === 'chimney')).map((p) => ({ kind: p.kind, side: p.side === 1 ? (1 as const) : (0 as const), along: num(p.along, 0, 1) ?? 0.5, up: num(p.up, 0, 1) ?? 0.5 }))
+    : undefined
   return {
     kind: r.kind,
     ...(pitchDeg !== undefined ? { pitchDeg } : {}),
@@ -130,6 +157,7 @@ export function parseRoof(x: unknown): Roof | null {
     ...(r.coping === 'plaster' || r.coping === 'metal' || r.coping === 'stone' ? { coping: r.coping } : {}),
     ...(r.cornice ? { cornice: true } : {}),
     ...(windows?.length ? { windows } : {}),
+    ...(pieces?.length ? { pieces } : {}),
   }
 }
 

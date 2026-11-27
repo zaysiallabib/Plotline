@@ -375,9 +375,10 @@ const SIGHT_MAX_SQM = 8
 /** A wardrobe/shelf/tall (> 1.6 m) piece this close to the stand point fills the first view with a slab… */
 const SLAB_NEAR = 1.5
 /** What a first view frames: not the overhead pieces (lights, ACs), nor the curtains drawn open at the windows' sides. */
+/** What a room's view frames: not its ceiling pieces or curtains, nor what hangs outside its walls (a sunshade, an AC outdoor unit). */
 const framed = (f: FurniturePlacement) => {
   const k = kitAsset(f.assetId)
-  return k?.mount !== 'ceiling' && k?.kind !== 'curtain'
+  return k?.mount !== 'ceiling' && k?.kind !== 'curtain' && !f.outside
 }
 const isSlab = (f: FurniturePlacement, k: KitAsset) => !GLASS.has(f.assetId) && k.mount !== 'ceiling' && k.kind !== 'curtain' && (k.category === 'wardrobe' || k.category === 'shelf' || placementSize(f).y > 1.6)
 /** …so that candidate loses this much of its distance-to-target score. */
