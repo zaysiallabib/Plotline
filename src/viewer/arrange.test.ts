@@ -4,7 +4,7 @@ import type { FinishSlot, FurniturePlacement, Opening, Unit, Wall } from '../cor
 import { bottomOf, library, liftPiece, movePiece, pieceQuad, placePiece, resizePiece } from '../studio/furniture'
 import { placementLabel } from '../furnish/kit'
 import { initialState, reducer, type StudioState } from '../studio/model'
-import { DRAFT_KEY, PREVIEW_KEY, STAFF_KEY, TV_STANDS, baseOf, dragTo, draftState, dropHeld, finishesKey, floorAnswer, forkHere, holdAt, isShareLink, isStaff, keepsFinishes, layoutKey, madeOfOnTower, makeDraft, outsideAnswer, outsideChanges, outsideOnEveryFloor, pickUp, pushStep, readFinishes, readLayout, saveLayout, saveOpenings, setFloorAnswer, setOutsideAnswer, surfaceOf, turnHeld, undoStep, wallDrag, withOutside, type Held, type Steps } from './arrange'
+import { DRAFT_KEY, PREVIEW_KEY, STAFF_KEY, TV_STANDS, baseOf, dragTo, draftState, dropHeld, finishesKey, floorAnswer, forkHere, holdAt, isShareLink, isStaff, keepsFinishes, layoutKey, madeOfOnTower, makeDraft, outsideAnswer, outsideChanges, outsideOf, outsideOnEveryFloor, pickUp, pushStep, readFinishes, readLayout, saveLayout, saveOpenings, setFloorAnswer, setOutsideAnswer, surfaceOf, turnHeld, undoStep, wallDrag, withOutside, type Held, type Steps } from './arrange'
 import { PROJECTS_KEY, makeProject, newProject, parseProjects, setSlot, slotsOf } from '../data/building/projects'
 import { pinsKey } from './storage'
 import { findOpening } from '../studio/model'
@@ -665,6 +665,8 @@ describe('one floor or all (founder 2026-11-20): a floor whose drawing is on oth
     const ac = { ...piece('ac', 'exterior_aircon_unit', 'l', 3, -0.4, 180), outside: true as const }
     const placed = [...before, ac]
     expect(outsideChanges(before, placed)).toEqual([ac])
+    // what asks when picked up, before it lands: a library Outside piece, or one hung outside; never a sofa
+    expect([outsideOf({ assetId: 'exterior_aircon_unit' }), outsideOf(ac), outsideOf(before[0])]).toEqual([true, true, false])
     expect(outsideChanges(before, [{ ...before[0], x: 5 }])).toEqual([]) // a sofa moved: this floor's own, never asked
     expect(outsideOnEveryFloor(a, rooms, outsideChanges(before, placed), t, 1, s)).toEqual([2, 3, 4])
     const on = (k: number) => (readLayout(`a:${k}`, s) ?? []).filter((p) => !p.removed)

@@ -572,9 +572,11 @@ block is the roof.
   end of the wall", "Runs into a wall" (a parapet round the corner: above it is fine), or that it overlaps another piece.
   Other pieces (a sofa, a TV, a picture) stay inside: on an outside face they say "Outside the room".
 - **On every floor with this drawing:** a flat whose drawing stands on several floors (Floor plan A on floors 1, 2, 4,
-  6, 8) asks the first time you put down, move or delete one of its outside pieces: "Floor plan A is also on floors 2, 4,
-  6, 8. Put its outside pieces — sunshades, AC units, canopies, planters — on: **This floor only** · **All 5 floors with
-  this drawing**" (Cancel: this time this floor only, asked again next time). **All** puts the same piece in the same place
+  6, 8) asks the first time you pick up one of its outside pieces — from the library (Add → Outside), or with G — before it
+  is put down, so the first one already lands as you answer: "Floor plan A is also on floors 2, 4, 6, 8. Put its outside
+  pieces — sunshades, AC units, canopies, planters — on: **This floor only** · **All 5 floors with this drawing**"
+  (Cancel / Esc: nothing is picked up). A piece dragged, or deleted, asks after (Cancel there: this time this floor only,
+  asked again next time). **All** puts the same piece in the same place
   on every one of those floors — and moves or deletes it there when you move or delete it here — and the Building view shows
   them at once; the answer holds until the tab is closed (the furniture panel says "Outside pieces: every floor with this
   drawing"). Furniture inside never asks: each floor's own. Pieces placed one floor at a time before stay as they are.
