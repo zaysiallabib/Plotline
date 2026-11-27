@@ -247,7 +247,9 @@ Finishes is open: then the click picks that floor's finish).
 
 **The building's outside** (staff, session 31). What the outer walls are clad in and the colour of the window frames —
 chosen once for the whole building, not flat by flat.
-- At the end of Finishes: **Outside walls** — Warm plaster (what every building was drawn in before), White, Sand,
+- In the **Building view** Finishes starts with the building — **Outside walls**, **Window frames**, **The roof** — and the
+  open flat's seven groups follow ("The open flat's rooms, group by group"); in Walk and the Dollhouse the flat's groups
+  come first and the building's at the end. **Outside walls** — Warm plaster (what every building was drawn in before), White, Sand,
   Terracotta and Charcoal render, Red brick, White painted brick, Grey brick, Stone blocks, Timber slats, Timber
   clapboard, Zinc panels, Dark metal panels, Corrugated metal, Fair-faced concrete, Precast concrete panels, Fibre-cement
   panels, Charcoal and Rust composite panels — and **Window frames**: Silver (as before), White, Anthracite, Black,
@@ -259,7 +261,8 @@ chosen once for the whole building, not flat by flat.
   This floor · Whole building**: *this wall* is that straight wall on every floor its floor plan stands on (a balcony's
   front can be timber in a brick tower); *this floor* is every outer wall of that floor (a stone plinth on the ground
   floor); then the options. **Same as the floor** / **Same as the building** takes the choice back; **Window frames ·
-  whole building** sits in the same card; **Done** closes it.
+  whole building** sits in the same card; **Done** closes it. In the Building view the wall you clicked is outlined on the
+  tower in blue (over a thin white line), on every floor *this wall* dresses, until the card closes.
 - A balcony's walls are the outside: they take the outside finish unless a buyer picked a paint for that wall or that
   balcony.
 - **Chosen for one wall, floor or window** lists those choices; **undo** takes one back.
@@ -347,7 +350,9 @@ the panel's **×**) stops Comment. On a buyer link **Your name** is here too.
 the corner is softly shaded (every quality). Painted walls have a faint hand-plastered cloudiness and keep exactly the
 colour you chose (Low and High; Lite shows the plain colour); up close at night they are smooth, with no specks. Window
 glass has the faint green-grey of real glass and mirrors the sky; the neighbours' windows read as glass, and in the
-Building view every window of the tower is real glass with that flat's own rooms and furniture behind it (§4).
+Building view every window of the tower is real glass with that flat's own rooms and furniture behind it (§4). The other
+flats' furniture is shown in the Building view only: back in Walk or the Dollhouse it is put away, so the walk is as
+quick as before you looked at the tower (Type A on High: 147 draws, 0.95 M triangles, after a visit too).
 
 **Furniture is as bright as the room it stands in** (every quality). A piece takes the light of the floor under its
 middle: a wardrobe in a windowless closet or the basin in a windowless toilet is as dim as the walls round it, a sofa by
@@ -557,6 +562,13 @@ block is the roof.
   skirting: it may come down to the floor). It turns red and says why: "Covers the window", "Covers the doorway", "Past the
   end of the wall", "Runs into a wall" (a parapet round the corner: above it is fine), or that it overlaps another piece.
   Other pieces (a sofa, a TV, a picture) stay inside: on an outside face they say "Outside the room".
+- **On every floor with this drawing:** a flat whose drawing stands on several floors (Floor plan A on floors 1, 2, 4,
+  6, 8) asks the first time you put down, move or delete one of its outside pieces: "Floor plan A is also on floors 2, 4,
+  6, 8. Put its outside pieces — sunshades, AC units, canopies, planters — on: **This floor only** · **All 5 floors with
+  this drawing**" (Cancel: this time this floor only, asked again next time). **All** puts the same piece in the same place
+  on every one of those floors — and moves or deletes it there when you move or delete it here — and the Building view shows
+  them at once; the answer holds until the tab is closed (the furniture panel says "Outside pieces: every floor with this
+  drawing"). Furniture inside never asks: each floor's own. Pieces placed one floor at a time before stay as they are.
 - **Over a window or door by design:** a sunshade, canopy or awning never "covers" its opening. Dropped on a window or
   door it fits itself to it: centred on it, 15 cm wider each side, its underside on the opening's top. A louvre, fin or
   jaali screen or a roller shutter fits in front of it: 5 cm wider each side, from just under the sill, as tall as the
@@ -690,6 +702,12 @@ Works in Walk and Dollhouse; the mouse stays free, so drag empty space to look r
   shows it at once. To make a balcony glass-fronted: **Edit ▾ → Openings**, click the balcony's edge, **Made of → Glass**
   (each side of the balcony is its own low wall: click the next one and do the same). A solid one has **Cornice**: a
   stepped band under its cap. A passage in a railing or fence stays a gap — a gate.
+- **Quicker, from the Building view** (staff, a building made in the Studio, Finishes closed): point at a balcony's edge
+  on the tower — the card says *Click to choose what it is made of* — and click it. A card opens bottom left ("Low wall ·
+  5'-5" long · 3'-7" high · Floor 5 · Type A") with **Made of** (and Cornice); pick **Glass** and that edge turns glass on
+  every floor with this drawing ("Changes it on all 5 floors with this drawing"), at once. Tick **This floor only** first
+  and that floor gets its own copy of the drawing instead. **Done** closes the card. Three clicks where Edit ▾ →
+  Openings took six.
 - Keys: **Del** removes what is picked · **Ctrl+Z** undoes (one drag = one step) · **Esc** unpicks · **Alt** while
   dragging a low wall's end keeps its corner.
 - A window or a sliding door also has **Frame**: *Same as the building* (Finishes → Window frames), or its own colour —
@@ -711,7 +729,8 @@ The whole tower, floor by floor: point at a floor to see which it is, open a fla
   floor in large letters ("Floor 4", "Ground floor", "Basement 1", "Rooftop") and, over a flat, the flat's name and its
   size from the plan ("Type B · 1747 sft"), then what a click does there. **Click** opens that flat in its Dollhouse,
   walks a ground floor, basement, rooftop or common floor, or — on a floor with nothing to open — picks that floor as the
-  list does. The card keeps to the screen at its edges; it goes while you drag the tower round.
+  list does. The card keeps to the screen at its edges and never covers the Sun & wind pill at the bottom (near it, it sits
+  just over it); it goes while you drag the tower round.
 - **Staff, with Edit furniture on:** **Add** a piece from the library's **Outside** group (a sunshade, a canopy, an AC
   unit…) and point at the outside of the open flat's walls: it hangs there as in the Dollhouse (§3), and a click puts it
   down. While a piece is in your hand, a click on the tower puts the piece down instead of opening a floor; Esc lets it go,
@@ -865,7 +884,10 @@ drawing.
   the drawing's fields: **Unit name**, **Project**, **Floor** (numbers only), **Area** (sft). They look like plain words
   until the mouse is over one. An empty name box shows in grey the name Preview 3D will use ("Type A", **Floor plan A**
   for a whole floor, else "Untitled unit"); Export, Export as DXF and Share link name the file and the buyer's link the same
-  way (floor-plan-a.dxf). Narrower than about 1000 px, Project and Area step aside.
+  way (floor-plan-a.dxf). Narrower than about 1000 px, Project and Area step aside. **A project's drawing** shows the
+  floors it stands on instead of the Floor box — **FLOORS 1, 2, 4, 6, 8** (or FLOOR Ground, FLOOR Roof) — changed in the
+  floor list on the right. **Area** shows the area the sheet prints when it was read or typed, else the drawing's rooms
+  added up (what the 3D counts) — a set's floor and an architect's file (IFC) too; type over it to keep the printed one.
 - After the fields, when signed in: where your work stands online (**Saving…**, **Saved · just now**, …; "Accounts"
   below).
 - **Right:** **↶ Undo** / **↷ Redo**, **Auto-trace** (once a plan picture is in), **Preview 3D** (the blue button: your
@@ -1317,7 +1339,9 @@ the straight runs of its panels, one glass wall per run; a "column" wider than a
 column and is left to the outside shape — the notes say how many of each. A whole big floor opens in Preview 3D too (the
 LTU building's 2nd floor, 285 rooms and 1 644 walls: about half a minute to Enter); on a floor that big the daylight inside
 is worked out on a coarser grid, so it is ready in a second instead of never. Afterwards the panel
-lists **What was read from the file** — its unit, what was guessed, what it lacked — until **Dismiss**. After a DXF or
+lists **What was read from the file** — its unit, what was guessed, what it lacked (an architect's model: its storeys once
+each, lowest first, with their floor heights; a wall named as people say it, "Crépi 10 · Is 140 · Colle 10", not the
+program's "Basic Wall:SIA_41_…:7102787") — until **Dismiss**. After a DXF or
 an SVG the list ends with its **layers**, each with what Plotline took it as ("Plotline decides: Walls"); a layer it
 could not place is named in the notes. Pick another meaning in a layer's box — **Walls**, **Kerbs**, **Zone lines**,
 **Doors**, **Windows**, **Columns**, **Room names**, **Dimensions** or **Leave out** — and the file is read again at once;
@@ -1394,8 +1418,8 @@ before.
 The list, grouped by kind — each row: a tick, the drawing's picture, its title as printed with "Page 7 · A1.3 · 1 : 48"
 under it, its kind, and its floors (a plan), side (an elevation) or mark (a section):
 - **Plans** — each ticked one becomes the drawing of its floors. The floors come from the title: G (ground), B1, 2, 2–8,
-  Roof. A set with no ground-floor plan counts its 1st floor as the ground floor (American and Chilean sets do; a line
-  under Plans says so). Of two plans for one floor the first is ticked; a reflected ceiling, electrical, plumbing or
+  Roof. A set with no ground-floor plan puts its 1st floor on the ground (a line under Plans says so: "This set has no
+  ground-floor plan, so its 1st floor stands on the ground"). Of two plans for one floor the first is ticked; a reflected ceiling, electrical, plumbing or
   foundation plan never is. A typical floor with no numbers goes on every floor left up to the highest one named — or up
   to the top floor the set itself names when a page says how tall the building is ("2B+G+12", "B+G+M+12", "G+9",
   "10 Storied", "Floors: 09": a line under Plans says which page said it; a storey count includes the ground, so
@@ -1404,9 +1428,13 @@ under it, its kind, and its floors (a plan), side (an elevation) or mark (a sect
   whose title names no floor is left out when the others name theirs; when none does, the first goes on the ground and
   you type the others' floors (a set whose words are drawn as lines).
 - **Elevations, Sections, Site, Schedules, Interior elevations** — ticked: kept with the project as pictures.
+- **Roof plans** — a ROOF PLAN that draws a house's slopes (its words say SLOPE, 4/12, RIDGE, GUTTER, HIP or GABLE, and
+  nothing one walks on — no stair, lift or tank): ticked, kept with the project like an elevation (under KEPT FROM THE
+  DRAWING SET → Roof plans), never a floor. A Dhaka rooftop plan (its stair, lift, water tank) stays the Rooftop floor.
+  Wrong? Set its kind to Plan and its floor to Roof.
 - **Details, Title pages and notes, Other pages** (a brochure's photos, its specifications) — left out unless ticked.
 
-**Change anything with one click:** the kind in its box (Plan, Elevation, Section, Site plan, Schedule, Interior elevation,
+**Change anything with one click:** the kind in its box (Plan, Elevation, Section, Roof plan, Site plan, Schedule, Interior elevation,
 Detail, Title & notes, Other), the floors in theirs (`G`, `B1`, `2-8`, `3, 5, 7`, `Roof` — red when it is not
 floors), the tick. What you change is remembered in this browser by the drawing's title: the next set from the same
 architect, printing the same titles, comes in as you set it ("as you set it" under the row). **Click a drawing's picture**
@@ -1417,7 +1445,11 @@ to open that one drawing alone, as before (its lines when they make a plan, else
 project named after the file, its floors filled in from the floors read — basements, ground, floors, rooftop — each ticked
 plan the drawing of its floors (named Floor plan A, Ground floor, Rooftop… as always), read from its own lines when they
 make a plan, else its picture to trace, already scaled when the sheet's scale is known (printed under the drawing, or
-three of its dimensions agree). The border, the title block and a notes column beside the drawing are left out of what is
+three of its dimensions agree). **A plan with no scale on its page** (no scale printed, no three dimensions that agree — a
+brochure's plans) says "No scale printed — trace it" under its title and becomes a picture to trace, like the typical
+floors: its lines read at a size guessed from the room sizes came out a few metres across (Pearl's parking level a 4.7 ×
+5.5 m box of 63 slivers). **Read its lines** beside the words makes it from its lines anyway, at that guessed size (when
+they make rooms); **Trace it instead** undoes it. The border, the title block and a notes column beside the drawing are left out of what is
 read, and so are the sheet's own symbols: the elevation and section markers round the plan (a circle with its number and
 its triangle), grid bubbles, door and window tags, north arrows, the stair's UP / DN arrow and every note's arrow, and the
 zigzag break line where the plan cuts through a stair. A door drawn open at 45° comes in as a door, hinged where it is
@@ -1576,7 +1608,11 @@ project. **Start over** then empties the Studio without asking and says so ("An 
 Tower keeps its copy of Floor plan A").
 **Show building** opens the stacked building in a new tab, straight on the tower (no start screen); a floor with no drawing
 yet is filled with the one below it. A floor whose drawing is still a picture to trace (a set's second typical plan you
-have not traced yet) stands empty — a gap in the tower, the roof above it — until you trace it.
+have not traced yet) stands the same way: a plain block of the nearest traced floor below it (else above) — its outline,
+its windows, the building's outside, lit at night — never a gap, and the card beside the mouse says **Not traced yet**
+("Click to pick this floor"). A ground floor or rooftop still a picture is as if it had none: the flats' columns (or
+their shells) carry the tower, the roof is the usual flat roof with its parapet. A house whose upper floor is still a
+picture stands its traced ground floor's outline up to the roof. Trace the drawing and its floors show it.
 
 **One floor different from the others**
 - A drawing on several floors is ONE drawing: change its walls, doors or windows in the Studio and every floor with it
@@ -1845,8 +1881,8 @@ Things that are confusing or not finished. Each one is a job on the list.
   several (the built-in Type A, B, C) does not know its neighbour flat, so the wall it shares with the next flat or the
   core counts as outside and a piece hung there stands inside the neighbour — use the building's real outer walls. A
   whole-floor drawing (the Studio's way) knows its neighbours. In the Building view a piece can be added, not moved or
-  deleted (do that in the Dollhouse). On the other floors of the same drawing a flat's outside pieces show only where the
-  Building view draws furniture (by quality), and lit as the inside.
+  deleted (do that in the Dollhouse). On the other floors of the same drawing a flat's outside pieces (put there with
+  **All N floors with this drawing**, §3) show only where the Building view draws furniture (by quality), and lit as the inside.
 - A low wall's **Made of** is kept in the drawing, the 3D and the Building view, but not in a DXF given back (it comes back
   solid), and an architect's file (IFC) brings its railings as its own shape, not as a Made of. With Finishes open, a
   click on a railing or glass front offers the balcony's wall paint (the railing's own colour has no choice yet). The

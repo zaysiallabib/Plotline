@@ -138,9 +138,11 @@ const PINNED: Record<string, [string, string]> = {
   // (s31 ifcmap: the street at the ground storey — duplex's Level 1, the city house's Erdgeschoss, the storeys under them
   // basements —, the notes on materials, railings and the roof; the walls unchanged but FZK's two balcony railings, now low
   // walls of their own)
-  'duplex/arc.ifc': ['84f3f216184aa720', '84f3f216184aa720'],
-  'fzk_house/arc.ifc': ['495eec9127f76b3d', '495eec9127f76b3d'],
-  'city_house_munich/arc.ifc': ['9b681c703af5bd4c', '9b681c703af5bd4c'],
+  // (s31 qa4fix: only What was read's words — no "written by", the storeys listed once, wall names as people say them;
+  // the storeys' hash alone unchanged, checked)
+  'duplex/arc.ifc': ['a7ec4b6c3a4610c3', 'a7ec4b6c3a4610c3'],
+  'fzk_house/arc.ifc': ['6526c85fd6077355', '6526c85fd6077355'],
+  'city_house_munich/arc.ifc': ['a0339316ab582599', 'a0339316ab582599'],
   'fixtures/autotrace-bti-floor-2026-11-20.json': ['dae0408aebf3902c', 'b8df5c02ace179c7'],
   'fixtures/founder-autotrace-type-a-2026-10-06.json': ['f1dc554e237be1da', 'a05cc86392ce384b'],
   'fixtures/founder-banani-unit-a-2026-10-09.json': ['1d6f3042c3bf9c8f', '1d6f3042c3bf9c8f'],

@@ -347,6 +347,46 @@ as every project was before this lane):
 - **A traced level's full-height wall** (3 m or more) stands its storey; a deliberately double-height wall on a traced ground
   floor would be cut to the storey.
 
+## A plan with no scale is a picture to trace (session 31, qa4fix)
+
+**What changed for a person.** A plan whose page prints no scale (no scale under the drawing or on the sheet, no three
+printed dimensions that agree) was read from its lines at a size guessed from its printed room sizes — on every Dhaka
+brochure that guess is wrong by a factor of three to five (Pearl's Level-01 parking came in as a 4.7 × 5.5 m box of 63
+slivers under a 2 145 sft tower; White Lake's whole floors 15 × 6 m with 17 rooms). Now such a plan says **No scale printed
+— trace it** under its title in What is in this set and becomes a picture to trace, like the brochures' typical floors
+already were; **Read its lines** beside the words keeps the old way for that drawing (remembered by its title). Code:
+`pdf.ts drawnFromLines` / `scaleFound` (a test in `pdf.test.ts`); the row's words come with its small picture, after the
+pages are read, so the list is not slower to come.
+
+**Measured** (node, the Studio's own code, `E:/dev/tmp/s31/qa4fix/scaletable.mjs`; the same list in Firefox for Pearl and Quinta
+Monroy, `E:/dev/plotline-shots/s31/qa4fix/1-*`): every plan each set uses, drawn from its lines before and after. The single
+sheets open one drawing alone and are not built as a set: unchanged.
+
+| Set | plans used | from lines before | from lines after | the ones that changed (size read, rooms) |
+|---|---|---|---|---|
+| Farmhouse drawing set (Amatect, US) | 3 | 1 | 1 | — |
+| Quinta Monroy (Elemental, Chile) | 3 | 2 | 2 | — |
+| NIST net-zero house, services set (US, words drawn as lines) | 1 | 0 | 0 | — |
+| Fourplex 02 (CMHC, Canada) | 2 | 0 | 0 | — |
+| Backcountry house plan (twindo, US) | 2 | 2 | 2 | — |
+| Backcountry measurement report (twindo, US) | 2 | 2 | 2 | — |
+| Rangs The Sanctuary (Dhaka brochure) | 8 | 2 | 0 | p18 Basement 02 (B2): 5.0 × 5.4 m, 4 rooms → picture; p19 4th & 10th floor plan (4, 10): 8.1 × 8.5 m, 5 rooms → picture |
+| Rangs White Lake (Dhaka brochure) | 8 | 5 | 0 | p25 FLOOR : 2 (2): 14.8 × 6.3 m, 17 rooms → picture; p26 3RD FLOOR PLAN (3): 14.5 × 5.5 m, 14 rooms → picture; p27 4TH FLOOR PLAN (4): 12.6 × 5.7 m, 17 rooms → picture; p28 5/7/9/11/13/15/17/19 FLOOR PLAN (5, 7, 9, 11, 13, 15, 17, 19): 14.6 × 5.5 m, 15 rooms → picture; p29 6/8/10/12/14/16/18 FLOOR PLAN (6, 8, 10, 12, 14, 16, 18): 14.6 × 5.5 m, 14 rooms → picture |
+| Rangs The Majestic (Dhaka brochure) | 6 | 3 | 0 | p17 Mezzanine (1): 5.6 × 4.8 m, 4 rooms → picture; p18 Typical Floor 2nd, 4th, 6th, 8th, 10th & (2, 4, 6, 8, 10, 12): 7.4 × 6.4 m, 10 rooms → picture; p18 Typical Floor 3RD, 5TH, 7TH, 9TH, 11TH & (3, 5, 7, 9, 11, 13): 7.3 × 6.4 m, 8 rooms → picture |
+| Eastern Housing Pearl (Dhaka brochure) | 4 | 1 | 0 | p9 Level-01 Plan (G): 4.7 × 5.5 m, 4 rooms → picture |
+| Eastern Housing Noboneer (Dhaka brochure) | 3 | 0 | 0 | — |
+
+No set that built right before builds worse: every plan that changed was drawn 5–15 m across for a floor of 20–40 m (all
+on a guessed scale); every plan with a printed scale or agreeing dimensions (the farmhouse, Quinta Monroy, both twindo
+sets) keeps its lines.
+
+**A roof plan of slopes is the roof, not a floor (same lane).** A plan titled for the roof alone whose words speak of its
+slopes (two or more of SLOPE, a pitch like 4/12, RIDGE, HIP, GABLE, EAVES, GUTTER, SHINGLES, roof panels) and of nothing one
+walks on (no stair, lift, lobby, tank, O.H.W.T, machine room, garden, UP / DN) is read as kind **Roof plan** and kept with the
+project like an elevation (`sheets.ts ofSlopes`, a test). On the 11 sets only the farmhouse ROOF PLAN changes (plan on Roof →
+kept Roof plan: its Rooftop floor of a picture of slopes is gone); every Dhaka rooftop (Sanctuary, Majestic, Pearl, Noboneer)
+stays a floor (their words name the stair, lift and tanks, or none are text).
+
 ## Page by page
 
 ### Farmhouse drawing set (Amatect, US)

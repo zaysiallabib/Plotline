@@ -29,9 +29,9 @@ import type { TowerHit } from '../three/building'
 import { lightsOn, type LightsMode } from '../three/render'
 import { TEST_UNIT } from '../three/testUnit'
 import type { XRControls } from '../three/xr'
-import { baseOf, deleteHeld, draftState, dropHeld, floorAnswer, forkHere, holdAt, isShareLink, isStaff, keepsFinishes, makeDraft, pickUp, planOf, pushStep, saveFinishes, saveLayout, saveOpenings, setFloorAnswer, turnHeld, undoStep, wallDrag, type FloorAnswer, type Held, type Steps } from './arrange'
+import { baseOf, deleteHeld, draftState, dropHeld, floorAnswer, forkHere, holdAt, isShareLink, isStaff, keepsFinishes, madeOfOnTower, makeDraft, outsideAnswer, outsideChanges, outsideOnEveryFloor, pickUp, planOf, pushStep, saveFinishes, saveLayout, saveOpenings, setFloorAnswer, setOutsideAnswer, turnHeld, undoStep, wallDrag, type FloorAnswer, type Held, type Steps } from './arrange'
 import FinishesPanel, { type Surface } from './FinishesPanel'
-import Hud, { floorTitle, Grip, StatsPanel, useFinger, type HandInfo } from './Hud'
+import Hud, { floorTitle, Grip, lowWallAt, StatsPanel, useFinger, type HandInfo } from './Hud'
 import Minimap, { mapOf } from './Minimap'
 import { NotesList, PinLayer, tagOf, type Draft } from './Notes'
 import { arrivalFace, coreRooms, entrySpawn, listedRooms, roomView, stairView, yawFor } from './spawn'
@@ -43,7 +43,7 @@ import { appendPin, readPins, removePin, type Pin } from './storage'
 import { LibraryPanel } from '../studio/LibraryPanel'
 import { copyPicture } from '../studio/pictures'
 import './viewer.css'
-import { ask } from '../lib/ask'
+import { ask, askChoice } from '../lib/ask'
 
 const files = import.meta.glob('../data/units/*.json', { eager: true, import: 'default' }) as Record<string, Unit>
 const UNITS = Object.entries(files).map(([path, unit]) => ({ stem: path.split('/').pop()!.replace(/\.json$/, ''), unit }))
@@ -512,6 +512,60 @@ function FtIn({ label, m, onSet }: { label: string; m: number; onSet: (m: number
   )
 }
 
+type LowPatch = { kind?: (typeof LOW_KINDS)[number][0]; cornice?: boolean }
+/** A low wall's Made of (model LOW_KINDS) and a solid one's Cornice: Edit openings' card and the Building view's balcony edge */
+function MadeOf({ w, onLowKind }: { w: Wall; onLowKind: (patch: LowPatch) => void }) {
+  return (
+    <div className="arrange-row made-of">
+      <label className="ftin">
+        Made of
+        <select value={w.lowKind ?? 'solid'} onChange={(e) => onLowKind({ kind: e.target.value as (typeof LOW_KINDS)[number][0] })}>
+          {LOW_KINDS.map(([k, label]) => (
+            <option key={k} value={k}>
+              {label}
+            </option>
+          ))}
+        </select>
+      </label>
+      {!w.lowKind && (
+        <label className="ftin-check" title="A stepped band under the wall's cap, as on a classical parapet">
+          <input type="checkbox" checked={!!w.cornice} onChange={(e) => onLowKind({ cornice: e.target.checked })} /> Cornice
+        </label>
+      )}
+    </div>
+  )
+}
+/** what a low wall is, in words: "Glass balustrade · 8'-1" long · 3'-7" high" */
+const lowName = (w: Wall, lengthM: number): string => {
+  const rail = core.railOf(w)
+  return `${rail ? LOW_KINDS.find(([k]) => k === rail)![1] : WALL_TYPES[wallTypeOf(w.heightM)].label} · ${core.formatFeetInches(lengthM)} long · ${core.formatFeetInches(w.heightM)} high`
+}
+
+/**
+ * The Building view's balcony edge (staff, qa4fix): a click on a project flat's railing, glass front or parapet on the tower —
+ * what it is, its Made of, "This floor only" when its drawing stands on other floors too (else every floor with it), Done.
+ */
+function MadeOfCard(p: { w: Wall; lengthM: number; where: string; floors: number; k: number; one: boolean; onOne: (one: boolean) => void; onLowKind: (patch: LowPatch) => void; onDone: () => void }) {
+  return (
+    <aside className="glass arrange" aria-label="What this balcony edge is made of">
+      <div className="arrange-name">{lowName(p.w, p.lengthM)}</div>
+      <div className="small muted">{p.where}</div>
+      <MadeOf w={p.w} onLowKind={p.onLowKind} />
+      {p.floors > 1 && (
+        <label className="ftin-check">
+          <input type="checkbox" checked={p.one} onChange={(e) => p.onOne(e.target.checked)} /> This floor only
+        </label>
+      )}
+      <div className="muted small">{p.floors > 1 && !p.one ? `Changes it on all ${p.floors} floors with this drawing.` : p.floors > 1 ? `Floor ${p.k} gets its own copy of the drawing.` : 'Saved into the drawing — the floor plan shows it too.'}</div>
+      <div className="arrange-row">
+        <button className="btn" onClick={p.onDone}>
+          Done
+        </button>
+      </div>
+    </aside>
+  )
+}
+
 /** Edit openings (staff): the selected opening — kind, width / height / sill in feet-inches — or low wall — length, height — delete, undo, and where it saves. */
 function OpeningPanel(p: {
   opening: Opening | null
@@ -523,7 +577,7 @@ function OpeningPanel(p: {
   onSize: (patch: Partial<Pick<Opening, 'widthM' | 'heightM' | 'sillM'>>) => void
   onWall: (patch: { lengthM?: number; heightM?: number }) => void
   /** what the low wall is made of (model LOW_KINDS), a solid one's cornice */
-  onLowKind: (patch: { kind?: (typeof LOW_KINDS)[number][0]; cornice?: boolean }) => void
+  onLowKind: (patch: LowPatch) => void
   onDelete: () => void
   onUndo: () => void
   /** a window, slider or glass wall (staff on the flat's own page): its frame's colour — the building's, or its own */
@@ -532,38 +586,17 @@ function OpeningPanel(p: {
   const o = p.opening
   const lw = p.wall
   const finger = useFinger()
-  const rail = lw && core.railOf(lw.w)
   return (
     <aside className="glass arrange">
       {lw ? (
         <>
-          <div className="arrange-name">
-            {rail ? LOW_KINDS.find(([k]) => k === rail)![1] : WALL_TYPES[wallTypeOf(lw.w.heightM)].label} · {core.formatFeetInches(lw.lengthM)} long · {core.formatFeetInches(lw.w.heightM)} high
-          </div>
+          <div className="arrange-name">{lowName(lw.w, lw.lengthM)}</div>
           <div className="small muted">{p.where}</div>
           <div className="arrange-row">
             <FtIn label="Length" m={lw.lengthM} onSet={(lengthM) => p.onWall({ lengthM })} />
             <FtIn label="Height" m={lw.w.heightM} onSet={(heightM) => p.onWall({ heightM })} />
           </div>
-          {core.takesLowKind(lw.w) && (
-            <div className="arrange-row made-of">
-              <label className="ftin">
-                Made of
-                <select value={lw.w.lowKind ?? 'solid'} onChange={(e) => p.onLowKind({ kind: e.target.value as (typeof LOW_KINDS)[number][0] })}>
-                  {LOW_KINDS.map(([k, label]) => (
-                    <option key={k} value={k}>
-                      {label}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              {!lw.w.lowKind && (
-                <label className="ftin-check" title="A stepped band under the wall's cap, as on a classical parapet">
-                  <input type="checkbox" checked={!!lw.w.cornice} onChange={(e) => p.onLowKind({ cornice: e.target.checked })} /> Cornice
-                </label>
-              )}
-            </div>
-          )}
+          {core.takesLowKind(lw.w) && <MadeOf w={lw.w} onLowKind={p.onLowKind} />}
         </>
       ) : o ? (
         <>
@@ -693,6 +726,12 @@ function Viewer({ first }: { first: Shown }) {
   const [surface, setSurface] = useState<Surface | null>(null)
   const [room, setRoom] = useState<Room | null>(null)
   const [finishesOpen, setFinishesOpen] = useState(false)
+  // the outer wall the outside card is open on: outlined on the tower, every floor it dresses ("This wall"), until the card closes (qa4fix)
+  const stackOn = mode === 'building' && finishesOpen && surface?.outside?.drawing && surface.outside.run ? `${surface.outside.drawing}|${surface.outside.run}` : null
+  useEffect(() => {
+    const [drawing, run] = stackOn?.split('|') ?? []
+    scene?.showWallStack(stackOn ? { drawing, run } : null)
+  }, [scene, stackOn])
   const [commenting, setCommenting] = useState(false)
   /** the stats card (`?stats=1`, ⋯ → How fast is it here?): never on a buyer's link */
   const [statsOpen, setStatsOpen] = useState(() => !SHARED && params.get('stats') === '1')
@@ -895,6 +934,10 @@ function Viewer({ first }: { first: Shown }) {
         setRoofOpen(false)
         return setSurface({ outside: outSpot(h.k, h.wall, drawn) })
       }
+      // staff, Finishes closed: a balcony's edge (a railing, a glass front, a parapet) of a project's flat opens its Made of
+      // card at once — no Edit ▾ → Openings, no trip to the flat (qa4fix)
+      const low = STAFF && tower ? lowWallAt(tower, h) : null
+      if (low) return void (setLowOne(false), setTowerLow({ stem: low.stem, k: h.k, wallId: low.wall.id }))
       if (!f) return levelAt(h.k) ? walkLevel(h.k) : (setPicked(h.k), s.showFloor(h.k))
       if (f.stem !== stem || f.floor !== unit.floor) {
         if (!travel({ stem: f.stem, floor: f.floor, view: 'orbit' }, here())) location.assign(`/u/${f.stem}?floor=${f.floor}&view=dollhouse`)
@@ -1067,11 +1110,35 @@ function Viewer({ first }: { first: Shown }) {
   /** a committed step (drop, turn, undo, reset): kept for this apartment (the Studio's F shows it while the drawing stands in one place), shadows and lights follow */
   const settle = (h: Steps, show = sel) => {
     h = { ...h, pieces: layoutFor({ ...unit, furniture: h.pieces }, rooms) } // curtains on their windows as they are now
+    const was = steps.current.pieces
     steps.current = h
     if (apt) saveLayout(apt, h.pieces, base) // this apartment's own (founder 2026-11-21): never another floor's, never asked
     scene?.setLayout(h.pieces)
     showSel(pieceOf(show))
     redraw()
+    if (STAFF && apt) void outsideFloors(outsideChanges(was, h.pieces))
+  }
+  /**
+   * A sunshade, AC unit, canopy or planter placed, moved or deleted on a floor whose drawing stands on others too (qa4fix):
+   * asked once this visit "This floor only / All N floors with this drawing"; all = the same change on every other floor
+   * (arrange.ts outsideOnEveryFloor), the tower round the flat made again so they show. The inside never asks.
+   */
+  const outsideFloors = async (changed: FurniturePlacement[]) => {
+    const k = unit.floor
+    const n = tower && k !== undefined && changed.length ? placesIn(tower, unit.id).length : 0
+    if (n < 2) return
+    let a = outsideAnswer(unit.id)
+    if (!a) {
+      document.exitPointerLock?.()
+      const others = placesIn(tower!, unit.id).filter((f) => f !== k)
+      const i = await askChoice(`${unit.name} is also on floor${others.length === 1 ? '' : 's'} ${slotsText(others)}. Put its outside pieces — sunshades, AC units, canopies, planters — on:`, ['This floor only', `All ${n} floors with this drawing`])
+      if (i === null) return // (this time on this floor only; asked again next time)
+      setOutsideAnswer(unit.id, (a = i === 1 ? 'all' : 'one'))
+      showToast(a === 'all' ? `Outside pieces now go on all ${n} floors with ${unit.name} (until this tab closes)` : `Outside pieces stay on floor ${k} only (until this tab closes)`)
+    }
+    if (a !== 'all') return
+    outsideOnEveryFloor(unit, rooms, changed, tower!, k!)
+    scene?.retower()
   }
   // a piece of the staff's own resized in the library (Edit furniture → Add → ⋯): the ones placed are built again at it
   const ownAt = useRef(ownV)
@@ -1350,6 +1417,25 @@ function Viewer({ first }: { first: Shown }) {
   // change goes into the Studio draft + the preview (arrange.ts saveOpenings) and rebuilds the 3D in place, camera kept
   const [editingOpenings, setEditingOpenings] = useState(false)
   const [opSel, setOpSel] = useState<Id | null>(null)
+  /** the Building view's balcony edge whose Made of card is open (a project flat's stem on floor k, its low wall), and its "This floor only" */
+  const [towerLow, setTowerLow] = useState<{ stem: string; k: number; wallId: Id } | null>(null)
+  const [lowOne, setLowOne] = useState(false)
+  const lowNow = towerLow && mode === 'building' ? tower?.FLATS[towerLow.stem]?.unit : undefined
+  const lowWall = lowNow?.walls.find((w) => w.id === towerLow!.wallId)
+  /** Made of chosen on the tower: into the drawing (every floor with it) or a copy for this floor; the tower made again; the flat walked here too when it is that drawing */
+  const madeOf = (patch: LowPatch) => {
+    if (!towerLow) return
+    const r = madeOfOnTower(towerLow.stem, towerLow.k, towerLow.wallId, patch, lowOne)
+    if (!r) return showToast('This browser would not save it (storage full?): nothing changed', 7000)
+    setTowerLow({ ...towerLow, stem: r.stem })
+    const w = r.unit.walls.find((x) => x.id === towerLow.wallId)
+    if (r.unit.id === unit.id && w) {
+      const after = { ...unit, walls: unit.walls.map((x) => (x.id === w.id ? w : x)) }
+      setPlanUnit(after)
+      scene?.setUnit({ ...after, furniture: steps.current.pieces }, true)
+    }
+    scene?.retower()
+  }
   const plan = useRef<StudioState>({ ...initialState(), unit: given })
   /** the plan before the gesture in progress (a drag: from its first move to its drop) */
   const gesture = useRef<StudioState | null>(null)
@@ -1582,7 +1668,7 @@ function Viewer({ first }: { first: Shown }) {
   const kept = !apt
     ? null
     : apt !== unit.id
-      ? `Kept for ${level !== undefined ? levelName(tower!, level) : `floor ${unit.floor}`} only: it opens like this next time.`
+      ? `Kept for ${level !== undefined ? levelName(tower!, level) : `floor ${unit.floor}`} only: it opens like this next time.${outsideAnswer(unit.id) === 'all' ? ' Outside pieces: every floor with this drawing.' : ''}`
       : tower && placesIn(tower, unit.id).length > 1
         ? 'Kept for the drawing: every floor not changed on its own starts from this.'
         : `Kept for this ${level !== undefined ? 'level' : 'flat'}: it opens like this next time.`
@@ -1833,6 +1919,7 @@ function Viewer({ first }: { first: Shown }) {
               <div className="panel-body">
                 {TOKEN && <BuyerName />}
                 <FinishesPanel
+                  outsideFirst={mode === 'building'}
                   staff={STAFF}
                   kept={KEEP ? kept : null}
                   roof={
@@ -1870,6 +1957,19 @@ function Viewer({ first }: { first: Shown }) {
                 />
               </div>
             </aside>
+          )}
+          {lowNow && lowWall && (
+            <MadeOfCard
+              w={lowWall}
+              lengthM={core.wallFrame(lowWall, lowNow.vertices).lengthM}
+              where={`Floor ${towerLow!.k} · ${lowNow.name}`}
+              floors={tower ? placesIn(tower, lowNow.id).length : 1}
+              k={towerLow!.k}
+              one={lowOne}
+              onOne={setLowOne}
+              onLowKind={madeOf}
+              onDone={() => setTowerLow(null)}
+            />
           )}
           {editingOpenings && (
             <OpeningPanel

@@ -24,8 +24,9 @@ import { flatTypeOf, type Pt } from '../core'
 import type { ArcPrim, Seg } from './plan2d'
 import { printedScale } from './plan2d'
 
-export type SheetKind = 'plan' | 'elevation' | 'section' | 'site' | 'schedule' | 'detail' | 'interior' | 'title' | 'other'
-export const SHEET_KINDS: SheetKind[] = ['plan', 'elevation', 'section', 'site', 'schedule', 'interior', 'detail', 'title', 'other']
+/** 'roof': a plan of the roof's slopes (a house's ROOF PLAN: SLOPE 4/12, RIDGE, GUTTER) — kept like an elevation, never a floor (qa4fix) */
+export type SheetKind = 'plan' | 'elevation' | 'section' | 'roof' | 'site' | 'schedule' | 'detail' | 'interior' | 'title' | 'other'
+export const SHEET_KINDS: SheetKind[] = ['plan', 'elevation', 'section', 'roof', 'site', 'schedule', 'interior', 'detail', 'title', 'other']
 
 /** A floor as a sheet names it: 0 the ground floor, n ≥ 1 the n-th as printed, −n basement n, 'R' the roof, 'attic', 'mezz' (mezzanine). */
 export type Floor = number | 'R' | 'attic' | 'mezz'
@@ -473,8 +474,23 @@ export function readSheet(page: SheetPage): SheetRead {
   // a page of one plan that names its flat in big letters ("TYPE-A" over "TOWER-1 LEVEL 1 to 11"): a flat's page
   const plans = r.views.filter((v) => v.kind === 'plan')
   const flat = plans.length === 1 ? [...page.texts].sort((a, b) => b.height - a.height).find((t) => t.text.trim().length <= 24 && flatTypeOf({ name: t.text, kind: 'other' })) : undefined
-  const views = flat ? r.views.map((v) => (v === plans[0] ? { ...v, flat: flat.text.trim() } : v)) : r.views
+  const views = (flat ? r.views.map((v) => (v === plans[0] ? { ...v, flat: flat.text.trim() } : v)) : r.views).map((v) => (ofSlopes(v, page.texts) ? { ...v, kind: 'roof' as const } : v))
   return { ...r, views, ...(storeys ? { storeys } : {}) }
+}
+
+/** the words of a roof of slopes: slope, a pitch (4/12, 30°), ridge, hip, gable, eaves, gutter, shingles, roof panels / tiles / sheets (the languages the titles read) */
+const SLOPES = /\b(slopes?|pitch|ridge|hip|gable|eaves?|gutters?|shingles?|downspouts?|pendiente|cumbrera|gef(?:ä|ae)lle|pente|pendenza)\b|\b\d{1,2}\s*\/\s*12\b|\broof (panels?|tiles?|sheets?|sheeting)\b/i
+/** the words of a rooftop one walks on (Dhaka): its stair and lift, the tanks, the machine room, a garden */
+const ROOFTOP = /\b(stairs?|lift|lobby|tank|o\.?h\.?w\.?t|machine room|garden|terrace|toilet|guard|up|dn)\b/i
+/**
+ * A plan of the roof alone ("ROOF PLAN") whose words speak of its slopes (two or more) and of nothing one walks on: the roof
+ * of a house, kept with the project as a drawing of the roof — never a floor (the farmhouse's became a Rooftop floor of a
+ * picture of slopes, qa4 problem 15). A Dhaka rooftop plan (its stair, lift, tanks) stays a floor.
+ */
+function ofSlopes(v: View, texts: SheetText[]): boolean {
+  if (v.kind !== 'plan' || v.level?.at.join() !== 'R') return false
+  const words = texts.filter((t) => t.at.x >= v.box.x0 && t.at.x <= v.box.x1 && t.at.y >= v.box.y0 && t.at.y <= v.box.y1).map((t) => t.text)
+  return words.filter((w) => SLOPES.test(w)).length >= 2 && !words.some((w) => ROOFTOP.test(w))
 }
 function viewsOf(page: SheetPage): SheetRead {
   const { texts, segs, arcs, box } = page
@@ -753,7 +769,7 @@ export interface SetPick {
   flat?: string
 }
 /** the kinds kept with the project as pictures when the set is built (plans become drawings; details, title pages and the rest are left out) */
-export const KEPT: SheetKind[] = ['elevation', 'section', 'site', 'schedule', 'interior']
+export const KEPT: SheetKind[] = ['elevation', 'section', 'roof', 'site', 'schedule', 'interior']
 
 /**
  * The set as it will be built: each plan's floors (as typed, else from its title through slotsFor, else the lowest floor

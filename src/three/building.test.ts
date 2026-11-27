@@ -624,6 +624,84 @@ describe('the Building view: rooms behind every window, the picked flat lit (ses
     expect(eye.distanceTo(target)).toBeGreaterThan(Math.hypot(r.maxX - r.minX, r.maxY - r.minY))
   })
 
+  test('a floor whose drawing is still a picture to trace stands as a block of the nearest traced floor: one traced floor and three not yet draw four storeys (qa4fix)', async () => {
+    const a = { ...bti.FLATS['type-a'].unit, id: 'a' }
+    const pic = { ...a, id: 'pic', name: 'Floor plan B', walls: [], vertices: [], roomLabels: [], pillars: [] } // a picture to trace: nothing drawn on it
+    let p = newProject('p', 'Block', { basements: 0, floors: 4, rooftop: true })
+    p = setSlot(p, 1, a)
+    for (const k of [2, 3, 4]) p = setSlot(p, k, pic)
+    p = setSlot(setSlot(p, 0, { ...pic, id: 'g', name: 'Ground floor' }), 'R', { ...pic, id: 'r', name: 'Rooftop' })
+    const t = projectTower(p)
+    expect(t.FLOORS.filter((f) => f.floor >= 1).map((f) => [f.floor, f.flats.join(), (f.standIns ?? []).join()])).toEqual([[1, 'a', ''], [2, '', 'a'], [3, '', 'a'], [4, '', 'a']])
+    expect([...t.UNTRACED!].sort()).toEqual([0, 2, 3, 4, 5]) // the ground and the rooftop pictures too: the flats' columns carry it, the roof is the automatic one
+    expect(topFloor(t)).toBe(4)
+    expect(projectTower(makeProject('q', a, 1, 4, 'none')).UNTRACED).toBeUndefined()
+    const { towerCard } = await import('../viewer/Hud')
+    expect(towerCard(t, { k: 3, flat: null }, false)).toEqual({ title: 'Floor 3', line: 'Not traced yet', act: 'Click to pick this floor' })
+    const { Building } = await import('./building')
+    const b = new (Building as unknown as new (u: Unit, t: Tower, s: string, k: number, q: string) => { make(): Generator<void> })({ ...a, floor: 1 }, t, 'a', 1, 'high')
+    for (const _ of b.make()); // eslint-disable-line @typescript-eslint/no-unused-vars
+    const drawn = new Map<number, number>()
+    ;(b as unknown as Group).traverse((o) => {
+      const m = o as Mesh
+      if (m.isMesh && m.visible && typeof o.userData.level === 'number') drawn.set(o.userData.level, (drawn.get(o.userData.level) ?? 0) + m.geometry.attributes.position.count)
+    })
+    for (const k of [2, 3, 4]) expect(drawn.get(k), `floor ${k}`).toBeGreaterThan(1000) // walls, windows, plate: a storey, not a gap
+    expect(drawn.get(5)).toBeGreaterThan(0) // the roof over floor 4
+    // nothing traced yet anywhere: as before, the floors listed with their drawings (nothing to stand in with)
+    let q = newProject('q', 'Block', { basements: 0, floors: 2, rooftop: false })
+    for (const k of [1, 2]) q = setSlot(q, k, pic)
+    expect(projectTower(q).FLOORS.filter((f) => f.floor >= 1).map((f) => [f.floor, f.flats.join()])).toEqual([[1, 'pic'], [2, 'pic']])
+    // a traced ground under floors still pictures (the farmhouse): the floors over it stand in with its outline, as massing
+    let h = newProject('h', 'House', { basements: 0, floors: 1, rooftop: false })
+    h = setSlot(setSlot(h, 0, { ...a, id: 'house' }), 1, pic)
+    const ht = projectTower(h)
+    expect(ht.FLOORS.map((f) => [f.floor, f.flats.join(), (f.standIns ?? []).join()])).toEqual([[0, '', 'house'], [1, '', 'house~shell']])
+    expect(roleIn(ht, 'house~shell')).toBe('massing')
+    expect(topFloor(ht)).toBe(1)
+  })
+
+  test('the other flats’ furniture shows in the Building view only: back in Walk or the Dollhouse it is put away (qa4fix: +0.42 M triangles stayed)', async () => {
+    const THREE = await import('three')
+    const { Building } = await import('./building')
+    const b = new (Building as unknown as new (u: Unit, t: Tower, s: string, k: number, q: string) => { make(): Generator<void>; frame(m: string, q: string): void; dispose(): void })({ ...FLATS['type-a'].unit, floor: 2 }, bti as Tower, 'type-a', 2, 'high')
+    for (const _ of b.make()); // eslint-disable-line @typescript-eslint/no-unused-vars
+    const flats = (b as unknown as { flats: { k: number; things: unknown }[] }).flats
+    const things = new THREE.Group()
+    const f = flats.find((x) => x.k === 4)!
+    f.things = things // (as furnishThings leaves it once the Building view was opened)
+    ;(b as unknown as { want: () => void }).want = () => {} // (no models loaded here)
+    b.frame('building', 'high')
+    expect(things.visible).toBe(true)
+    b.frame('walk', 'high')
+    expect(things.visible).toBe(false)
+    b.frame('orbit', 'high')
+    expect(things.visible).toBe(false)
+    b.frame('building', 'high')
+    expect(things.visible).toBe(true) // kept made: back at once
+    b.dispose()
+  })
+
+  test('Finishes’ "This wall": the clicked outer wall’s run outlined on every floor its drawing stands on, and only there (qa4fix)', async () => {
+    const a = { ...bti.FLATS['type-a'].unit, id: 'a' }
+    const t = projectTower(makeProject('p', a, 2, 4, 'none'))
+    const { Building } = await import('./building')
+    const { outerRuns } = await import('../furnish/finishes')
+    const b = new (Building as unknown as new (u: Unit, t: Tower, s: string, k: number, q: string) => { make(): Generator<void>; levelOf(k: number): number; runFaces(d: string, r: string): number[] })({ ...a, floor: 2 }, t, 'a', 2, 'high')
+    for (const _ of b.make()); // eslint-disable-line @typescript-eslint/no-unused-vars
+    const longest = [...a.walls].sort((p, q) => core.wallFrame(q, a.vertices).lengthM - core.wallFrame(p, a.vertices).lengthM)[0]
+    const run = outerRuns(a).get(longest.id) ?? longest.id
+    const walls = a.walls.filter((w) => (outerRuns(a).get(w.id) ?? w.id) === run).length
+    const pts = b.runFaces('a', run)
+    // floors 2, 3, 4 and the floors under them standing in with its shell (1, the ground): they wear what it wears; a
+    // rectangle (four segments) a wall a floor, none on the roof's parapet
+    expect(pts.length).toBe(5 * walls * 8 * 3)
+    const ys = [...new Set(pts.filter((_, i) => i % 3 === 1).map((y) => +y.toFixed(2)))].sort((p, q) => p - q)
+    for (const k of [0, 1, 2, 3, 4]) expect(ys).toContain(+b.levelOf(k).toFixed(2))
+    expect(Math.max(...ys)).toBeLessThan(b.levelOf(5))
+    expect(b.runFaces('other drawing', run)).toEqual([])
+  })
+
   test('an architect’s shape whose windows came with solid glass: they leave the shape, the tower’s own panes take their place (polish2)', async () => {
     const THREE = await import('three')
     const { solidWindowsOut } = await import('./shell')
