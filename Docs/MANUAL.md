@@ -14,22 +14,27 @@ Plotline has three screens:
 
 - **The front page** (`/`) — what Plotline is, as a short story you scroll through (§0).
 - **The 3D view** (`/u/type-a`) — what a buyer walks through: Walk, Dollhouse and the whole Building (§2–§4).
-- **The Studio** (`/studio`) — where your staff turn the architect's plan into a drawing (§5–§6).
+- **The Studio** (`/studio`) — where your staff turn what the architect sent into the project's floors (§5–§6).
 
 What a developer does first:
 
-1. **Make the project:** Studio → **⋯** → **New project** — its name, basements, floors and rooftop (§6).
-2. **Bring in each floor plan:** in the floor list on the right click **Draw** beside a floor, drop the sheet (a picture,
-   a PDF, or the architect's IFC / DXF) on the Studio and set the scale with **S** (§5). An IFC makes every floor at once.
-   No file of your own yet? **Try a sample ▾** under the dashed box of an empty Studio opens a real building's IFC, DXF,
-   PDF, SVG or 3D model from the internet in one click (§5).
-3. **Trace it:** **Auto-trace** → **Whole floor**, then answer **Check these** on the right (§5).
-4. **Name the flats and give the plan its floors:** check the flat names written on the plan (part two flats that came
+1. **Drop what the architect sent** on the Studio: the whole set (a PDF), CAD files (DXF), a building model (IFC), or a
+   brochure's plan picture — one file, several, a folder or a .zip (§5 "The door"). A set lists its drawings and
+   **Build the project** makes every floor at once; a model makes its storeys; one drawing or picture makes a project of
+   one floor. No file of your own yet? **Try a sample ▾** beside **Choose files…** opens a real building's IFC, DXF, PDF,
+   SVG or 3D model from the internet in one click.
+2. **Check what came in:** the project's column on the right lists its floors, each saying where its drawing came from;
+   **Steps** on the far right say what is next (§5 "The Steps"). A floor that came in as a picture: set the scale with
+   **S**, **Auto-trace** → **Whole floor**, then answer **Check these** (§5).
+3. **Name the flats and give each plan its floors:** check the flat names written on the plan (part two flats that came
    out as one with **V → Flat → New flat**), name each with **R** inside one of its rooms ("Type A ±2703 sft"), then
-   type its floors in the **Floor plans** box above the list (`2-8`) and **Apply** (§5 "Flats in a drawing", §6).
-5. **Walk it:** **Preview 3D** (one floor) or **Show building** (the tower); arrange the furniture (**Edit ▾ →
-   Furniture**), set the site and true north (**⋯ → Site**) (§2, §3, §4, §5).
-6. **Send it to buyers:** **⋯ → Share link**; what they choose and write comes back in the **Change list** (§1, §5).
+   type a plan's floors in its **Floor plans** box (`2-8`) and **Apply** (§5 "Flats in a drawing", §6). No drawings yet,
+   only the building's shape? **Start an empty project** (or ⋯ → **New project**): its name, basements, floors and
+   rooftop first, then **Draw** a drawing for each floor (§6).
+4. **Walk it:** **Preview 3D** (one floor) or **Show building** (the tower); arrange the furniture (**Edit ▾ →
+   Furniture**), set the site and true north (**Site** in the project's column, or **⋯ → Site**) (§2, §3, §4, §5).
+5. **Send it to buyers:** **⋯ → Share link** (or **Buyer link** under **Share** in Steps); what they choose and write
+   comes back in the **Change list** (§1, §5).
    Both need the online database: without it the Studio's **⋯** has no Buyers part at all (README, "The online
    database").
 
@@ -667,27 +672,91 @@ The whole tower, floor by floor: point at a floor to see which it is, open a fla
 
 ## 5. The Studio
 
-Where staff draw the plan over the plan picture — or bring in the architect's own file — check it, and send it to 3D.
-The order is on the right under **Steps**: load the plan → set the scale → trace walls → wall thickness → openings →
-rooms → check → export.
+Where staff turn what the architect sent into the project's floors, check them, and send them to 3D. The Studio reads
+whatever the architect sends — the whole set as a PDF, CAD files, a building model, or a brochure's plan picture — and
+what you drop decides what comes next. Whatever it was, the column on the right is the project, from the first drop.
 
 **On a phone** (a screen under 720 px wide) the Studio opens as one card instead: "The Studio is for a computer", with
 **See a flat** and **Open it anyway** (that opens the Studio, squeezed, for the rest of that tab).
 
-**What you see.** A light stone page; the plan picture lies on it like a sheet of paper, a little faded, so the walls you
-draw stand out in dark ink. Doors are drawn with their swing, windows as three thin lines between two short ends, as on
-an architect's sheet. What you picked is **blue**; what is under the mouse gets a light blue edge before you click. Room
-names are in small capitals with the printed size under them. **Zoomed out** (a whole floor at 30 %), names never sit on
-top of each other: a crowded name first loses the space between its letters, then gets a little smaller without its
-printed size, and where two still would not fit the bigger room keeps its name — the other shows when the mouse is over
-its room (its neighbours make room for it). Wall lengths are written only where they cover no name. Tools on the left, details of what you picked on the right,
-one thin line at the bottom saying what the tool does.
+**What you see.** Left to right: the **tools** (a strip of small drawings), the **sheet** (a light stone page with the
+drawing on it), the **project's column** (its name, its floors and where each came from, the views kept from the set,
+the site — §6) and the **inspector** (white: **Steps**, what you picked, **Issues**); along the top the **top bar**, along
+the bottom the **status bar**. **Building** in the top bar hides and shows the project's column. With nothing on the
+sheet yet the inspector holds only Steps (no empty Selection, no Issues about nothing).
+
+On the sheet the plan picture lies like a sheet of paper, a little faded, so the walls stand out in dark ink. Doors are
+drawn with their swing, windows as three thin lines between two short ends, as on an architect's sheet. What you picked
+is **blue**; what is under the mouse gets a light blue edge before you click. Room names are in small capitals with the
+printed size under them. **Zoomed out** (a whole floor at 30 %), names never sit on top of each other: a crowded name
+first loses the space between its letters, then gets a little smaller without its printed size, and where two still would
+not fit the bigger room keeps its name — the other shows when the mouse is over its room (its neighbours make room for
+it). Wall lengths are written only where they cover no name. A drawing that comes in, or a project's column that opens
+beside it, is fitted to the sheet; once you zoom or slide it, the view stays yours.
+
+### The door — Drop your drawings
+
+With nothing on the sheet, the middle says **Drop your drawings** — "The architect's set (PDF), CAD files (DXF), a
+building model (IFC), or a plan picture — a file, several, a folder or a .zip." Drop them on the dashed box or anywhere on
+the page, or click **Choose files…** (the one blue button: it picks any of them, several at once; ⋯ → **Import…** and
+**Ctrl+O** open the same picker). Pictures: PNG, JPG, WEBP or TIFF, up to 10 MB; an iPhone's HEIC photo only in a browser
+that opens it (Safari), else a message says how to get a JPEG.
+
+**Try a sample ▾** (beside Choose files…) lists eight real buildings' files found on the internet and free to pass on —
+at least one of each kind Plotline reads, each with its kind and size ("IFC · 415 KB"); rest the mouse on one for who
+made it and its licence. Click one and it opens exactly as if you had dropped it: the two IFCs make their floors (the
+flat opens with its 7 named rooms), the DXFs and the SVG open as a drawing, the school PDF opens as a drawing at its
+printed 1 : 200, Casa Steiner's PDF becomes the plan picture (its message offers **Read its lines instead**), and the 3D
+model (a brick apartment building) gives only the outside shape — it shows under **Outside shape** on the right and waits
+for a drawing to stand round. Esc or a click elsewhere closes the list. Where each came from: `public/samples/MANIFEST.md`.
+All 53 files of that hunt, and how each one reads today, are listed in [SAMPLES.md](SAMPLES.md) — they sit on the office
+PC in `E:/dev/ALTERNATIVE FORMAT TEST/samples-2026-11-22/`; drop any of them on the Studio to see it yourself.
+
+**Open a project** (under the box, when projects are kept in this browser) lists them newest first, each with its floors
+and drawings ("3 floors · 3 drawings"): a click opens it — its floors on the right, its lowest drawn floor above the
+ground on the sheet. **Start an empty project** under the list opens the New project card, its Name box ready to type (§6: the building's name and
+floors first, a drawing for each floor after). A floor of an open project with no drawing yet (after **Draw**) shows the
+same door, titled for it: "Drop the drawing of floor 2".
+
+### What happens with each kind
+
+| You drop | What you see next | Then |
+|---|---|---|
+| **The architect's set** — a PDF of several pages, several PDFs, a folder or .zip of DXF / SVG files | **What is in this set** over the sheet: every drawing listed by kind — plans with their floors, elevations, sections, site, schedules ("Reading page 7 of 25…" while it reads) | **Build the project**: a project with every floor the set names, each ticked plan the drawing of its floors, in real sizes; the elevations, sections, site and schedules kept with it. Nothing to scale or trace — except a floor whose page is only a picture (scaled already when the sheet prints its scale). "Drop a whole set" below |
+| **A building model** — an IFC (.ifc, .ifczip) | A box at the top: "Reading … · building the 3D (53 %)", **Cancel** | Several storeys: a project of them, basements to rooftop, the first floor above the ground open. One storey: a project of one floor. "Bring in the architect's file" below |
+| **One CAD drawing** — a DXF or an SVG, or a one-page PDF printed from a drawing program | The drawing in real sizes, and **What was read from the file** on the right | A project of one floor (the drawing on **Floor 1**), named after the file. Nothing to scale — unless the DXF names no unit, or a wrong one: then **Check its size** is a step (the **Read in** row) |
+| **A plan picture** — PNG, JPG, WEBP, TIFF, HEIC; a brochure page | The picture on the sheet | A project of one floor with the picture on Floor 1: **S** sets the scale, **Auto-trace** traces it (or W and the other tools by hand) — the same clicks as before projects came first |
+| **A 3D model** — .glb, .gltf, .obj, .fbx, … | Its name under **Outside shape** on the right | The building's outside, round the drawing open now: no floors of its own |
+| **A Plotline file** (.json, from Export) | The drawing exactly as it was saved | — |
+| **A locked file** — .rvt, .pln, .skp, .max, .blend, .dwf, and .dwg until it is turned on | A message | Which export to ask the architect for |
+
+**With a project open,** a dropped drawing goes into the drawing open in it — asked first when that one has walls
+("Replace the drawing on screen with *file*? Undo brings it back.") — and a set asks whether to add its floors to the
+project or make a new one. A drawing open in no project (an older draft) is replaced the same way, after the same
+question.
+
+### The Steps
+
+On the far right, at the top of the inspector: the checklist for the drawing open now. It ticks itself as you go, the next
+step marked with a blue dot, and it follows what you dropped:
+
+| You dropped | Steps |
+|---|---|
+| Nothing yet | 1 Drop your drawings · 2 Check · 3 Preview 3D · 4 Share |
+| A set | 1 Read the set (ticks when every page is read) · 2 Check the floors · 3 Build (both tick once **Build the project** is done) · 4 Check · 5 Preview 3D · 6 Share |
+| A CAD or IFC file, a PDF page read from its lines | 1 Read the file · 2 Check its size (only when the DXF names no unit, or a wrong one: pick the unit in **Read in**, and it ticks) · Check · Preview 3D · Share — nothing to scale or trace |
+| A plan picture — also a floor of a set that came in as a picture | 1 Load plan · 2 Set scale · 3 Trace walls · 4 Wall thickness · 5 Openings · 6 Rooms · 7 Check · 8 Share |
+
+**Check** ticks when something is drawn and Issues holds no error that stops it from being built, as before (a red loose wall end can stay: it is worth fixing, it leaves a room open in 3D). **Preview 3D** ticks once you have looked at the
+drawing in 3D (**Preview 3D**, or **Show building**). **Share** ticks once it has gone out; under it, **Buyer link** (with
+the online database), **DXF**, **3D model** and **Print** do what ⋯ → Share link, Export as DXF, Export 3D model and Print
+plan… do, and ⋯ → **Export** (the Plotline file) ticks it too.
 
 **Draft restored.** The Studio opens on the drawing you left, with a message at the bottom: "Draft restored — its name",
 **Start over** and **×** (hides the message). **Start over** asks first: "Start over? The drawing, its picture and its
 furniture go. Undo cannot bring them back." — **Start over** (red) empties the Studio for good; **Cancel** or **Esc**
-keeps everything. A drawing of a project is not asked about: it stays in its project (open it again from the floor list)
-and only the screen empties.
+keeps everything. A drawing of a project is not asked about: it stays in its project (open it again from the floor list,
+or from **Open a project** on the door) and only the screen empties.
 
 **Messages at the bottom.** What was done ("Joined 1 overlapping wall — Ctrl+Z undoes") fades after about 5 seconds
 (longer for a long one). Something refused or gone wrong ("A zone line takes no doors or windows", "Could not read the
@@ -704,8 +773,8 @@ drawing.
 - After the fields, when signed in: where your work stands online (**Saving…**, **Saved · just now**, …; "Accounts"
   below).
 - **Right:** **↶ Undo** / **↷ Redo**, **Auto-trace** (once a plan picture is in), **Preview 3D** (the blue button: your
-  drawing in the 3D view, in a new tab), **Building** (shows / hides the project's floor list, §6), and **⋯**.
-- While the Studio is empty, **Choose plan image…** in the middle is the blue button and Preview 3D is plain: there is
+  drawing in the 3D view, in a new tab), **Building** (shows / hides the project's column, §6), and **⋯**.
+- While the Studio is empty, **Choose files…** in the middle is the blue button and Preview 3D is plain: there is
   only ever one blue button. With no wall drawn yet (an empty Studio, or only a 3D model's outside shape), Preview 3D
   says "Nothing drawn yet to show in 3D" instead of opening a 3D page with nothing to build.
 
@@ -713,38 +782,21 @@ drawing.
 
 | Part | Item | What it does |
 |---|---|---|
-| Drawing | **Import…** (Ctrl+O) | Opens a Plotline drawing file, or the architect's own file ("Bring in the architect's file" below). In a project it goes into the drawing open now |
+| Drawing | **Import…** (Ctrl+O) | The same picker as Choose files…: a Plotline drawing file, the architect's own file or a picture ("What happens with each kind" above). In a project it goes into the drawing open now |
 | | **Export** (Ctrl+S) | Saves the drawing as a Plotline file (`.json`); after an Auto-trace it holds the Check these rows too |
 | | **Export as DXF** · **Export 3D model** · **Print plan…** | "Give the drawing back" below |
 | | **Export answers** | Saves every Check these answer clicked in this browser as `plotline-answers.json` (the Local AI's answers marked `"by": "ai"`) |
-| Building | **New project** | The floor list with the New project card (§6) |
+| Building | **New project** | The project's column with the New project card (§6) |
 | | **Site** | Where the building stands ("Site" below); "open" shows beside it while the panel is open |
 | Buyers | **Share link** | Makes a buyer link and copies it. Signed in: for your company, nothing asked. Not signed in: asks once for the staff key, in the marble card. Only with the online database |
 | | **Change list ↗** | Opens `/changes` in a new tab. Only with the online database |
 | Account | **Sign in** / your email | Your account, your company's projects, members and buyer links ("Accounts" below). Only with the online database |
 
-**Loading the plan picture.** With nothing drawn, the middle says **Start with a plan**: a dashed box (drop the picture
-on it, or anywhere on the page, or click **Choose plan image…**) and, beside it, the **New project** card (§6; while the Building list is open on the right the card is there
-instead, once). Pictures:
-PNG, JPG, WEBP or TIFF, up to 10 MB; an iPhone's HEIC photo only in a browser that opens it (Safari), else a message says
-how to get a JPEG. The brochure PDF and the architect's IFC, DXF, PDF, SVG or 3D model — or a folder or .zip of them —
-can be dropped there too.
-
-**Try a sample ▾** (under the dashed box) lists eight real buildings' files found on the internet and free to pass on —
-at least one of each kind Plotline reads, each with its kind and size ("IFC · 415 KB"); rest the mouse on one for who
-made it and its licence. Click one and it opens exactly as if you had dropped it: the two IFCs make their floors (the
-flat opens with its 7 named rooms), the DXFs and the SVG open as a drawing, the school PDF opens as a drawing at its
-printed 1 : 200, Casa Steiner's PDF becomes the plan picture (its message offers **Read its lines instead**), and the 3D
-model (a brick apartment building) gives only the outside shape — it shows under **Outside shape** on the right and waits
-for a drawing to stand round. Esc or a click elsewhere closes the list. Where each came from: `public/samples/MANIFEST.md`.
-All 53 files of that hunt, and how each one reads today, are listed in [SAMPLES.md](SAMPLES.md) — they sit on the office
-PC in `E:/dev/ALTERNATIVE FORMAT TEST/samples-2026-11-22/`; drop any of them on the Studio to see it yourself.
-
 **The status bar** (bottom): on the left what the tool does, in one short line (the whole sentence when the mouse is
 over it); in the middle, while you draw or drag, the length, the angle and what the point sticks to; on the right how
-long you have been tracing, the scale (1 px = … m) and the zoom. **Keys** (bottom right) or **?** opens a sheet with every
-key, the tool you are on explained in full at the top; **×**, Esc or a click elsewhere closes it. Every key in one list:
-[KEYS.md](KEYS.md).
+long you have been tracing, the scale (1 px = … m, or "Real sizes · no picture lined up" for a drawing read from a file)
+and the zoom. **Keys** (bottom right) or **?** opens a sheet with every key, the tool you are on explained in full at the
+top; **×**, Esc or a click elsewhere closes it. Every key in one list: [KEYS.md](KEYS.md).
 
 ### The tools (the strip on the left)
 
@@ -856,8 +908,7 @@ had.
 
 ### The right-hand panel
 
-- **Steps** — the checklist; it ticks itself, the next step marked with a blue dot. A drawing read from an architect's
-  file (IFC, DXF, PDF lines) is in real sizes: **1 Load plan** and **2 Set scale** are ticked from the start.
+- **Steps** — the checklist for the drawing open now ("The Steps" above).
 - **Selection** — the details of what you picked, to type exact values: a *corner* (position); a *wall* (Wall / Low wall
   / Kerb / Zone line, width, height, **Stands alone** — a screen or decoration wall not meant to close a room, length,
   copy, delete); an *opening* (Door / Sliding door / Window / Passage, width, height, sill, distance from each corner;
@@ -1128,20 +1179,20 @@ it without asking the map again. Map and buildings © OpenStreetMap contributors
 
 ### Bring in the architect's file
 
-Instead of a picture to trace, drop the architect's own file on the Studio (or ⋯ → **Import…** / **Choose plan
-image…**). Its walls ARE the drawing, so there is no picture behind it (the status bar says "no picture lined up"); a
+Instead of a picture to trace, drop the architect's own file on the Studio (or ⋯ → **Import…** / **Choose
+files…**). Its walls ARE the drawing, so there is no picture behind it (the status bar says "no picture lined up"); a
 picture can still be dropped later to see the sheet behind. Every format and how it was tested: [FORMATS.md](FORMATS.md).
 Dropped (or imported) onto a drawing, a file asks first: "Replace the drawing on screen with *file*? Undo brings it
 back." — **Replace**, and one **Ctrl+Z** (or ↶ Undo) gives the drawing that was there back, on its picture as before and
 with its Check these rows; **Cancel** keeps it. The same for a Plotline file (.json). A whole building (an IFC of several
 storeys) makes a project of its own: a drawing open in a project stays in its project; one open in no project is
 replaced, and it says so before ("Make a project of *file*'s 5 floors? The drawing on screen is in no project…").
-To see each kind without a file of your own: **Try a sample ▾** in the empty Studio ("Loading the plan picture" above).
+To see each kind without a file of your own: **Try a sample ▾** in the empty Studio ("The door" above).
 
 | File | What happens |
 |---|---|
-| **IFC** `.ifc`, `.ifczip` (Revit, ArchiCAD, …: a building model with its walls, doors and rooms) | One storey opens as the drawing. Several make a whole **project** in one go — basements, ground, floors, rooftop — each storey its own drawing, the outside shape saved once for the building; the first floor above ground opens (a house's: its attic — click **Open** beside **Ground floor** in the list for the main rooms). Walls the file leaves touching are joined, two of its rooms in one open space are split by flush zone lines where the file draws their boundary (two names the file gives one outline — a bath and its hall — stay a row in Issues that asks which room is which, below), a room the walls leave open (a balcony edged only by a railing, a roof terrace, a stair open to the floor above) is closed by flush zone lines along the file's own outline of it — the railing itself shows in the outside shape — and a space that only holds other rooms (a gross area) gives no room name — "What was read from the file" says how many of each. A European file's room words are understood (Zimmer / Slaapkamer / Sovrum a bedroom, Bad / Badkamer a bath, Küche / Keuken a kitchen, Wohnzimmer / Wohnküche a living room, Terrasse / Balkon a balcony; Treppenhaus, Aufzug, Trappenhuis, Hiss, Escalier, Ascensore and the corridor Gang are the shared core), so the flats of a whole floor are found — a word Plotline does not know stays "other": give the room its kind with V. A room the file gives no name of its own takes its zone's name, else its floor's name and a number ("Level 2 · 3"); a floor where the file names no rooms at all keeps "Space N", said once in the notes, and on a big floor Issues offers **Name them …** in one click |
-| **DXF** `.dxf`, **SVG** `.svg` (a drawing made of lines) | One floor's walls, openings and room names read from the file, to check and finish as usual. Names in any script come through as written (a Bangla "শয়ন কক্ষ" too, even from a file older than AutoCAD 2007). A DXF's walls may be line pairs, polylines, hatches or multilines, a floor drawn as one outline with its partitions as single lines, or each room as its outline (a partition drawn as one line still splits its room); its doors and windows swings, blocks, glass lines, or a plain line or narrow rectangle on a door / window layer (on a layer of doors and windows, a plain line is a window); a door, window or sliding-door block standing in no wall (a front all of glass) is a wall of that opening; an SVG's groups are its layers ("Walls", "A-WALL"); an SVG with no named groups (a CAD print saved as SVG) has its lines sorted by pen like a PDF — the heaviest pen and grey wall fills are the walls. An SVG has no scale: the printed dimensions give it — check with S |
+| **IFC** `.ifc`, `.ifczip` (Revit, ArchiCAD, …: a building model with its walls, doors and rooms) | One storey opens as the drawing (on an empty Studio, a project of one floor: §6). Several make a whole **project** in one go — basements, ground, floors, rooftop — each storey its own drawing, the outside shape saved once for the building; the first floor above ground opens (a house's: its attic — click **Open** beside **Ground floor** in the list for the main rooms). Walls the file leaves touching are joined, two of its rooms in one open space are split by flush zone lines where the file draws their boundary (two names the file gives one outline — a bath and its hall — stay a row in Issues that asks which room is which, below), a room the walls leave open (a balcony edged only by a railing, a roof terrace, a stair open to the floor above) is closed by flush zone lines along the file's own outline of it — the railing itself shows in the outside shape — and a space that only holds other rooms (a gross area) gives no room name — "What was read from the file" says how many of each. A European file's room words are understood (Zimmer / Slaapkamer / Sovrum a bedroom, Bad / Badkamer a bath, Küche / Keuken a kitchen, Wohnzimmer / Wohnküche a living room, Terrasse / Balkon a balcony; Treppenhaus, Aufzug, Trappenhuis, Hiss, Escalier, Ascensore and the corridor Gang are the shared core), so the flats of a whole floor are found — a word Plotline does not know stays "other": give the room its kind with V. A room the file gives no name of its own takes its zone's name, else its floor's name and a number ("Level 2 · 3"); a floor where the file names no rooms at all keeps "Space N", said once in the notes, and on a big floor Issues offers **Name them …** in one click |
+| **DXF** `.dxf`, **SVG** `.svg` (a drawing made of lines) | One floor's walls, openings and room names read from the file, to check and finish as usual (on an empty Studio, a project of one floor: §6). Names in any script come through as written (a Bangla "শয়ন কক্ষ" too, even from a file older than AutoCAD 2007). A DXF's walls may be line pairs, polylines, hatches or multilines, a floor drawn as one outline with its partitions as single lines, or each room as its outline (a partition drawn as one line still splits its room); its doors and windows swings, blocks, glass lines, or a plain line or narrow rectangle on a door / window layer (on a layer of doors and windows, a plain line is a window); a door, window or sliding-door block standing in no wall (a front all of glass) is a wall of that opening; an SVG's groups are its layers ("Walls", "A-WALL"); an SVG with no named groups (a CAD print saved as SVG) has its lines sorted by pen like a PDF — the heaviest pen and grey wall fills are the walls. An SVG has no scale: the printed dimensions give it — check with S |
 | **DWG** `.dwg` (AutoCAD's own) | Once DWG is turned on ([SETUP_FORMATS.md](SETUP_FORMATS.md)): sent to an online converter, back as a DXF ("converting the DWG to DXF"); 10 a day. Not turned on: refused with how to save it as DXF — AutoCAD: type SAVEAS, pick "AutoCAD DXF" under Files of type; DraftSight: File → Save As → DXF; no CAD program: LibreCAD (free) opens the .dwg, then File → Save As → DXF. Drop the .dxf: nothing a plan needs is lost |
 | **PDF** `.pdf` (a brochure, or a print from the drawing program) | One page that is one floor plan opens at once. Several pages (an architect's set, a brochure), a page of several drawings, or an elevation on its own: **What is in this set** lists every drawing by kind (below, "Drop a whole set"); click a drawing's picture there to open it alone. A page whose lines make a clean plan opens as the drawing — a PDF has no layers, so its lines are sorted by pen: the heaviest pen and grey wall fills are the walls ("What was read from the file" names them); the scale printed on the sheet (`1/4" = 1'-0"`, `1:100`) is the scale, else the printed dimensions measured against their lines — check with S; a stair's "UP" / "DN" and a door or window tag ("D-16", "Win-18") never name a room; a page with no scale printed as words (a brochure page whose words are drawn as outlines) opens straight as the plan picture, its lines not read; any other page becomes the **plan picture** for S and Auto-trace. The message offers the other way: **Use it as a picture instead** / **Read its lines instead** |
 | **3D model** `.glb` `.gltf` `.obj` `.fbx` `.dae` `.stl` `.3dm` `.3ds` `.kmz` `.wrl` `.ply` | The building's **outside shape** only (no rooms), attached to the drawing open now: the Building view shows it round your flat and the walk sees its facade through the windows. A model with its pictures (or a `.gltf` with its `.bin`) in other files: drop the whole folder or a `.zip`, or pick the files together |
@@ -1243,10 +1294,12 @@ drawn. **The floors stand over each other:** the lowest drawn floor is where the
 read at a known scale is put on the floor it shares the most walls with (outer walls, the stair and lift shafts,
 columns) — the message says how many were stacked. A floor that is a picture to trace is lined up the same way, so what
 you trace on it lands over the floor below. A floor that shares too little with the others (a roof plan of slopes, a
-brochure page with no scale) stays where its own drawing puts it. The first drawing opens and the floor list stays on the
-right; at its bottom, **Kept from the drawing set** lists every kept drawing ("Elevation · south — FRONT ELEVATION
-(SOUTH)"): click one to see it big (× or Esc closes). Nothing is traced on them: they wait for the next stages (floor
-heights from the sections, windows from the elevations). Their pictures are kept with the project's other pictures (in
+brochure page with no scale) stays where its own drawing puts it. The first drawing opens and the project's column stays on
+the right, each floor saying which page its drawing came from ("from page 7 · 2ND FLOOR PLAN · 1 : 48"); under the floors,
+**Kept from the drawing set** lists the kept drawings by kind — Site, Elevations, Sections, Schedules, Interior elevations —
+each with its count (a group of more than four starts folded: click its name): click one ("South — FRONT ELEVATION
+(SOUTH)") to see it big (× or Esc closes). Nothing is traced on them; the sections and elevations give the
+building its heights (below); the windows from the elevations are the next stage. Their pictures are kept with the project's other pictures (in
 this browser, and online for your company when signed in).
 
 **A floor drawn in parts joins:** two drawings on one page for the same floor whose titles differ only by the part
@@ -1264,6 +1317,36 @@ is asked about once more, naming the floors: **Replace** puts the set's drawing 
 on no floor, under Floor plans); Cancel keeps yours (the set's drawing for that floor then waits on no floor). A drawing
 open in no project is replaced only after a yes. Every build's message has **Undo**: the projects as they were, the
 drawing you had open opened again, the build's pictures gone.
+
+**How tall each storey is — read from the sections and elevations.** Under every section and elevation in the list, a
+line of fields shows the heights its level marks print — the lines with words beside them ("1ST FLOOR (FINISH) +0'-0"",
+"CEILING (T.O. PLATE) +19'-0"", "ROOF RIDGE +29'-2"", "N.P.T +2.34", "F.F.L. +3.05", "ROOF", "PARAPET"): **Floor to
+floor** (one number when every storey is alike, else by floor: "G 4.50, 1–9 3.05"), the top floor's **Ceiling** and the
+**Slab** when a drawing prints them, and the roof — **Flat** with its **Roof level** and **Parapet**, or **Pitched** (a gable
+at each end) or **Hipped** (sloped at the ends too) with its **Eave** and **Ridge**. Gable or hip is read from the
+elevations' outline of the roof: a long side whose ridge runs its whole length is a gable's, one whose slopes stop short of
+the ends a hip's. Levels are shown as the drawing prints them (+6.10 m over the ground floor), heights in metres.
+A mark with no number printed is measured on the drawing at its printed scale (or from a dimension printed between two
+level lines). Click any field and type over it — metres, or feet and inches with their marks (`10'-0"`, `+20'-0"`);
+red when it is no length; the roof's kind in its box. What you type is remembered by the drawing's title, like a kind. A
+section or elevation with no marks says "No level marks on it" — **Type its heights** opens its fields.
+
+Under the list, **Heights — how tall each storey is built** says what the project will be built to: the sections first,
+the elevations confirming ("Floor to floor 3.05 m · top floor's ceiling +5.79 · slab 0.15 m (not printed: as usual) · a
+pitched roof, eave +6.10, ridge +8.89. From SECTION LOOKING NORTH and 6 more"). Where two drawings differ by more than
+5 cm it asks, one row each: "Floor 2: the drawings differ — CORTE A-A says +4.68 · CORTE B-B says +4.72 — which?" (the
+first is used until you pick); a number you typed is never questioned. A set whose sections and elevations print no
+levels (the Dhaka brochures, a set of plans only) says so, and every storey stays 3.20 m floor to floor, as before.
+
+**Build the project** then builds every storey to those heights: each floor at its own level, its walls up to the slab
+under the next floor (the top floor's to its ceiling), the slab as thick as printed (0.15 m when no drawing says), a flat
+roof's parapet as high as printed (1.10 m when none is), a pitched roof as two slopes from the eave up to the ridge along
+the building's long side with a gable at each end (a hipped roof slopes at the ends too). While the top floor is still a
+picture to trace, the roof stands over the highest floor that has walls, at its printed height. A floor the drawings do not show takes the storey under it (a
+typical floor); a building taller than its section keeps the section's top storey under the roof. Walking a flat — and
+its Dollhouse — its ceiling is at its storey's height; the drawing itself keeps its walls as drawn (only a full-height wall
+stands its storey: a low wall, a parapet, a planter edge keep theirs). The message after the build says "every storey as
+tall as its sections print (7 drawings)". A project with no heights read is drawn exactly as before.
 
 What it reads today, set by set: [SETS_SCOREBOARD.md](SETS_SCOREBOARD.md).
 
@@ -1295,16 +1378,34 @@ From the ⋯ menu, what a developer or their architect asks for:
 
 ## 6. Making a building — a project, floor by floor
 
-You say what the building is first, then give each floor a drawing. A drawing is one whole floor (all its flats and the
-lift lobby); one drawing can be on any floors you like.
+Every project is a list of floors, each with a drawing. A drawing is one whole floor (all its flats and the lift lobby);
+one drawing can be on any floors you like.
 
-**Start a project**
-1. Studio → **⋯** → **New project** (or the **New project** card beside the picture box while the Studio is empty, or
+**A project comes from what you drop** — nothing to set up first:
+- **A set** (a PDF of many pages, several PDFs, a folder or .zip of DXFs): **What is in this set** → **Build the project**
+  makes the project with every floor the set names (§5 "Drop a whole set").
+- **A building model** (an IFC of several storeys): a project of its storeys at once (§5 "Bring in the architect's file").
+- **One drawing** — one DXF, SVG, IFC storey, a PDF page, or a plan picture — dropped on an empty Studio: a project of one
+  floor, named after the file, the drawing on **Floor 1** (the ground floor waits empty). A brochure flat is traced
+  exactly as before (drop the picture, S, Auto-trace, Preview 3D); the project around it is there when you want more
+  floors: type them in its floor plan's box (below) or Draw on another floor. With a project open, a drop goes into the
+  drawing open in it, as before.
+
+**Or start an empty project** — the floors said first, the drawings after:
+1. Studio → **⋯** → **New project** (or **Start an empty project** under the door of an empty Studio, or
    **Building**).
 2. Type its **Name**, **Basements** (0–5), **Floors above ground** (1–60), tick **Rooftop** or not. A ground floor is
    always there.
-3. **Create project.** The floor list appears on the right and stays: **Rooftop**, the floors from the highest down,
-   **Ground floor**, **Basement 1**, **Basement 2**…
+3. **Create project.** The project's column appears on the right and stays.
+
+**The project's column** (on the right, beside the inspector; **Building** in the top bar hides and shows it), top down:
+its name in large type with **Rename**, **Delete** and **Close**; **Show building**; **FLOORS** — **Rooftop**, the floors
+from the highest down, **Ground floor**, **Basement 1**, **Basement 2**… each with its drawing's name and, under it, where
+that drawing came from ("from page 7 · 2ND FLOOR PLAN · 1 : 48", "from Internal_Ground.dxf", "from
+LTU_A-House_redesign.ifczip · VÅNING 2", "traced on img_3.webp"); then the open drawing (**Open now**), **Floor plans**,
+**Kept from the drawing set** (a set's elevations, sections, site and schedules by kind), **Site** (where the building
+stands: **Open** opens the Site panel, as ⋯ → Site) and, signed in to a company, **Team**: **Members** and **Links** open
+your account card on that list (as ⋯ → your email).
 
 **Give each floor a drawing** — work down the list:
 - **Draw** (an empty floor): a new drawing for it opens, called Floor plan A, Floor plan B… (or Ground floor, Basement 1,
@@ -1316,12 +1417,12 @@ lift lobby); one drawing can be on any floors you like.
 - Under a floor's drawing name, its flats ("— Flat 1, Flat 2" or "Type A, Type B"), found from the drawing itself.
 - The floors of the drawing open now are white.
 
-**Floor plans — draw once, use on many floors** (above the list, one row per drawing): its name and the floors it is on
+**Floor plans — draw once, use on many floors** (under the floors, one row per drawing): its name and the floors it is on
 ("on G, 2, 4, 6"). Type floors in its box — `2, 4, 6-8`, any pattern — and **Apply** (or Enter). A floor that already has
 another drawing asks first (that drawing is kept). **Copy** makes a new plan from this one, for a floor that differs a
 little; it is on no floor until you give it some.
 
-**Under the list:** **Open now** (the open drawing's name, to rename it) and **Delete this drawing** (it leaves every floor;
+**Under the floors:** **Open now** (the open drawing's name, to rename it) and **Delete this drawing** (it leaves every floor;
 asks first). A drawing with two flats or more (a whole floor: an architect's storey of ten student flats) shows **Furnish
 in 3D** between them: a tick per flat (Flat 1, Flat 2 … or its Type name), **All**, **None**. Only the ticked flats are
 furnished and lit in Preview 3D, the walk and the Building view; the others stand bare — walls, floors, doors and windows
@@ -1361,8 +1462,8 @@ as" **A flat** (floors N to M, a mirrored neighbour), **Ground floor**, **Baseme
 placed on the flats' columns or by **Move it right / Move it down**.
 
 **A whole drawing set** makes its project in one go: drop it and **Build the project** (§5, "Drop a whole set"); the
-set's elevations, sections, site plan and schedules are listed under **Kept from the drawing set** at the bottom of the
-floor list (click one to see it).
+set's elevations, sections, site plan and schedules are listed by kind under **Kept from the drawing set** in the
+project's column (click one to see it).
 
 Projects, their drawings and pictures are kept in this browser, and online for your company when signed in (§5,
 Accounts).
@@ -1494,7 +1595,7 @@ otherwise):
 | What | Also online? |
 |---|---|
 | The Studio drawing you are working on, with its plan picture | Yes, signed in to a company |
-| Projects, every drawing of a project and its plan picture | Yes, signed in |
+| Projects (every drop on an empty Studio makes one), every drawing of a project, where each came from, and its plan picture | Yes, signed in |
 | Every flat's own furniture and finishes, as staff left them (3D view, F, Preview 3D) | Yes, inside the project (or drawing) the next time the Studio saves it signed in — at once while the Studio is open in another tab, else when you next open the Studio; the floor plan's own goes into a buyer link when you make one. A built-in flat's: this browser only |
 | Your own furniture, finishes and texture pictures | Yes, signed in — for every colleague and in the buyer links that show them |
 | The last Preview 3D | No |
@@ -1542,6 +1643,11 @@ Things that are confusing or not finished. Each one is a job on the list.
   open foyer, add it with R.
 
 **The Studio**
+- Every file or picture dropped on an empty Studio makes a project of its own, so **Open a project** grows with each one
+  tried: **Delete** in a project's column takes one away. The project's column takes 280 px of the sheet's width;
+  **Building** hides it while you trace.
+- A floor's "where it came from" line is written when the drawing comes in: a drawing traced by hand from nothing, or one
+  from before session 31, says nothing (a picture-traced one says the picture it was traced on).
 - The "Draft restored" message shows at every opening of the Studio, not only after a closed tab.
 - A wrong scale found after tracing cannot be put right in one step: S changes the scale, but the walls do not follow.
 - Once a plan picture is in there is no button to swap it (drop a new one); a drawing file opened again always asks for

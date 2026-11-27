@@ -200,6 +200,153 @@ Shots: `lboro-set.png`, `lboro-built.png`, `lboro-building.png` (two storeys sta
 - **Floors with no page** (Sanctuary's 2nd, 3rd, 5th …) are not guessed from the nearest page: the Building view stands the
   floor below in, as before.
 
+## Stage 3 — heights from sections and elevations (session 31, heights lane)
+
+**What changed for a person.** Until now every storey of every project was 3.20 m floor to floor with 3 m walls and a 1.1 m
+parapet, whatever the drawings said. Now **What is in this set** shows, under every section and elevation, the heights its
+level marks print — floor to floor, the top floor's ceiling, the slab, a flat roof's level and parapet or a pitched roof's
+eave and ridge — as fields a person can type over (remembered by the drawing's title); under the list, what the project
+will be built to, with one question where two drawings differ by more than 5 cm. **Build the project** builds every storey
+to them: each floor at its own level, its walls a slab short of the next floor, the slab and parapet as printed, a pitched
+(or hipped) roof from the eave to the ridge; walking a flat its ceiling is at its storey's height. A set whose drawings print
+no levels says so and is built exactly as before (a test proves the tower vertex for vertex). How a person uses it:
+[MANUAL §5 "Drop a whole set"](MANUAL.md).
+
+**How it reads, with no AI** (`src/import/heights.ts` and `src/data/building/storeys.ts`: 81 tests; 6 more on the tower in `three/building.test.ts`). A level mark is a
+horizontal line with its words beside it: a name ("1ST FLOOR (FINISH)", "CEILING (T.O. PLATE)", "ROOF RIDGE", "ROOF EAVE",
+"PARAPET", "B1", "N.P.T", "F.F.L.", "OKFF") and / or its value ("+10'-0"", "+2.34", "±0.00", "EL. 103.05", "+3050" mm). A
+name pairs with the value under or over it; a value alone is a mark with no name (Elemental prints only "+2.34" at its level
+triangles). A name with no value counts only when it is set like the view's valued names and stands on a level line (a
+note's "EAVE / T.O. FASCIA" in small letters is no mark). The height is the value printed; else the line measured at the
+view's printed scale from the nearest printed mark (or the ground floor's line); else the scale comes from two printed
+marks, or from a dimension printed in the middle between two level lines ("9'-1""). The marks become the building's
+heights: the ground floor is the one named so (else the one at 0, else the lowest — a US set's "1ST FLOOR" is the ground,
+as its plans are counted), floors over it numbered up in order; a top under the top floor is a lower roof's (the farmhouse
+porch's eave +9'-6") — but a ceiling under the next floor gives the slab; values alone at the top with no roof named are the
+roof (two within 1.3 m: its slab and its parapet or edge); a ridge 1.3 m or more over the eave is a pitched roof, hipped
+when an elevation shows its long side as a trapezoid (a gable shows a rectangle). Several views vote: sections first,
+elevations confirm, more than 5 cm apart is a question; a typed number is never questioned.
+
+**How it was scored — the founder's path.** Firefox (Playwright's build on E:, headless, one browser), a fresh Studio for
+every set, the set **dropped** (a real drop event), the list left to read every page; what each section's and elevation's
+row holds is compared with the heights printed on it — the *printed* column, read by eye from every section and elevation
+page (`E:/dev/tmp/s31/heights/expected.json`, written before scoring). A height counts as right within 5 cm. Harness:
+`E:/dev/tmp/s31/heights/score.mjs` (raw `runs/score.json`, tables by `table.mjs`); a shot of each set's Heights line in
+`E:/dev/plotline-shots/s31/heights/score/`. The farmhouse, Quinta Monroy and one Dhaka brochure (Eastern Housing Pearl)
+were then built end to end in Firefox (`build.mjs`): shots of the Set panel's heights and of the Building view and the walk
+with the read heights and, for comparison, the same project with its heights taken away (as before this lane), in
+`E:/dev/plotline-shots/s31/heights/`.
+
+### Totals
+
+| Set | sections + elevations | with levels printed | heights printed | read right within 5 cm | wrong | missed | read with none printed | questions | the set, as built | read in |
+|---|---|---|---|---|---|---|---|---|---|---|
+| Farmhouse drawing set (Amatect, US) | 7 | 7 | 21 | 21 · 100 % | 0 | 0 | 0 | 0 | 4 / 4 | 2.7 s |
+| Quinta Monroy (Elemental, Chile) | 6 | 4 | 14 | 14 · 100 % | 0 | 0 | 0 | 0 | 4 / 4 | 1.6 s |
+| NIST net-zero house, services set (US) | 0 | 0 | 0 | — | 0 | 0 | 0 | 0 | none printed: says so, 3.20 m storeys as before | 4.9 s |
+| Fourplex 02 (CMHC, Canada) | 0 | 0 | 0 | — | 0 | 0 | 0 | 0 | none printed: says so, 3.20 m storeys as before | 1.1 s |
+| Loughborough pair of houses (DXF folder) | 4 | 0 | 0 | — | 0 | 0 | 0 | 0 | none printed: says so, 3.20 m storeys as before | 1.3 s |
+| Rangs The Sanctuary (Dhaka brochure) | 0 | 0 | 0 | — | 0 | 0 | 0 | 0 | none printed: says so, 3.20 m storeys as before | 9.0 s |
+| Rangs White Lake (Dhaka brochure) | 0 | 0 | 0 | — | 0 | 0 | 0 | 0 | none printed: says so, 3.20 m storeys as before | 1.8 s |
+| Rangs The Majestic (Dhaka brochure) | 0 | 0 | 0 | — | 0 | 0 | 0 | 0 | none printed: says so, 3.20 m storeys as before | 7.9 s |
+| Eastern Housing Pearl (Dhaka brochure) | 0 | 0 | 0 | — | 0 | 0 | 0 | 0 | none printed: says so, 3.20 m storeys as before | 2.0 s |
+| Eastern Housing Noboneer (Dhaka brochure) | 0 | 0 | 0 | — | 0 | 0 | 0 | 0 | none printed: says so, 3.20 m storeys as before | 5.8 s |
+| Rangs Torukabbo (Dhaka brochure) | 0 | 0 | 0 | — | 0 | 0 | 0 | 0 | none printed: says so, 3.20 m storeys as before | 2.5 s |
+| Akter Aleena (Dhaka brochure) | 0 | 0 | 0 | — | 0 | 0 | 0 | 0 | none printed: says so, 3.20 m storeys as before | 2.3 s |
+| **All** | **17** | **11** | **35** | **35 · 100 %** | **0** | **0** | **0** | **0** | **8 / 8** | |
+
+**In plain words.** Two of the twelve sets print levels on their sections and elevations: the farmhouse (7 drawings, 21
+heights printed) and Quinta Monroy (4 sections, 14). All 35 are read right within 5 cm, no drawing disagrees with another by
+more than 5 cm (no question asked), and both projects are built to them (the set's 4 heights each). The other ten sets print
+none — the Dhaka brochures have no section or elevation at all — and the panel says so; they are built as before. Reading a
+set takes as long as it did (Stage 1's column above: farmhouse 3.8 s, Sanctuary 8.5 s, Noboneer 6.8 s).
+
+#### Farmhouse drawing set (Amatect, US)
+
+| drawing | printed (by eye) | read | right? |
+|---|---|---|---|
+| FRONT ELEVATION (SOUTH) (p12) | floor 1 3.05, eave 6.10, ridge 8.89 | floor 1 3.05, eave 6.10, ridge 8.89 | 3 / 3 |
+| SIDE ELEVATION (WEST) (p13) | floor 1 3.05, eave 6.10, ridge 8.89 | floor 1 3.05, eave 6.10, ridge 8.89 | 3 / 3 |
+| BACK ELEVATION (NORTH) (p14) | floor 1 3.05, eave 6.10, ridge 8.89 | floor 1 3.05, eave 6.10, ridge 8.89 | 3 / 3 |
+| SIDE ELEVATION (EAST) (p15) | floor 1 3.05, eave 6.10, ridge 8.89 | floor 1 3.05, eave 6.10, ridge 8.89 | 3 / 3 |
+| SECTION LOOKING NORTH (p18) | floor 1 3.05, ceiling 5.79, ridge 8.89 | floor 1 3.05, ceiling 5.79, ridge 8.89 | 3 / 3 |
+| SECTION @ LIVING ROOM & MAIN BEDROOM (p19) | floor 1 3.05, ceiling 5.79, ridge 8.89 | floor 1 3.05, ceiling 5.79, ridge 8.89 | 3 / 3 |
+| SECTION THROUGH CENTRAL HALL AND STAIRCASE (p20) | floor 1 3.05, ceiling 5.79, ridge 8.89 | floor 1 3.05, ceiling 5.79, ridge 8.89 | 3 / 3 |
+| **the set, as built** | floor 1 3.05, ceiling 5.79, eave 6.10, ridge 8.89 | floor 1 3.05, ceiling 5.79, eave 6.10, ridge 8.89 | 4 / 4 |
+
+slab printed only on a detail page (1st floor ceiling +9'-0": 1'-0" slab); the west elevation also prints the porch roof eave +9'-6" (a lower roof).
+
+#### Quinta Monroy (Elemental, Chile)
+
+| drawing | printed (by eye) | read | right? |
+|---|---|---|---|
+| ELEVACION FRONTAL (p3) | no level printed | nothing | yes |
+| ELEVACION POSTERIOR (p3) | no level printed | nothing | yes |
+| CORTE A-A (p4) | floor 1 2.34, floor 2 4.68, roof 7.32, roof edge / parapet 0.16 | floor 1 2.34, floor 2 4.68, roof 7.32, roof edge / parapet 0.16 | 4 / 4 |
+| CORTE B-B (p4) | floor 1 2.34, floor 2 4.72, roof 7.32, roof edge / parapet 0.16 | floor 1 2.34, floor 2 4.72, roof 7.32, roof edge / parapet 0.16 | 4 / 4 |
+| CORTE C-C (p4) | floor 1 2.34, roof 7.32, roof edge / parapet 0.16 | floor 1 2.34, roof 7.32, roof edge / parapet 0.16 | 3 / 3 |
+| CORTE D-D (p5) | floor 1 2.34, floor 2 4.68, roof 7.30 | floor 1 2.34, floor 2 4.68, roof 7.30 | 3 / 3 |
+| **the set, as built** | floor 1 2.34, floor 2 4.68, roof 7.32, roof edge / parapet 0.16 | floor 1 2.34, floor 2 4.68, roof 7.32, roof edge / parapet 0.16 | 4 / 4 |
+
+the roof is printed at two edges, +7.32 and +7.48 (a 16 cm fall); D-D also prints N.P.T -20 (a step outside, in centimetres).
+
+#### Loughborough pair of houses (DXF folder)
+
+| drawing | printed (by eye) | read | right? |
+|---|---|---|---|
+| Elevation_East (p1) | no level printed | nothing | yes |
+| Elevation_North (p1) | no level printed | nothing | yes |
+| Elevation_South (p1) | no level printed | nothing | yes |
+| Elevation_West (p1) | no level printed | nothing | yes |
+| **the set, as built** | — | — | — |
+
+four elevations drawn at full size with no level marks.
+
+**The roof's kind.** The farmhouse's main roof is a gable (its front and back elevations draw the ridge the whole length, its
+side elevations a triangle): read as a gable — front and back *rectangle*, west and east *triangle* (`roofOutline`). No set in
+the corpus has a hipped main roof drawn in elevations; the rule is tested on made-up outlines.
+
+**With the numbers hidden** (node, the Studio's own code, `E:/dev/tmp/s31/heights/measured.mjs`): every printed value taken
+off the farmhouse's sections and elevations, the heights measured from the level lines alone at the printed 1/4" = 1'-0" —
+19 of the 21 printed heights come back, all within 2 cm (the 2 lost: "+19'-0"" printed with no name on two sections, so with
+its number gone nothing is left). Quinta Monroy prints values only (no names): with them hidden there is nothing to measure.
+
+**What the 3D now shows** (`E:/dev/plotline-shots/s31/heights/`, each beside the same project with its heights taken away —
+as every project was before this lane):
+- **Quinta Monroy** — `quinta-building.png` / `quinta-building-before.png`: storeys of 2.34 m (were 3.20), the roof at
+  +7.32 with its 16 cm edge (was a 1.10 m parapet): the house stands a metre and a half lower among its neighbours.
+  `quinta-walk.png` / `quinta-walk-before.png`: the ground floor walked, its ceiling at 2.19 m (2.34 less the slab) just over
+  the door head; before, 3.05 m. Set panel: `quinta-heights.png`, `quinta-heights-sum.png`.
+- **Farmhouse** — `farm-building.png` / `farm-building-before.png`: the ground floor 3.05 m floor to floor, a gable roof from
+  the eave at +6.10 to the ridge at +8.89 with its gable ends (before: no roof at all over a floor still a picture). Its upper
+  floor is still a picture to trace (Stage 2: its lines pair into 184 "walls"), so the roof stands over the ground floor's
+  outline at its printed height, a storey of air under it until the 2nd floor is traced. Set panel: `farm-heights.png`,
+  `farm-heights-sum.png`.
+- **Eastern Housing Pearl** (a Dhaka brochure) — `pearl-heights-sum.png`: "No section or elevation in this set prints its
+  levels: every storey stays 3.20 m floor to floor, as before"; built, `pearl-building.png` is the tower as before.
+
+### Still not done, and why
+
+- **No Dhaka brochure in the corpus prints a section or an elevation in lines.** The 45 brochure PDFs in `Demo drawings`
+  were scanned page by page (`scan.mjs`): none has one; Sheltech Banani is pictures only. The heights the founder's clients
+  care about wait for an architect's set (PLAN_DRAWING_SETS §4). The made-up Dhaka-style section in the tests (basement,
+  ground, typical floors, ROOF, PARAPET, values in metres) is read right. Torukabbo's specification line "Double Height in
+  Ground Floor, up to 15'-0''" is words on a brochure page, not a level mark: not read.
+- **The slab.** No section or elevation in the corpus prints it; the farmhouse prints its 1st floor ceiling (+9'-0", a
+  1'-0" floor) only on a detail page of several details at several scales, which is not read for heights (their marks would
+  mix). Every built project takes 0.15 m unless a person types it.
+- **The roof is one box over the whole top floor**: an L-shaped house gets one roof over its box; no overhang, no dormers;
+  all slopes alike. Which way the ridge runs is the box's long side (the farmhouse's is right), not read from the elevations.
+- **A mark that is only a number** (Elemental) cannot be measured when its number is hidden; a value with no name at the top
+  of a section is taken as the roof (two within 1.3 m: its slab and edge) — a section cut through a 1.4 m parapet with no
+  words would read as a pitched roof. The panel shows it and a person corrects it.
+- **DXF elevations are not read for marks** (the folder path reads each DXF's lines for its picture; the Loughborough
+  elevations have no level marks anyway).
+- **After the build the heights cannot be changed in the Studio**: they are typed in What is in this set before building
+  (or the set is built again). A field for them in the project's floor list is the next step.
+- **A traced level's full-height wall** (3 m or more) stands its storey; a deliberately double-height wall on a traced ground
+  floor would be cut to the storey.
+
 ## Page by page
 
 ### Farmhouse drawing set (Amatect, US)

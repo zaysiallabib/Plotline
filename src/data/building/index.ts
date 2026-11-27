@@ -7,13 +7,15 @@ import * as bti from './demo-tower'
 import * as dmd from './dmd-tower'
 import { PROJECTS_KEY, parseProjects, projectTower } from './projects'
 import * as sheltech from './sheltech-tower'
+import type { TowerHeights } from './storeys'
 
 /**
  * A built-in tower module's shape; LEVELS: the stems of its traced ground floor / basements / rooftop (stand-ins on
  * their own floors in FLOORS) and the floor each stands on; ELEVATIONS: an imported building's floor heights by floor
- * number (m above the lowest floor; a floor not listed stands at floor × FLOOR_M).
+ * number (m above the lowest floor; a floor not listed stands at floor × FLOOR_M); STOREYS: a Studio project's storeys as its
+ * set's sections print them (data/building/storeys.ts: each floor's walls, the slab, the roof) — absent, every storey as before.
  */
-export type Tower = typeof bti & { LEVELS?: Record<string, number>; ELEVATIONS?: Record<number, number> }
+export type Tower = typeof bti & { LEVELS?: Record<string, number>; ELEVATIONS?: Record<number, number>; STOREYS?: TowerHeights }
 
 const TOWERS: Tower[] = [bti, sheltech, banani, dmd]
 

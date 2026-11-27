@@ -3,17 +3,28 @@
  * ground, basements. Each floor takes a drawing (a "type": one whole-floor drawing); one drawing may serve any floors.
  * He works down the list: Draw (a new drawing for that floor) or Use drawing… (one he has), Open, Clear; "Also on floors"
  * puts the open drawing on more floors; Show building stacks them. Saved in this browser (data/building/projects.ts).
+ * Session 31 frame: the column IS the project, whatever was dropped — its floors first, each saying where its drawing came
+ * from (Project.from: "from page 7 · 2ND FLOOR PLAN · 1 : 48", "from Flat-A.dxf", "traced on img_3.webp"), then the open
+ * drawing, the floor plans, the views kept from the set by kind, the site, and (signed in) members and links.
  */
 import { useState } from 'react'
 import { deriveFlats, deriveRooms, newId } from '../core'
 import type { Id, Unit } from '../core'
 import { drawingName, forkFloor, parseFloors, planOf, removeDrawing, setSlot, slotsOf, slotsText, slotsWith, type Project, type ProjectPlan, type Slot } from '../data/building/projects'
 import { copyKept, floorAnswer, setFloorAnswer } from '../viewer/arrange'
+import { titleOf } from '../viewer/defaults'
+import type { SheetKind } from '../import/sheets'
 import { emptyUnit } from './model'
 import { copyPicture, deletePicture } from './pictures'
 import { ask, askText } from '../lib/ask'
 
-const nameOf = (u: Pick<Unit, 'name'> | undefined) => u?.name.trim() || 'Untitled drawing'
+/** a drawing's name: its own, else what Preview 3D calls it ("Floor plan A", "Type A"); per unit object (the list re-renders every second) */
+const titleCache = new WeakMap<Unit, string>()
+const nameOf = (u: Unit | undefined): string => {
+  const own = u?.name.trim()
+  if (!u || own || !u.walls.length) return own || 'Untitled drawing'
+  return titleCache.get(u) ?? titleCache.set(u, titleOf(u, deriveRooms(u))).get(u)!
+}
 /** a drawing's flats, "Type A, Type B" (derived, never stored); per unit object: the list re-renders every second */
 const flatCache = new WeakMap<Unit, string>()
 const flatsOf = (u: Unit | undefined): string => {
@@ -41,7 +52,7 @@ export function NewProject({ onCreate }: { onCreate: (name: string, plan: Projec
       <strong>New project</strong>
       <label>
         <span>Name</span>
-        <input value={name} placeholder="e.g. Sheltech Banani" onChange={(e) => setName(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && create()} />
+        <input autoFocus value={name} placeholder="e.g. Sheltech Banani" onChange={(e) => setName(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && create()} />
       </label>
       <div className="pair">
         <label>
@@ -86,12 +97,29 @@ interface Props {
   onToast: (text: string) => void
   /** a kept drawing of the set (Project.sheets), shown big */
   onSheet: (id: Id, title: string) => void
+  /** where the building stands (one site for the project): its line, and the Site panel opened / closed (as ⋯ → Site) */
+  site: { line: string; open: boolean; onToggle: () => void }
+  /** signed in to a company: the account card on its Members or Links (as ⋯ → your email); absent: neither shows */
+  onAccount?: (pane: 'members' | 'links') => void
+  /** the open drawing's name while none is typed, as the top bar shows it ("Floor plan A"): worked out once, by the Studio */
+  untitled: string
 }
 
-/** what a kept drawing is, in the list: "Elevation · south" */
-const SHEET_WORDS: Record<string, string> = { elevation: 'Elevation', section: 'Section', site: 'Site plan', schedule: 'Schedule', interior: 'Interior elevation', detail: 'Detail', title: 'Title page', other: 'Drawing', plan: 'Plan' }
+/** the views kept from the set, by kind, in the order an architect's set binds them: "Elevations 4" */
+const KEPT_GROUPS: [SheetKind, string][] = [
+  ['site', 'Site'],
+  ['elevation', 'Elevations'],
+  ['section', 'Sections'],
+  ['schedule', 'Schedules'],
+  ['interior', 'Interior elevations'],
+  ['detail', 'Details'],
+  ['title', 'Title pages'],
+  ['other', 'Other drawings'],
+  ['plan', 'Plans'],
+]
+const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1)
 
-export function FloorList({ projects, project, drawing, unit, fresh, onStore, onCreate, onActivate, onOpen, onRename, onFurnish, onShow, onOldWay, onClose, onToast, onSheet }: Props) {
+export function FloorList({ projects, project, drawing, unit, fresh, onStore, onCreate, onActivate, onOpen, onRename, onFurnish, onShow, onOldWay, onClose, onToast, onSheet, site, onAccount, untitled }: Props) {
   const [also, setAlso] = useState<Record<Id, string>>({})
   // a clicked button lets go of the keys (Enter / Space on it again must not draw another floor)
   const blur = (e: React.MouseEvent) => e.target instanceof HTMLButtonElement && e.target.blur()
@@ -126,7 +154,7 @@ export function FloorList({ projects, project, drawing, unit, fresh, onStore, on
     )
 
   const pid = project.id
-  const named = (id: Id) => (id === drawing ? nameOf(unit) : nameOf(project.units[id]))
+  const named = (id: Id) => (id === drawing ? unit.name.trim() || untitled : nameOf(project.units[id]))
   const drawings = Object.keys(project.units).sort((a, b) => named(a).localeCompare(named(b)))
   const mine = (ps: Project[]) => ps.find((p) => p.id === pid)
   const change = (f: (p: Project) => Project) => {
@@ -162,10 +190,15 @@ export function FloorList({ projects, project, drawing, unit, fresh, onStore, on
     if (!src) return
     const u: Unit = { ...src, id: newId(), name: `${nameOf(src)} copy` }
     void copyPicture(id, u.id)
-    if (change((p) => ({ ...p, units: { ...p.units, [u.id]: u } }))) onToast(`${u.name}: type its floors under Floor plans, or Use drawing… on a floor`)
+    if (change((p) => ({ ...p, units: { ...p.units, [u.id]: u }, ...(p.from?.[id] ? { from: { ...p.from, [u.id]: p.from[id] } } : {}) }))) onToast(`${u.name}: type its floors under Floor plans, or Use drawing… on a floor`)
   }
   /** where drawing `id` stands now, bottom up: "B1, G, 2, 4, 6, Roof" */
   const floorsOf = (id: Id) => slotsText(slotsWith(project, id))
+  /** where drawing `id` came from, as said when it came in; an older project's picture drawing: the picture it was traced on */
+  const sourceOf = (id: Id): string => {
+    const u = id === drawing ? unit : project.units[id]
+    return project.from?.[id]?.line ?? (u?.planImage?.src ? `traced on ${u.planImage.src}` : '')
+  }
   /**
    * "This floor only" (founder 2026-11-20): floor `slot` gets its own copy of drawing `id` (forkFloor: the others keep it),
    * with its picture, arranged layout and notes, and the copy opens — what he changes then stays on this floor.
@@ -236,6 +269,71 @@ export function FloorList({ projects, project, drawing, unit, fresh, onStore, on
           </button>
         </p>
       )}
+      <h4 className="floors-h">Floors</h4>
+      <ul className="slots" aria-label="Floors">
+        {slotsOf(project).map((r) => {
+          const id = r.unitIds[0]
+          const here = !!id && id === drawing
+          /** its drawing is on other floors too: the menu offers "This floor only" */
+          const shared = !!id && r.unitIds.length === 1 && slotsWith(project, id).length > 1
+          // a whole-floor drawing's flats under its name: "Floor 2 — Type A, Type B"
+          const flats = r.unitIds.length === 1 ? flatsOf(here ? unit : project.units[id]) : ''
+          const from = id ? sourceOf(id) : ''
+          return (
+            <li key={String(r.slot)} className={here ? 'here' : ''}>
+              <span className="lbl">{r.label}</span>
+              <span className={id ? 'dwg' : 'dwg muted'}>{id ? `${named(id)}${r.unitIds.length > 1 ? ` + ${r.unitIds.length - 1} more` : ''}` : 'empty'}</span>
+              {flats && (
+                <span className="flats" title="The flats in this drawing (rooms joined by doors)">
+                  — {flats}
+                </span>
+              )}
+              {from && (
+                <span className="from" title={from}>
+                  {from}
+                </span>
+              )}
+              <span className="acts">
+                {!id ? (
+                  <button title={`A new drawing for ${r.label.toLowerCase()}`} onClick={() => draw(r.slot)}>
+                    Draw
+                  </button>
+                ) : (
+                  !here && (
+                    <button title="Open this drawing in the Studio" onClick={() => onOpen(fresh(), id)}>
+                      Open
+                    </button>
+                  )
+                )}
+                {drawings.length > 0 && (
+                  <select
+                    value=""
+                    title={`Put one of your drawings on this floor${shared ? `, or give ${r.label.toLowerCase()} its own copy of "${named(id)}" (This floor only): what you change on it then stays on this floor` : ''}`}
+                    onChange={(e) => {
+                      const v = e.target.value
+                      if (v === OWN) ownFloor(r.slot, id, r.label)
+                      else if (v) change((p) => setSlot(p, r.slot, p.units[v] ?? null))
+                    }}
+                  >
+                    <option value="">Use drawing…</option>
+                    {drawings.map((d) => (
+                      <option key={d} value={d}>
+                        {named(d)}
+                      </option>
+                    ))}
+                    {shared && <option value={OWN}>This floor only — its own copy</option>}
+                  </select>
+                )}
+                {id && (
+                  <button className="link" title="This floor is empty again (the drawing is kept)" onClick={() => change((p) => setSlot(p, r.slot, null))}>
+                    Clear
+                  </button>
+                )}
+              </span>
+            </li>
+          )
+        })}
+      </ul>
       {inProject ? (
         <section className="open-drawing">
           <label>
@@ -323,80 +421,54 @@ export function FloorList({ projects, project, drawing, unit, fresh, onStore, on
           ))}
         </section>
       )}
-      <ul className="slots">
-        {slotsOf(project).map((r) => {
-          const id = r.unitIds[0]
-          const here = !!id && id === drawing
-          /** its drawing is on other floors too: the menu offers "This floor only" */
-          const shared = !!id && r.unitIds.length === 1 && slotsWith(project, id).length > 1
-          // a whole-floor drawing's flats under its name: "Floor 2 — Type A, Type B"
-          const flats = r.unitIds.length === 1 ? flatsOf(here ? unit : project.units[id]) : ''
-          return (
-            <li key={String(r.slot)} className={here ? 'here' : ''}>
-              <span className="lbl">{r.label}</span>
-              <span className={id ? 'dwg' : 'dwg muted'}>{id ? `${named(id)}${r.unitIds.length > 1 ? ` + ${r.unitIds.length - 1} more` : ''}` : 'empty'}</span>
-              {flats && (
-                <span className="flats" title="The flats in this drawing (rooms joined by doors)">
-                  — {flats}
-                </span>
-              )}
-              <span className="acts">
-                {!id ? (
-                  <button title={`A new drawing for ${r.label.toLowerCase()}`} onClick={() => draw(r.slot)}>
-                    Draw
-                  </button>
-                ) : (
-                  !here && (
-                    <button title="Open this drawing in the Studio" onClick={() => onOpen(fresh(), id)}>
-                      Open
-                    </button>
-                  )
-                )}
-                {drawings.length > 0 && (
-                  <select
-                    value=""
-                    title={`Put one of your drawings on this floor${shared ? `, or give ${r.label.toLowerCase()} its own copy of "${named(id)}" (This floor only): what you change on it then stays on this floor` : ''}`}
-                    onChange={(e) => {
-                      const v = e.target.value
-                      if (v === OWN) ownFloor(r.slot, id, r.label)
-                      else if (v) change((p) => setSlot(p, r.slot, p.units[v] ?? null))
-                    }}
-                  >
-                    <option value="">Use drawing…</option>
-                    {drawings.map((d) => (
-                      <option key={d} value={d}>
-                        {named(d)}
-                      </option>
-                    ))}
-                    {shared && <option value={OWN}>This floor only — its own copy</option>}
-                  </select>
-                )}
-                {id && (
-                  <button className="link" title="This floor is empty again (the drawing is kept)" onClick={() => change((p) => setSlot(p, r.slot, null))}>
-                    Clear
-                  </button>
-                )}
-              </span>
-            </li>
-          )
-        })}
-      </ul>
       {!!project.sheets?.length && (
         <section className="kept">
           <h4 title="The set's elevations, sections, site plan and schedules, kept as they are: nothing is traced on them">Kept from the drawing set</h4>
-          <ul>
-            {project.sheets.map((s) => (
-              <li key={s.id}>
-                <button title={`${s.title} — ${s.file}, page ${s.page}${s.scale ? `, 1 : ${s.scale}` : ''}`} onClick={() => onSheet(s.id, s.title)}>
-                  <span className="lbl">
-                    {SHEET_WORDS[s.kind] ?? s.kind}
-                    {s.which ? ` · ${s.which}` : ''}
-                  </span>
-                  <span className="muted">{s.title}</span>
-                </button>
-              </li>
-            ))}
-          </ul>
+          {KEPT_GROUPS.map(([kind, words]) => {
+            const these = project.sheets!.filter((x) => x.kind === kind)
+            if (!these.length) return null
+            return (
+              // a long group (a set's ten interior elevations) starts folded; a click on its name opens it
+              <details key={kind} open={these.length <= 4}>
+                <summary>
+                  <span className="lbl">{words}</span>
+                  <span className="muted">{these.length}</span>
+                </summary>
+                <ul>
+                  {these.map((x) => (
+                    <li key={x.id}>
+                      <button title={`${x.title} — ${x.file}, page ${x.page}${x.scale ? `, 1 : ${x.scale}` : ''}`} onClick={() => onSheet(x.id, x.title)}>
+                        {x.which && <span className="lbl">{cap(x.which)}</span>}
+                        <span className={x.which ? 'muted' : ''}>{x.title || `Page ${x.page}`}</span>
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              </details>
+            )
+          })}
+        </section>
+      )}
+      <section className="site-line">
+        <span className="label">Site</span>
+        <span className="muted" title={site.line}>
+          {site.line}
+        </span>
+        <button className="link" title="Where the building stands: the map, the plot, true north (as ⋯ → Site)" onClick={site.onToggle}>
+          {site.open ? 'Close' : 'Open'}
+        </button>
+      </section>
+      {onAccount && (
+        <section className="site-line">
+          <span className="label">Team</span>
+          <span>
+            <button className="link" title="Everyone in your company and those invited (your account card)" onClick={() => onAccount('members')}>
+              Members
+            </button>
+            <button className="link" title="Every buyer link made from this project: opens, notes, choices, turn one off (your account card)" onClick={() => onAccount('links')}>
+              Links
+            </button>
+          </span>
         </section>
       )}
     </aside>

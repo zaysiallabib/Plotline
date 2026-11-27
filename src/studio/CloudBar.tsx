@@ -24,13 +24,15 @@ interface Props {
   /** rename what is open (its name lives in the Studio; the next save takes it to the cloud) */
   onRenameOpen: (name: string) => void
   toast: (text: string) => void
-  /** the account card is open (TopBar's ⋯ → Sign in / your email toggles it) */
-  open: boolean
+  /** the account card is open, on this pane (TopBar's ⋯ → Sign in / your email toggles it; the project column's Members / Links) */
+  open: Pane | false
   onClose: () => void
   /** the save word was clicked: open the card */
   onCard: () => void
 }
 
+/** the account card's three panes */
+export type Pane = 'projects' | 'members' | 'links'
 const when = (iso: string) => new Date(iso).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })
 
 export default function CloudBar(p: Props) {
@@ -97,7 +99,7 @@ export default function CloudBar(p: Props) {
         </button>
       )}
       {p.open && (
-        <div className="popover project cloud" onKeyDown={(e) => e.stopPropagation()}>
+        <div className="popover project cloud" key={p.open} onKeyDown={(e) => e.stopPropagation()}>
           <div className="head">
             <strong>{session ? 'Your account' : 'Sign in'}</strong>
             <button className="link" onClick={p.onClose}>
@@ -161,7 +163,7 @@ function SignedIn({ email, user, org, status, saver, bar }: { email: string; use
   const [rows, setRows] = useState<CloudRow[] | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [history, setHistory] = useState<{ row: CloudRow; saves: SavedVersion[] } | null>(null)
-  const [pane, setPane] = useState<'projects' | 'members' | 'links'>('projects')
+  const [pane, setPane] = useState<Pane>(bar.open || 'projects')
   const openKey = bar.snapshot()?.key
   const links = linkStore(user)
   const openId = openKey ? links.get(openKey)?.id : undefined

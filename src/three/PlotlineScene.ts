@@ -21,7 +21,7 @@ import { LineSegments2 } from 'three/addons/lines/LineSegments2.js'
 import { LineSegmentsGeometry } from 'three/addons/lines/LineSegmentsGeometry.js'
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js'
 import { XRControls } from './xr'
-import { Building, type TowerHit } from './building'
+import { Building, onStorey, type TowerHit } from './building'
 import { LITE_MAX_TRIANGLES, loadShell } from './shell'
 import * as core from '../core'
 import type { Configuration, FinishSlot, FurniturePlacement, Id, MaterialRef, Pillar, Pt, Room, Shell, Unit, Wall } from '../core'
@@ -768,6 +768,7 @@ export class PlotlineScene {
     if (!this.builtFrom || !sameDrawing(this.builtFrom.unit, unit)) (this.days = new Map()), (this.dayKeep = new Map()) // (a kept flat keeps the old)
     this.asked = new WeakMap() // (its lamps: every program's)
     this.builtFrom = { unit, cover: this.cover, down: this.down.join() }
+    unit = onStorey(unit) // a project whose set prints its storeys: its full walls as tall as this floor's (its ceiling there)
     unit = raiseHeads(unit) // a window on a 1.1 m wall: the wall reaches the storey, as the bake, the curtains and the ceiling see it
     unit = closeGaps(unit) // two wall ends in line with a gap: a cased opening on a stand-in wall (same rooms)
     // the page's first flat: its programs asked for now, made while it is built and its models come in (Look.prewarm) — the
@@ -981,7 +982,7 @@ export class PlotlineScene {
    */
   private *replace(unit: Unit): Generator<void> {
     this.wake()
-    this.unit = closeGaps(raiseHeads(unit)) // (as build: its floor is what changed)
+    this.unit = closeGaps(raiseHeads(onStorey(unit))) // (as build: its floor is what changed)
     this.blocks = neighbours(this.unit, this.street ?? { walls: core.unitBounds(this.unit) })
     this.day = yield* this.bake(this.unit)
     yield

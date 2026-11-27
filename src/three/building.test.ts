@@ -996,3 +996,124 @@ describe('round the flat the tower is a handful of draws (session 31 perf: the c
     b.dispose()
   })
 })
+
+/** the tower above, built before this lane (s31/redesign 0382eba): every vertex where it was */
+const UNCHANGED = '558304:74884131.6'
+
+describe('the storeys the set prints (session 31 heights: data/building/storeys.ts)', () => {
+  const stop = { addColorStop: () => {} }
+  const draw = new Proxy({}, { get: (_, k) => (k === 'getImageData' ? () => ({ data: new Uint8ClampedArray(4) }) : k === 'measureText' ? () => ({ width: 1 }) : () => stop), set: () => true })
+  const g = globalThis as unknown as Record<string, unknown>
+  g.document ??= { createElement: () => ({ width: 0, height: 0, style: {}, getContext: () => draw }), createElementNS: () => ({ addEventListener() {}, removeEventListener() {}, style: {} }) }
+  g.requestAnimationFrame ??= () => 0
+  const fixture = async () => {
+    const { default: f } = await import('../data/fixtures/autotrace-bti-floor-2026-11-20.json')
+    return { ...(f as unknown as Unit), id: 'bti-floor' }
+  }
+  const built = async (t: Tower, u: Unit, k: number) => {
+    const { Building } = await import('./building')
+    const b = new (Building as unknown as new (u: Unit, t: Tower, s: string, k: number, q: string) => Group & { make(): Generator<void>; levelOf(k: number): number; streetY: number })(u, t, 'bti-floor', k, 'high')
+    for (const _ of b.make()); // eslint-disable-line @typescript-eslint/no-unused-vars
+    b.updateMatrixWorld(true)
+    return b
+  }
+  /** every vertex the tower draws, where it draws it, folded into one number (and how many) */
+  const print = (b: Group) => {
+    let n = 0
+    let sum = 0
+    b.traverse((o) => {
+      const geo = (o as Mesh).geometry
+      if (!geo?.attributes.position) return
+      const p = geo.attributes.position
+      const e = o.matrixWorld.elements
+      for (let i = 0; i < p.count; i++) {
+        const [x, y, z] = [p.getX(i) + e[12], p.getY(i) + e[13], p.getZ(i) + e[14]]
+        sum += ((x * 3.1 + y * 1.7 + z * 0.9) * ((i % 7) + 1)) % 1000
+        n++
+      }
+    })
+    return `${n}:${sum.toFixed(1)}`
+  }
+
+  test('a project whose set has no section: the very same tower, vertex for vertex, as before this lane', async () => {
+    const u = await fixture()
+    const t = projectTower(makeProject('p', u, 2, 6, 'none'))
+    expect(t.STOREYS).toBeUndefined()
+    expect(print(await built(t, { ...u, floor: 3 }, 3))).toBe(UNCHANGED)
+  })
+
+  test('read storeys: each floor at its level, its walls a slab short of the next, the roof slab and parapet as printed; the street under the ground floor', async () => {
+    const u = await fixture()
+    const p = { ...makeProject('p', u, 1, 3, 'none'), heights: { floors: { 0: 0, 1: 4.5, 2: 7.55 }, roofM: 13.85, parapetM: 1, slabM: 0.2 } }
+    const t = projectTower(p)
+    expect(t.ELEVATIONS).toEqual({ 0: 0, 1: 4.5, 2: 7.55, 3: 10.6, 4: expect.closeTo(16.9, 6) })
+    expect(t.STOREYS!.walls[2]).toBeCloseTo(2.85)
+    expect(t.STOREYS!.walls[3]).toBeCloseTo(6.1) // (the section's top storey, 6.3 m to the roof slab, kept over the top floor)
+    const b = await built({ ...t, CORE: [] }, { ...u, floor: 2 }, 2) // (no stair head room on the roof: the parapet is the roof's top)
+    expect(b.levelOf(3) - b.levelOf(2)).toBeCloseTo(3.05)
+    expect(b.streetY).toBeCloseTo(b.levelOf(0) - 0.2)
+    // floor 1's shells reach 4.5 − 0.2 over its floor; the roof's parapet 1 m over the roof slab
+    const top = (k: number) => {
+      let y = -Infinity
+      b.traverse((o) => {
+        if (o.userData.level !== k || !(o as Mesh).geometry) return
+        ;(o as Mesh).geometry.computeBoundingBox()
+        y = Math.max(y, (o as Mesh).geometry.boundingBox!.max.y + o.matrixWorld.elements[13])
+      })
+      return y
+    }
+    expect(top(0) - b.levelOf(0)).toBeCloseTo(4.3, 2) // (the ground: the flat's shell stands in, its columns' height)
+    expect(top(1) - b.levelOf(1)).toBeCloseTo(2.85, 2)
+    expect(top(4) - b.levelOf(4)).toBeCloseTo(1, 2)
+  })
+
+  test('a pitched roof: no parapet, two slopes up to the ridge over the top floor', async () => {
+    const u = await fixture()
+    const ft = (f: number) => f * core.FT
+    const p = { ...makeProject('p', u, 1, 1, 'none'), heights: { floors: { 0: 0, 1: ft(10) }, ceilingM: ft(19), eaveM: ft(20), ridgeM: ft(29 + 2 / 12) } }
+    const t = projectTower(p)
+    expect(t.CORE).toEqual([]) // (no stair head through a pitched roof)
+    const b = await built(t, { ...u, floor: 1 }, 1)
+    let ridge = -Infinity
+    b.traverse((o) => {
+      if (o.userData.level !== 2 || !(o as Mesh).geometry) return
+      ;(o as Mesh).geometry.computeBoundingBox()
+      ridge = Math.max(ridge, (o as Mesh).geometry.boundingBox!.max.y + o.matrixWorld.elements[13])
+    })
+    expect(ridge - b.levelOf(0)).toBeCloseTo(ft(29 + 2 / 12), 3)
+  })
+
+  test('the roof itself: the ridge down the long middle, the slopes from the eaves, gables from the slab', async () => {
+    const { pitchedRoof } = await import('./building')
+    const r = pitchedRoof([{ x: 0, y: 0 }, { x: 4, y: 10 }, { x: 0, y: 10 }, { x: 4, y: 0 }], { x: 1, y: 0 }, 5, 5.5, 8)
+    const pos = r.cover.attributes.position
+    const top = [...Array(pos.count).keys()].filter((i) => pos.getY(i) === 8).map((i) => [pos.getX(i), pos.getZ(i)])
+    expect(new Set(top.map(([x]) => x))).toEqual(new Set([2])) // (the long side runs along y: the ridge at x = 2)
+    expect(Math.min(...[...Array(pos.count).keys()].map((i) => pos.getY(i)))).toBe(5.5)
+    r.walls.computeBoundingBox()
+    expect([r.walls.boundingBox!.min.y, r.walls.boundingBox!.max.y]).toEqual([5, 8])
+    // hipped: the ridge 10 − 4 m long, slopes at the ends too, no gable — the walls only the knee up to the eave
+    const h = pitchedRoof([{ x: 0, y: 0 }, { x: 4, y: 10 }, { x: 0, y: 10 }, { x: 4, y: 0 }], { x: 1, y: 0 }, 5, 5.5, 8, true)
+    const hp = h.cover.attributes.position
+    const ridge = [...Array(hp.count).keys()].filter((i) => hp.getY(i) === 8).map((i) => hp.getZ(i))
+    expect([Math.min(...ridge), Math.max(...ridge)]).toEqual([2, 8])
+    h.walls.computeBoundingBox()
+    expect(h.walls.boundingBox!.max.y).toBe(5.5)
+  })
+
+  test('the walked flat stands its storey: its full walls as tall as the tower draws that floor', async () => {
+    const { onStorey } = await import('./building')
+    const u = await fixture()
+    const t = projectTower({ ...makeProject('p', u, 1, 3, 'none'), heights: { floors: { 0: 0, 1: 4.5, 2: 7.55 }, roofM: 13.85, slabM: 0.2 } })
+    const full = (x: Unit) => [...new Set(x.walls.filter((w) => w.heightM >= 2.4).map((w) => +w.heightM.toFixed(3)))]
+    const ps = JSON.stringify([{ ...makeProject('p', u, 1, 3, 'none'), heights: { floors: { 0: 0, 1: 4.5, 2: 7.55 }, roofM: 13.85, slabM: 0.2 } }])
+    const was = globalThis.localStorage
+    Object.assign(globalThis, { localStorage: { getItem: () => ps, setItem() {}, removeItem() {} } })
+    try {
+      expect(full(onStorey({ ...u, floor: 2 }))).toEqual([+t.STOREYS!.walls[2].toFixed(3)])
+      expect(full(onStorey({ ...u, id: 'no-project', floor: 2 }))).toEqual(full(u))
+    } finally {
+      Object.assign(globalThis, { localStorage: was })
+    }
+  })
+})
