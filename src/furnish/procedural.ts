@@ -2368,6 +2368,8 @@ function makeOutMats() {
     render: pbr('plaster_white', { tint: '#dbd3c6' }),
     concrete: pbr('plaster_white', { tint: '#a9a59d', scale: 0.5 }),
     alu: flat('#c4c6c4', 0.38, 0.55), // anodised aluminium: louvres, frames, the awning's cassette
+    // 24 mm laminated glass seen edge-on and from below: a green-grey tint that reads as glass (the furniture's 0.18 glass vanished)
+    canopyGlass: flat('#bcd2cc', 0.06, 0, { transparent: true, opacity: 0.42, depthWrite: false }),
     charcoal: flat('#3b3d3f', 0.5, 0.35), // powder-coated aluminium: fins
     canvas: twoSided(pbr('fabric_curtain', { tint: '#4c6a5c' })), // awning canvas, deep sage; boxUV (not drape's own UVs)
     flagGreen: twoSided(flat('#006a4e', 0.85)),
@@ -2441,8 +2443,8 @@ function canopySlab({ x: W, y: H, z: D }: Size3): THREE.Mesh[] {
  * stainless tie rods up to brackets 0.6 m up the wall (one more rod every ~1.5 m across).
  */
 function canopyGlass({ x: W, y: H, z: D }: Size3): THREE.Mesh[] {
-  const m = M()
-  const out: THREE.Mesh[] = [box(W, 0.024, D, m.glass, 0, 0.012, 0), box(W, 0.08, 0.06, m.steel, 0, 0.04, -D / 2 + 0.03), box(W, 0.03, 0.02, m.steel, 0, 0.015, D / 2 - 0.01)]
+  const [m, o] = [M(), O()]
+  const out: THREE.Mesh[] = [box(W, 0.024, D, o.canopyGlass, 0, 0.012, 0), box(W, 0.08, 0.06, m.steel, 0, 0.04, -D / 2 + 0.03), box(W, 0.03, 0.02, m.steel, 0, 0.015, D / 2 - 0.01)]
   const n = Math.max(2, Math.ceil(W / 1.5) + 1)
   for (let i = 0; i < n; i++) {
     const x = -W / 2 + 0.1 + ((W - 0.2) * i) / (n - 1)
@@ -2597,7 +2599,7 @@ function solarPanels({ x: W, y: H, z: D }: Size3): THREE.Mesh[] {
   const t = 0.035
   const depth = l * Math.cos(a) + t * Math.sin(a)
   const yc = H - (l * Math.sin(a) + t * Math.cos(a)) / 2
-  const n = Math.max(1, Math.floor((W - 0.04 + gap) / (w + gap)))
+  const n = Math.max(1, Math.floor((W - 0.04 + gap) / (w + gap))) // (procedural.meta.ts solarModules counts the same)
   const rows = Math.max(1, 1 + Math.floor((D - depth - 0.15) / 2))
   const out: THREE.Mesh[] = [...[-1, 1].map((s) => box(0.04, 0.04, D, o.alu, s * (W / 2 - 0.02), 0.02, 0))]
   // a point on a module (its own frame: v up through it, u back to front) in the piece

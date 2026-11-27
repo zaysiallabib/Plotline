@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { deriveRooms, type Unit } from '../core'
 import { FINISH_CATALOG } from '../furnish/finishes'
-import { kitAsset, objectKind } from '../furnish/kit'
+import { kitAsset, objectKind, placementLabel } from '../furnish/kit'
 import { furnish } from '../furnish/presets'
 import { library } from './furniture'
 import { entry, firstMatch, listing, pushRecent, RECENT_MAX, score } from './library'
@@ -80,6 +80,12 @@ describe('the Outside group (session 31): what hangs on a building or stands on 
     expect(entry('planter_edge')!.rooms).toEqual(['Greenery', 'Outside'])
     expect(entry('porch_roof')!.rooms).toEqual(['Outdoor', 'Outside'])
     expect(outside.kinds.map((k) => k.name)).toEqual(expect.arrayContaining(['Sunshades', 'Canopies and porch roofs', 'Screens and fins', 'Solar panels']))
+  })
+
+  it('a piece fitted to its window says its built size: a 3.6 m window gets a 3.9 m sunshade; a bigger solar frame its modules', () => {
+    expect(placementLabel({ assetId: 'sunshade', sizeM: { x: 3.9, y: 0.1, z: 0.6 } })).toBe('Sunshade (chhajja), concrete (3.9 m)')
+    expect(placementLabel({ assetId: 'solar_panel', sizeM: { x: 4, y: 0.75, z: 4 } })).toBe('Solar panels, tilted (6 modules)')
+    expect(placementLabel({ assetId: 'porch_roof', sizeM: { x: 4.2, y: 2.75, z: 2.5 } })).toBe('Porch roof on posts (4.2 × 2.5 m)')
   })
 
   it('found by the words people use: chhajja, louver, jaali, aircon, PV', () => {

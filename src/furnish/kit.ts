@@ -4,7 +4,7 @@
  * Filled by the assets agent; presets (src/furnish/presets.ts) pick from here.
  */
 import { KIT } from './kit.data'
-import { ART, CURTAIN_D, CURTAINS, FIRE_ESCAPE_D, PLANTER, PLANTER_BOX_D, PLANTER_BOXES, planterAsset, POTTED, PROCEDURAL, SHRUBS, tableSeats, TREES, wardrobeDoors } from './procedural.meta'
+import { ART, CURTAIN_D, CURTAINS, FIRE_ESCAPE_D, PLANTER, PLANTER_BOX_D, PLANTER_BOXES, planterAsset, POTTED, PROCEDURAL, SHRUBS, solarModules, tableSeats, TREES, wardrobeDoors } from './procedural.meta'
 
 export type KitCategory =
   | 'bed'
@@ -216,6 +216,14 @@ const SIZED: Record<string, (s: Size3) => string> = {
       restate('ceiling_light_large', '50 cm', (s) => `${Math.round(s.x * 100)} cm`),
       restate('pendant_light', '42 cm', (s) => `${Math.round(s.x * 100)} cm`),
       ...['tv_55', 'tv_55_wall'].map((id) => restate(id, '55"', (s) => `${Math.round((55 * s.x) / 1.23)}"`)),
+      // the outside (session 31): a sunshade fitted to a 3.6 m window says 3.9 m
+      ...['sunshade', 'awning_fabric', 'fins_vertical', 'louvre_screen', 'jaali_screen', 'planter_edge'].map((id) => restate(id, '1.5 m', (s) => `${dec(s.x)} m`)),
+      ...['canopy_glass', 'canopy_slab'].map((id) => restate(id, '1.8 m', (s) => `${dec(s.x)} m`)),
+      restate('fire_escape', '2.4 m', (s) => `${dec(s.x)} m`),
+      restate('name_sign', '1.2 m', (s) => `${dec(s.x)} m`),
+      restate('rollershutter_window_01', '2.1 m', (s) => `${dec(s.x)} m`),
+      restate('porch_roof', '3.0 × 3.0 m', (s) => `${dec(s.x)} × ${dec(s.z)} m`),
+      restate('solar_panel', '2 modules', (s) => `${solarModules(s.x, s.z)} modules`),
     ],
   ),
 }
