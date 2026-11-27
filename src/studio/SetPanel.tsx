@@ -14,7 +14,7 @@
  */
 import { useEffect, useMemo, useState } from 'react'
 import { deriveRooms } from '../core'
-import type { PdfDoc } from '../import/pdf'
+import type { PdfDoc, ScaleFound } from '../import/pdf'
 import type { ImportResult } from '../import'
 import { KEPT, SHEET_KINDS, fileView, norm, parseSlots, readSheet, setChoices, slotsWords, type Box, type SetSlot, type SheetKind, type SheetRead, type Storeys, type View } from '../import/sheets'
 import { heightFields, heightsOf, setHeights, storeysOf, storeysWords, typedHeights, viewHeights, type HeightField, type Heights, type SetHeights } from '../import/heights'
@@ -76,6 +76,10 @@ export interface SetRow {
   marks?: number
   /** what the person typed over them, by field (remembered by its title) */
   typed?: Partial<Record<HeightField, string>>
+  /** a PDF plan's scale as its lines would be read (pdf.ts scaleFound), once known: a plan with none found is a picture to trace */
+  scale?: ScaleFound
+  /** the person chose to read its lines anyway, at the guessed size (remembered by its title) */
+  lines?: boolean
 }
 
 /** a row as the set will be built: its floors and whether it is used */
@@ -111,7 +115,7 @@ const GROUP_WORDS: Record<SheetKind, string> = {
 
 /** what the person chose for a drawing's title, kept in this browser for the next set (the layer list's pattern) */
 const CHOICES_KEY = 'plotline.sheetChoices'
-type Choice = { kind: SheetKind; which: string | null; tick: boolean | null; heights?: Partial<Record<HeightField, string>> }
+type Choice = { kind: SheetKind; which: string | null; tick: boolean | null; heights?: Partial<Record<HeightField, string>>; lines?: boolean }
 const readChoices = (): Record<string, Choice> => {
   try {
     return JSON.parse(localStorage.getItem(CHOICES_KEY) ?? '{}') as Record<string, Choice>
@@ -239,6 +243,7 @@ export default function SetPanel({ files, onRead, onOpenOne, onBuild, onClose, o
       const pdf = await import('../import/pdf')
       const mine = readChoices()
       const all: SetRow[] = []
+      const scaleOf = new Map<string, () => ScaleFound>()
       let at = 0
       for (const [fi, f] of files.entries()) {
         if (f.file) {
@@ -249,7 +254,7 @@ export default function SetPanel({ files, onRead, onOpenOne, onBuild, onClose, o
           const view: View = { ...fileView(f.name, read?.texts ?? [], roomsOf(read)), box: WHOLE }
           const r: SetRow = { key: `${fi}:1:0`, file: fi, page: 1, frame: WHOLE, view, kind: view.kind, which: null, tick: null, yours: false, ...(read ? { read } : {}) }
           const c = mine[keyOf(r)]
-          all.push(c ? { ...r, kind: c.kind, which: c.which, tick: c.tick, yours: true, ...(c.heights ? { typed: c.heights } : {}) } : r)
+          all.push(c ? { ...r, kind: c.kind, which: c.which, tick: c.tick, yours: true, ...(c.heights ? { typed: c.heights } : {}), ...(c.lines ? { lines: true } : {}) } : r)
           setRows([...all])
           continue
         }
@@ -271,8 +276,10 @@ export default function SetPanel({ files, onRead, onOpenOne, onBuild, onClose, o
             // photo and word pages are not read for them — their outlined letters are tens of thousands of lines)
             const h = page && ['section', 'elevation', 'detail', 'interior'].includes(view.kind) ? viewHeights(page, view) : null
             const r: SetRow = { key: `${fi}:${p}:${i}`, file: fi, page: p, frame: view.box, view, ...(read.number ? { number: read.number } : {}), kind: view.kind, which: null, tick: null, yours: false, ...(h ? { heights: heightsOf(h), marks: h.marks.length } : {}) }
+            // (a plan's scale is looked for after every page is read, with its picture: the list is not slower to come)
+            if (page && view.kind === 'plan') scaleOf.set(r.key, page.scale.bind(null, view.box, view.scale))
             const c = mine[keyOf(r)]
-            return c ? { ...r, kind: c.kind, which: c.which, tick: c.tick, yours: true, ...(c.heights ? { typed: c.heights } : {}) } : r
+            return c ? { ...r, kind: c.kind, which: c.which, tick: c.tick, yours: true, ...(c.heights ? { typed: c.heights } : {}), ...(c.lines ? { lines: true } : {}) } : r
           })
           all.push(...got)
           if (live.current) setRows([...all])
@@ -282,6 +289,9 @@ export default function SetPanel({ files, onRead, onOpenOne, onBuild, onClose, o
       setReading(null)
       for (const r of all) {
         if (!live.current) return
+        const scale = scaleOf.get(r.key)?.()
+        if (scale && live.current) setRows((rs) => rs.map((x) => (x.key === r.key ? { ...x, scale } : x)))
+        scaleOf.delete(r.key)
         const doc = files[r.file].doc
         const thumb = doc
           ? await pdf
@@ -330,7 +340,7 @@ export default function SetPanel({ files, onRead, onOpenOne, onBuild, onClose, o
 
   if (import.meta.env.DEV) Object.assign(window, { __plotlineSet: { rows: choices, reading: !!reading, heights } }) // the sets scoreboard reads what the list holds
   /** a change to a row, remembered by its title for the next set */
-  const change = (key: string, patch: Partial<Pick<SetRow, 'kind' | 'which' | 'tick' | 'typed'>>) =>
+  const change = (key: string, patch: Partial<Pick<SetRow, 'kind' | 'which' | 'tick' | 'typed' | 'lines'>>) =>
     setRows((rs) =>
       rs.map((r) => {
         if (r.key !== key) return r
@@ -338,7 +348,7 @@ export default function SetPanel({ files, onRead, onOpenOne, onBuild, onClose, o
         const k = keyOf(n)
         if (k) {
           const all = readChoices()
-          all[k] = { kind: n.kind, which: n.which, tick: n.tick, ...(n.typed && Object.keys(n.typed).length ? { heights: n.typed } : {}) }
+          all[k] = { kind: n.kind, which: n.which, tick: n.tick, ...(n.typed && Object.keys(n.typed).length ? { heights: n.typed } : {}), ...(n.lines ? { lines: true } : {}) }
           try {
             localStorage.setItem(CHOICES_KEY, JSON.stringify(all))
           } catch {
@@ -419,6 +429,16 @@ export default function SetPanel({ files, onRead, onOpenOne, onBuild, onClose, o
                       {c.view.use ? ` · ${c.view.use}` : ''}
                       {c.yours ? ' · as you set it' : c.view.by === 'shape' ? ' · read by its shape' : c.view.by === 'number' ? ' · read by its sheet number' : ''}
                     </span>
+                    {c.kind === 'plan' && c.scale && c.scale !== 'found' && (
+                      <span className="muted">
+                        {c.lines ? 'From its lines if they make rooms — its size guessed' : 'No scale printed — trace it'}
+                        {c.scale === 'guessed' && (
+                          <button className="link" title={c.lines ? 'Make it a picture to trace: set its scale (S), then Auto-trace' : 'Make it from its lines anyway, at a size guessed from the printed room sizes (often wrong)'} onClick={() => change(c.key, { lines: !c.lines })}>
+                            {c.lines ? 'Trace it instead' : 'Read its lines'}
+                          </button>
+                        )}
+                      </span>
+                    )}
                   </span>
                   <select value={c.kind} title="What kind of drawing this is" onChange={(e) => change(c.key, { kind: e.target.value as SheetKind })}>
                     {SHEET_KINDS.map((s) => (

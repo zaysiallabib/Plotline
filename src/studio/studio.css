@@ -312,6 +312,7 @@
 .set-group .what > * { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .set-group .what strong { font-weight: 500; }
 .set-group .what .muted { font-size: var(--fs-xs); }
+.set-group .what .muted .link { font-size: inherit; margin-left: var(--s-2); }
 .set-group .which.bad { border-color: var(--danger); }
 /* the one question a set of flat pages asks (several flats of the same floors): a tick and its sentence */
 .set-ask { display: flex; align-items: flex-start; gap: var(--s-3); margin: 0 0 var(--s-2); font-size: var(--fs-sm); color: var(--ink-2); max-width: 80ch; }

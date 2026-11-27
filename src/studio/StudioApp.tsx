@@ -1304,6 +1304,8 @@ export default function StudioApp() {
         reads.push(doc ? await pdf.importPdf(doc, files[r.file].name, r.page, r.frame, r.view.scale).catch(() => null) : (r.read ?? null))
       }
       const sure = (x: ImportResult | null): x is ImportResult => !!x && !!x.storeys[0]?.unit.walls.length && !x.notes.some((n) => /^Scale: [^.]*guessed|^Scale not set/.test(n))
+      // a PDF page's lines make its drawing when they make a plan at a scale found; else a picture to trace (its row's Read its lines)
+      const lined = (r: SetChoice, x: ImportResult) => pdf.drawnFromLines(x, !!r.lines)
       const rank = (r: SetChoice) => Math.min(...r.slots.map((s) => (s === 'R' ? 1e3 : s)))
       // (flats joined side by side on one floor are not stacked: nothing says where they stand)
       const joined = (r: SetChoice) => !!r.with || plans.some((m) => m.with === r.key)
@@ -1325,7 +1327,7 @@ export default function StudioApp() {
         if (group.length > 1) {
           // flats of the same floors, nothing saying where each stands: side by side, 2 m apart, each named by its page
           // ("TYPE-A") — their own lines when every one makes a plan, else one picture of them all to trace
-          const drawn = group.every(({ m, read }) => read && (m.read ? read.storeys[0]?.unit.walls.length : pdf.readsAsPlan(read)))
+          const drawn = group.every(({ m, read }) => read && (m.read ? read.storeys[0]?.unit.walls.length : lined(m, read)))
           let u: Unit = { ...emptyUnit() }
           if (drawn) {
             let x = 0
@@ -1371,7 +1373,7 @@ export default function StudioApp() {
         let u: Unit
         let offset: Pt = { x: 0, y: 0 }
         // (a DXF / SVG plan is its own lines whatever it makes: the file's lines are exact)
-        if (read && (r.read ? read.storeys[0]?.unit.walls.length : pdf.readsAsPlan(read))) (u = read.storeys[0].unit), (offset = at?.offset ?? offset)
+        if (read && (r.read ? read.storeys[0]?.unit.walls.length : lined(r, read))) (u = read.storeys[0].unit), (offset = at?.offset ?? offset)
         else {
           // its lines make no plan: the drawing's picture, to trace — scaled when the sheet's scale is known (printed 1 : n, or
           // its dimensions agree), lined up on the floors it stacks on (its picture's pixel for the building frame's origin)

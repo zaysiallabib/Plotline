@@ -1413,7 +1413,11 @@ to open that one drawing alone, as before (its lines when they make a plan, else
 project named after the file, its floors filled in from the floors read — basements, ground, floors, rooftop — each ticked
 plan the drawing of its floors (named Floor plan A, Ground floor, Rooftop… as always), read from its own lines when they
 make a plan, else its picture to trace, already scaled when the sheet's scale is known (printed under the drawing, or
-three of its dimensions agree). The border, the title block and a notes column beside the drawing are left out of what is
+three of its dimensions agree). **A plan with no scale on its page** (no scale printed, no three dimensions that agree — a
+brochure's plans) says "No scale printed — trace it" under its title and becomes a picture to trace, like the typical
+floors: its lines read at a size guessed from the room sizes came out a few metres across (Pearl's parking level a 4.7 ×
+5.5 m box of 63 slivers). **Read its lines** beside the words makes it from its lines anyway, at that guessed size (when
+they make rooms); **Trace it instead** undoes it. The border, the title block and a notes column beside the drawing are left out of what is
 read, and so are the sheet's own symbols: the elevation and section markers round the plan (a circle with its number and
 its triangle), grid bubbles, door and window tags, north arrows, the stair's UP / DN arrow and every note's arrow, and the
 zigzag break line where the plan cuts through a stair. A door drawn open at 45° comes in as a door, hinged where it is

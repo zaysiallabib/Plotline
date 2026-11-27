@@ -6,7 +6,7 @@
 import { existsSync, readdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { describe, expect, test } from 'vitest'
 import { deriveRooms, validate } from '../core'
-import { importPdf, readsAsPlan } from './pdf'
+import { drawnFromLines, importPdf, readsAsPlan, scaleFound } from './pdf'
 import { bezierArc, bigTexts, buildPlan, penRoles, previewPath, printedScale, sheetScale, sheetSymbols, type ArcPrim, type Seg } from './plan2d'
 
 const bytes = (path: string): ArrayBuffer => {
@@ -57,6 +57,24 @@ describe('pdf fixture', () => {
     // a frame round the living room's name only: no wall pair, its name alone
     const only = await importPdf(doc, 'two-rooms.pdf', 1, { x0: living.at.x - 40, y0: living.at.y - 20, x1: living.at.x + 40, y1: living.at.y + 20 }).catch((e: Error) => e)
     expect(only instanceof Error ? only.message : only.storeys[0].unit.walls.length).toSatisfy((x: unknown) => x === 'This PDF is a picture, not a drawing — use the picture itself' || x === 0)
+    await doc.loadingTask.destroy()
+  })
+
+  test("a set's plan page is drawn from its lines only at a scale found; at a guessed size it is a picture to trace (qa4fix)", async () => {
+    const { openPdf, readSheetPage } = await import('./pdf')
+    const doc = await openPdf(bytes(`${__dirname}/fixtures/two-rooms.pdf`))
+    const page = await readSheetPage(doc, 1)
+    expect(page.scale()).toBe('found') // its four printed dimensions agree
+    expect(page.scale(page.box, 50)).toBe('found') // printed under the drawing
+    const r = await importPdf(doc, 'two-rooms.pdf', 1)
+    expect(drawnFromLines(r)).toBe(true)
+    // the same lines at a size guessed from the room sizes (Pearl's Level-01): a picture, unless the person chose Read its lines
+    const guessed = { ...r, notes: r.notes.map((n) => (/^Scale/.test(n) ? sheetScale([{ a: { x: 0, y: 0 }, b: { x: 100, y: 100 }, layer: '' }], [{ layer: '', at: { x: 5, y: 5 }, text: `12'-0" x 10'-0"`, height: 3 }]).note : n)) }
+    expect(guessed.notes.some((n) => scaleFound(n) === 'guessed')).toBe(true)
+    expect(drawnFromLines(guessed)).toBe(false)
+    expect(drawnFromLines(guessed, true)).toBe(true)
+    expect(scaleFound(sheetScale([], []).note)).toBe('none')
+    expect(scaleFound('PDF: 1 page(s); page 1 read: 40 lines, 4 texts.')).toBe('none')
     await doc.loadingTask.destroy()
   })
 
