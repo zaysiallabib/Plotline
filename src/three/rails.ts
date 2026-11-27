@@ -12,7 +12,7 @@
 import * as THREE from 'three'
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js'
 import * as core from '../core'
-import type { LowWallKind, MaterialRef, Pt, Room, Unit, Wall } from '../core'
+import type { LowWallKind, MaterialRef, Pt, RailColor, Room, Unit, Wall } from '../core'
 import { GLAZING_GLASS } from './openings'
 
 type V3 = [number, number, number]
@@ -28,6 +28,17 @@ export const RAIL_TIMBER: MaterialRef = { kind: 'pbr', textureId: 'wood_veneer_l
 export const FENCE_TIMBER: MaterialRef = { kind: 'pbr', textureId: 'wood_veneer_light', tint: '#8d7257' }
 /** Galvanised steel: a chain-link fence's posts and top rail */
 export const FENCE_STEEL: MaterialRef = { kind: 'color', color: '#a2a7a9', roughness: 0.45, metalness: 0.5 }
+/** A railing's colours (Wall.railColor, core.railColors): each kind's own is the material it was always drawn in. */
+export const RAIL_COLOR: Record<RailColor, MaterialRef> = {
+  silver: RAIL_STEEL,
+  black: GRILLE_PAINT,
+  anthracite: { kind: 'color', color: '#3a4045', roughness: 0.45, metalness: 0.3 },
+  white: { kind: 'color', color: '#eceae4', roughness: 0.4, metalness: 0.1 },
+  teak: RAIL_TIMBER,
+  walnut: { kind: 'pbr', textureId: 'wood_veneer_light', tint: '#5e4030' },
+  oak: { kind: 'pbr', textureId: 'wood_veneer_light', tint: '#c49c6e' },
+  weathered: FENCE_TIMBER,
+}
 /** A diamond wire mesh (2 px wires on a 32 px tile, 6 cm a diamond) as an alpha picture: far off it fades to a grey haze, as chain-link does. */
 export const CHAIN_MESH = (() => {
   const N = 32
@@ -235,6 +246,7 @@ function infill(at: number[], max: number): number[] {
 export function railParts(w: Wall, graph: Graph): RailPart[] {
   const kind = core.railOf(w)
   if (!kind) return []
+  const paint = RAIL_COLOR[core.railColorOf(w) ?? 'silver'] // (its own colour, else its kind's: the material it always had)
   const { L, f, at } = localOf(w, graph)
   const H = w.heightM
   const out = new Map<MaterialRef | THREE.Material, THREE.BufferGeometry[]>()
@@ -251,8 +263,8 @@ export function railParts(w: Wall, graph: Graph): RailPart[] {
     const [a, b] = s
     if (k === 'glass') {
       const CH = Math.min(0.1, H / 3)
-      box(RAIL_STEEL, a, b, 0, CH, 0.035)
-      box(RAIL_STEEL, a, b, H - 0.045, H, 0.03)
+      box(paint, a, b, 0, CH, 0.035)
+      box(paint, a, b, H - 0.045, H, 0.03)
       const gap = 0.012
       const n = Math.max(1, Math.ceil((b - a) / 1.25))
       const pw = (b - a - (n + 1) * gap) / n
@@ -261,7 +273,7 @@ export function railParts(w: Wall, graph: Graph): RailPart[] {
     }
     if (k === 'railing' || k === 'timber') {
       const timber = k === 'timber'
-      const m = timber ? RAIL_TIMBER : RAIL_STEEL
+      const m = paint
       const [P, TOP, BAR] = timber ? [0.09, 0.05, 0.04] : [0.045, 0.04, 0.016]
       const ps = posts(s, P, 1.5)
       for (const u of ps) box(m, u - P / 2, u + P / 2, 0, H - TOP, P / 2)
@@ -275,32 +287,32 @@ export function railParts(w: Wall, graph: Graph): RailPart[] {
       const P = 0.04
       const [lo, hi] = [0.075, H - 0.035]
       const ps = posts(s, P, 1.8)
-      for (const u of ps) box(GRILLE_PAINT, u - P / 2, u + P / 2, 0, hi, P / 2)
-      box(GRILLE_PAINT, a, b, hi, H, 0.02)
-      box(GRILLE_PAINT, a, b, 0.04, lo, 0.02)
+      for (const u of ps) box(paint, u - P / 2, u + P / 2, 0, hi, P / 2)
+      box(paint, a, b, hi, H, 0.02)
+      box(paint, a, b, 0.04, lo, 0.02)
       const bars = infill(ps, 0.1)
-      for (const u of bars) box(GRILLE_PAINT, u - 0.006, u + 0.006, lo, hi, 0.006)
+      for (const u of bars) box(paint, u - 0.006, u + 0.006, lo, hi, 0.006)
       // the band: two flats at mid-height, crossed flats between each two bars (a row of diamonds)
       const mid = (lo + hi) / 2
       const [c0, c1] = [mid - 0.055, mid + 0.055]
       if (c0 - 0.015 <= lo || c1 + 0.015 >= hi) return
-      box(GRILLE_PAINT, a, b, c0 - 0.015, c0, 0.012)
-      box(GRILLE_PAINT, a, b, c1, c1 + 0.015, 0.012)
+      box(paint, a, b, c0 - 0.015, c0, 0.012)
+      box(paint, a, b, c1, c1 + 0.015, 0.012)
       const xs = [...new Set([...ps, ...bars])].sort((x, y) => x - y)
       for (let i = 0; i + 1 < xs.length; i++) {
-        put(GRILLE_PAINT, bar(at, { x: xs[i], y: c0 }, { x: xs[i + 1], y: c1 }, 0.01, -0.005, 0.005))
-        put(GRILLE_PAINT, bar(at, { x: xs[i], y: c1 }, { x: xs[i + 1], y: c0 }, 0.01, -0.005, 0.005))
+        put(paint, bar(at, { x: xs[i], y: c0 }, { x: xs[i + 1], y: c1 }, 0.01, -0.005, 0.005))
+        put(paint, bar(at, { x: xs[i], y: c1 }, { x: xs[i + 1], y: c0 }, 0.01, -0.005, 0.005))
       }
       return
     }
     if (k === 'fence') {
       const P = 0.08
-      for (const u of posts(s, P, 1.8)) box(FENCE_TIMBER, u - P / 2, u + P / 2, 0, H, P / 2)
+      for (const u of posts(s, P, 1.8)) box(paint, u - P / 2, u + P / 2, 0, H, P / 2)
       // two rails behind the boards (one on a fence under 0.7 m), the boards in front: the frame shows from behind only
-      for (const v of H >= 0.7 ? [0.2, H - 0.3] : [H / 2 - 0.04]) put(FENCE_TIMBER, along(at, a, b, v, v + 0.08, -0.039, -0.005))
+      for (const v of H >= 0.7 ? [0.2, H - 0.3] : [H / 2 - 0.04]) put(paint, along(at, a, b, v, v + 0.08, -0.039, -0.005))
       const n = Math.max(1, Math.round((b - a) / 0.11))
       const bw = (b - a) / n - 0.015
-      for (let i = 0; i < n; i++) put(FENCE_TIMBER, along(at, a + i * (bw + 0.015) + 0.0075, a + i * (bw + 0.015) + 0.0075 + bw, 0.05, H - 0.02, -0.06, -0.04))
+      for (let i = 0; i < n; i++) put(paint, along(at, a + i * (bw + 0.015) + 0.0075, a + i * (bw + 0.015) + 0.0075 + bw, 0.05, H - 0.02, -0.06, -0.04))
       return
     }
     // chain-link

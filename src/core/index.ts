@@ -103,7 +103,7 @@ export { mirrorUnit } from './mirror'
  * none; RoomLabel.flat pins a room to a flat by name ('' = none). Names from a "TYPE-A ±2736 SFT" label, else "Flat N".
  * railOf: what a low wall is made of (Wall.lowKind) when it is not solid plaster — over a kerb, under LOW_KIND_MAX_M.
  */
-export { LOW_KIND_MAX_M, LOW_WALL_M, deriveFlats, isCore, railOf, runsUp, takesLowKind, type Flat } from './flats'
+export { LOW_KIND_MAX_M, LOW_WALL_M, deriveFlats, isCore, railColorOf, railColors, railOf, runsUp, takesLowKind, type Flat } from './flats'
 /** "Type A" for a label of kind 'other' reading "TYPE-A ±2736 SFT" (it names its flat; deriveRooms gives it no face), else null. */
 export { flatTypeOf } from './graph'
 

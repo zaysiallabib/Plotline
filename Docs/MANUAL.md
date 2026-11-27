@@ -695,6 +695,11 @@ Works in Walk and Dollhouse; the mouse stays free, so drag empty space to look r
   shows it at once. To make a balcony glass-fronted: **Edit ▾ → Openings**, click the balcony's edge, **Made of → Glass**
   (each side of the balcony is its own low wall: click the next one and do the same). A solid one has **Cornice**: a
   stepped band under its cap. A passage in a railing or fence stays a gap — a gate.
+- **Colour** (a metal railing, a steel grille, a glass front's rails, a timber railing or fence): metal **Black**,
+  **Anthracite**, **White** or **Silver**; timber **Teak**, **Walnut**, **Light oak**, **Weathered timber**, or painted
+  **White** / **Black**. It starts as each kind was always drawn: a railing and a glass front's rails silver (stainless),
+  the steel grille black (the Dhaka enamel), a timber railing teak, a fence weathered. Changing what it is made of keeps the
+  colour when the new kind has it (a black railing becomes a black grille).
 - Keys: **Del** removes what is picked · **Ctrl+Z** undoes (one drag = one step) · **Esc** unpicks · **Alt** while
   dragging a low wall's end keeps its corner.
 - A window or a sliding door also has **Frame**: *Same as the building* (Finishes → Window frames), or its own colour —
@@ -1016,13 +1021,14 @@ had.
 - **Steps** — the checklist for the drawing open now ("The Steps" above).
 - **Selection** — the details of what you picked, to type exact values: a *corner* (position); a *wall* (Wall / Low wall
   / Kerb / Zone line, width, height, **Made of** for a low wall — Solid (plaster), Glass, Metal railing, Steel grille,
-  Timber railing, Timber fence, Chain-link fence — and for a solid one **Cornice under the cap**, **Stands alone** — a
+  Timber railing, Timber fence, Chain-link fence — then a railing's **Colour** (as in the 3D, §3 Edit openings), and for a
+  solid one **Cornice under the cap**, **Stands alone** — a
   screen or decoration wall not meant to close a room, **Outside** — what the outside of that wall is clad in, on every
   floor this plan stands on, or *Same as the building* (the 3D view's Finishes; §2 The building's outside) — length, copy,
   delete); an *opening* (Door / Sliding door / Window / Passage, width, height, sill, distance from each corner; for a door,
   hinge and swing; a window's or sliding door's **Frame** colour); a *column* (width, depth, delete); a *room name* (name, kind, **Flat**, printed size,
   floor level, ramp); a *piece* (position, turn, size, height from floor, reset).
-  - **Several things picked:** the walls' type, height, width, the low walls' Made of and Cornice (pick a whole
+  - **Several things picked:** the walls' type, height, width, the low walls' Made of, Colour and Cornice (pick a whole
     balcony's edge — a curved one's many short pieces too — and make it glass in one go), Stands alone, Outside ("mixed"
     when they differ); the openings' kind, width, height, sill. A
     box shows the value they share; "mixed" means they differ — type a value and every one takes it (one Ctrl+Z). An
@@ -1886,7 +1892,7 @@ is a job (hand-tested 2026-10-05, updated since).
 | Thing | In the 3D view | In the Studio | Cannot be changed anywhere |
 |---|---|---|---|
 | Wall | Its paint, one side at a time (Finishes open, click it); its outside finish — that wall, its floor or the whole building (staff: Finishes open, click its outside) | Yes — type, thickness (typed, or a face's dot), height, length, move, copy, delete; curved walls with A; **Outside** (what it is clad in) | — |
-| Boundary wall, parapet, low wall | Yes under 1.2 m — Edit openings: drag an end dot, drag it across, type Length / Height, **Made of** (solid, glass, metal railing, steel grille, timber railing, timber fence, chain-link), Cornice, delete; a solid one's outside finish as a wall's (Finishes) | Yes — plus Made of and Cornice up to 2.4 m (a fence, a boundary wall); **Outside** | The colour of its metal, timber or glass |
+| Boundary wall, parapet, low wall | Yes under 1.2 m — Edit openings: drag an end dot, drag it across, type Length / Height, **Made of** (solid, glass, metal railing, steel grille, timber railing, timber fence, chain-link), a railing's **Colour**, Cornice, delete; a solid one's outside finish as a wall's (Finishes) | Yes — plus Made of, Colour and Cornice up to 2.4 m (a fence, a boundary wall); **Outside** | The glass's tint; a chain-link fence's colour |
 | Balcony slab edge | It follows the balcony: every balcony's edge stands out | The same | Its depth and colour |
 | Kerb, free-standing screen | Yes under 1.2 m, as a low wall | Yes | — |
 | Glass wall | Yes — width, height, sill, slide, delete; its frame colour (Finishes → Window frames) | Yes | Glass colour. Cannot be *added* in 3D |

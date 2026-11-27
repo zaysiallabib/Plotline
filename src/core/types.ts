@@ -66,7 +66,12 @@ export interface Wall {
   lowKind?: LowWallKind
   /** a solid low wall's stepped cornice under its cap (off by default) */
   cornice?: true
+  /** a railing's own colour (core.railColorOf: one its kind offers, else its kind's own) — a metal railing black, a timber one walnut */
+  railColor?: RailColor
 }
+
+/** A railing's colour: metal (a railing, a grille, a glass front's rails) black / anthracite / white / silver; timber teak / walnut / oak / weathered, or painted white / black. */
+export type RailColor = 'black' | 'anthracite' | 'white' | 'silver' | 'teak' | 'walnut' | 'oak' | 'weathered'
 
 /**
  * A low wall that is not plaster: a glass balustrade (panes, a steel top rail, a base channel), a metal railing (posts,

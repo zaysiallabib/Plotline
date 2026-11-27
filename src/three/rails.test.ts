@@ -4,7 +4,7 @@ import { expect, test } from 'vitest'
 import * as core from '../core'
 import type { LowWallKind, Unit, Wall } from '../core'
 import { GLAZING_GLASS } from './openings'
-import { BAND_DOWN, BAND_P, BAND_UP, CAP_H, CAP_P, CHAIN_MESH, GRILLE_PAINT, RAIL_STEEL, balconyEdges, capGeometry, railParts } from './rails'
+import { BAND_DOWN, BAND_P, BAND_UP, CAP_H, CAP_P, CHAIN_MESH, GRILLE_PAINT, RAIL_COLOR, RAIL_STEEL, RAIL_TIMBER, balconyEdges, capGeometry, railParts } from './rails'
 
 /** A bed (3 × 3 m) and its balcony (3 × 1.5 m) in front of it: the balcony's three sides are 1.1 m low walls, `front` its front. */
 function balcony(front: Partial<Wall> = {}, sides: Partial<Wall> = {}): Unit {
@@ -27,6 +27,18 @@ function balcony(front: Partial<Wall> = {}, sides: Partial<Wall> = {}): Unit {
 const bounds = (g: THREE.BufferGeometry) => (g.computeBoundingBox(), g.boundingBox!)
 const wallOf = (u: Unit, id: string) => u.walls.find((w) => w.id === id)!
 const KINDS: LowWallKind[] = ['glass', 'railing', 'grille', 'timber', 'fence', 'chainlink']
+
+test("a railing's own colour (session 31 outside2): every part of it but a glass front's panes; none chosen, the material it always had", () => {
+  const mats = (front: Partial<Wall>) => railParts(wallOf(balcony(front), 'front'), balcony(front)).map((p) => p.m)
+  expect(mats({ lowKind: 'railing' })).toEqual([RAIL_STEEL])
+  expect(mats({ lowKind: 'grille' })).toEqual([GRILLE_PAINT])
+  expect(mats({ lowKind: 'timber' })).toEqual([RAIL_TIMBER])
+  expect(mats({ lowKind: 'railing', railColor: 'black' })).toEqual([RAIL_COLOR.black])
+  expect(mats({ lowKind: 'grille', railColor: 'white' })).toEqual([RAIL_COLOR.white])
+  expect(mats({ lowKind: 'timber', railColor: 'walnut' })).toEqual([RAIL_COLOR.walnut])
+  expect(mats({ lowKind: 'glass', railColor: 'anthracite' })).toEqual([RAIL_COLOR.anthracite, GLAZING_GLASS])
+  expect(mats({ lowKind: 'railing', railColor: 'teak' })).toEqual([RAIL_STEEL]) // not a metal's colour: its own
+})
 
 test('every kind is built along its own wall, as tall as it, a few cm either side of its line; a solid wall is no railing', () => {
   for (const kind of KINDS) {

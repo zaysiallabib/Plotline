@@ -7,7 +7,7 @@
  */
 import { useEffect, useMemo, useReducer, useRef, useState, useSyncExternalStore } from 'react'
 import * as core from '../core'
-import type { Configuration, FinishOption, FinishSlot, FurniturePlacement, Id, Opening, OpeningKind, Pt, Room, Unit, Wall } from '../core'
+import type { Configuration, FinishOption, FinishSlot, FurniturePlacement, Id, Opening, OpeningKind, Pt, RailColor, Room, Unit, Wall } from '../core'
 import { coverOf, floorIn, levelName, projectUnit, roleIn, roofIn, saveRoof, stairOnFloor, stairsDown, stairTo, stemIn, streetOf, topFloor, towerOf, type Tower } from '../data/building'
 import type { Roof } from '../data/building/roof'
 import { buildingOf, keptAt, outsideRecord, placesIn, readFinishes } from '../data/building/apartments'
@@ -22,7 +22,7 @@ import { learnCarried } from '../lib/library'
 import { configured as sharingConfigured, fetchSharedUnit } from '../lib/supabase'
 import { LinkOff, NoPreview, NotFound, Offline, Skeleton, Slate } from '../lib/pages'
 import { pageTitle } from '../lib/route'
-import { LOW_KINDS, WALL_TYPES, findOpening, initialState, isUnit, normalizeUnit, reducer, wallTypeOf, type Action, type StudioState } from '../studio/model'
+import { LOW_KINDS, RAIL_COLOR_WORDS, WALL_TYPES, findOpening, initialState, isUnit, normalizeUnit, reducer, wallTypeOf, type Action, type StudioState } from '../studio/model'
 import { preloadModels } from '../three/furniture'
 import { PlotlineScene, type ArrangeEvent, type OpeningEvent, type PickHit, type SceneMode } from '../three/PlotlineScene'
 import type { TowerHit } from '../three/building'
@@ -522,8 +522,8 @@ function OpeningPanel(p: {
   onKind: (k: OpeningKind) => void
   onSize: (patch: Partial<Pick<Opening, 'widthM' | 'heightM' | 'sillM'>>) => void
   onWall: (patch: { lengthM?: number; heightM?: number }) => void
-  /** what the low wall is made of (model LOW_KINDS), a solid one's cornice */
-  onLowKind: (patch: { kind?: (typeof LOW_KINDS)[number][0]; cornice?: boolean }) => void
+  /** what the low wall is made of (model LOW_KINDS), a solid one's cornice, a railing's colour */
+  onLowKind: (patch: { kind?: (typeof LOW_KINDS)[number][0]; cornice?: boolean; color?: RailColor }) => void
   onDelete: () => void
   onUndo: () => void
   /** a window, slider or glass wall (staff on the flat's own page): its frame's colour — the building's, or its own */
@@ -560,6 +560,18 @@ function OpeningPanel(p: {
               {!lw.w.lowKind && (
                 <label className="ftin-check" title="A stepped band under the wall's cap, as on a classical parapet">
                   <input type="checkbox" checked={!!lw.w.cornice} onChange={(e) => p.onLowKind({ cornice: e.target.checked })} /> Cornice
+                </label>
+              )}
+              {rail && core.railColors(rail).length > 0 && (
+                <label className="ftin">
+                  Colour
+                  <select value={core.railColorOf(lw.w) ?? ''} onChange={(e) => p.onLowKind({ color: e.target.value as RailColor })}>
+                    {core.railColors(rail).map((c) => (
+                      <option key={c} value={c}>
+                        {RAIL_COLOR_WORDS[c]}
+                      </option>
+                    ))}
+                  </select>
                 </label>
               )}
             </div>
