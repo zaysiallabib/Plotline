@@ -767,7 +767,11 @@ html:has(.viewer), body:has(.viewer) { overscroll-behavior: none; }
   .viewer:has(:is(.panel, .menu, .ask-floor)) .dock,
   .dock:has(.sun-card) > :not(.sun-card) { visibility: hidden; }
   /* staff's editors: full width over the bar; the library a sheet like the others (Edit furniture steps away under it) */
-  .arrange { left: var(--edge); right: var(--edge); width: auto; bottom: calc(var(--bar-bottom) + var(--bar-h) + var(--s-2)); max-height: 40vh; overflow: auto; }
+  .arrange { left: var(--edge); right: var(--edge); width: auto; bottom: calc(var(--bar-bottom) + var(--bar-h) + var(--s-2)); max-height: 40vh; overflow: auto; z-index: 7; }
+  /* the floor list steps away under a sheet or a staff card over the bar (the balcony edge's Made of, Edit furniture): it showed
+     through the card, and beside an open panel the computer's rule pushed it off the left edge (phoneqa). The card stands over
+     the tower's note (z 6) that named the edge. */
+  .viewer:has(:is(.panel, .menu, .sun-card, .ask-floor, .library, .arrange)) .floor-rail { visibility: hidden; }
   .arrange:has(> .arrange-grip) { padding: 0 var(--s-3) var(--s-3); gap: var(--s-2); }
   /* Edit furniture on a phone (qa3 P15: the panel and the bar hid the lower 42 % of the room): one row — what is picked and
      Done, or Add — the turn / delete / undo / reset buttons behind the grip above it, so the floor and its pieces stay under a thumb */

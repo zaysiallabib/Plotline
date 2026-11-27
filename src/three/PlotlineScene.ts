@@ -1349,6 +1349,12 @@ export class PlotlineScene {
     this.hoverCb = cb
   }
 
+  /** Building view, a finger: the card a tap put on the tower goes, and its wash — its tap was used, or a sheet came up over it; the next tap names the tower again (a mouse's card follows the mouse: never needed). */
+  forgetTowerHover(): void {
+    this.armed = null
+    this.setTowerHover(null)
+  }
+
   /** Building view: the floor list's row under the mouse washes its storey on the tower too (null: back to what the mouse is over there, if anything). */
   hoverFloor(k: number | null): void {
     this.shown?.hover(k ?? this.towerHover?.k ?? null)
@@ -2884,7 +2890,8 @@ export class PlotlineScene {
         this.setTowerHover(hit, at)
         return
       }
-      this.armed = null
+      if (e.pointerType !== 'mouse') this.forgetTowerHover() // the second tap did what the card said: card and wash go (phoneqa)
+      else this.armed = null
       this.flatCb?.(hit)
       return
     }
