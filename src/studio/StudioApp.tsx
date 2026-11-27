@@ -580,8 +580,8 @@ export default function StudioApp() {
   }
 
   const toast = useCallback((text: string, link?: Note['link']) => setNote({ text, link }), [])
-  /** an error message: it stays until dismissed (Note.error) */
-  const showError = useCallback((text: string) => setNote({ text, error: true, on: stateRef.current.unit }), [])
+  /** an error message: it stays until dismissed (Note.error); `link`: its one way on (Auto-trace's Try again) */
+  const showError = useCallback((text: string, link?: Note['link']) => setNote({ text, error: true, on: stateRef.current.unit, ...(link ? { link } : {}) }), [])
   const [cursor, setCursor] = useState<string | null>(null)
   const toM = useCallback((sx: number, sy: number): Pt => screenToM(frame, { x: sx, y: sy }), [frame])
   const toPx = useCallback((sx: number, sy: number): Pt => screenToPx(frame, { x: sx, y: sy }), [frame])
@@ -1798,7 +1798,13 @@ export default function StudioApp() {
     }
     const fail = (why: string) => {
       stop()
-      showError(`Auto-trace could not finish (${why.replace(/^autoTrace:\s*/, '')}). Nothing was changed.`)
+      showError(`Auto-trace could not finish (${why.replace(/^autoTrace:\s*/, '')}). Nothing was changed.`, {
+        label: 'Try again',
+        onClick: () => {
+          setNote(null)
+          void startAutoTrace(pxPerM)
+        },
+      })
     }
     // (before the click Esc / Cancel just leave pick mode)
     cancelTrace.current = stop
@@ -1817,7 +1823,7 @@ export default function StudioApp() {
     }
     worker.onmessage = (e: MessageEvent<TraceMsg>) => {
       const m = e.data
-      if (m.type === 'progress') return picked ? setTrace({ stage: m.stage, fraction: m.fraction }) : setPrep(m.stage)
+      if (m.type === 'progress') return picked ? setTrace({ stage: m.stage, fraction: m.fraction }) : setPrep(`${m.stage} · ${Math.round(m.fraction * 100)} %`)
       if (m.type === 'ready') {
         ready = true
         setPrep(null)
@@ -1835,6 +1841,8 @@ export default function StudioApp() {
       e.preventDefault()
       fail(e.message || 'the tracer could not start')
     }
+    // (an answer the page could not take in would otherwise leave the box waiting for ever)
+    worker.onmessageerror = () => fail('its answer could not be read')
     setPrep('starting')
     setTrace('pick')
     const job = { pxPerM: pxPerM ?? unit.planImage?.pxPerM, aiKey, tracker, mock: MOCK_TRACE }
