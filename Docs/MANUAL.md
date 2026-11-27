@@ -141,7 +141,7 @@ Everything else opens from these and closes again with **Esc**.
 | Walk · Dollhouse · Building (one switch; the view you are in is white) | O: Walk ↔ Dollhouse; B: Building | Walk inside at eye height · the whole plan from above with the roof off · the whole tower (only when the flat belongs to one) |
 | Finishes | F | The panel on the right: floor, wall and ceiling options. While it is open, a click on a floor, wall or ceiling chooses for that one room or wall. **×**, F or Esc closes it |
 | Comment | C | The Comment panel on the right: click anything to leave a note on it; your notes are listed there. Finishes and Comment take turns |
-| Share | — | Copies a link that opens with the finishes you chose. Staff, with the online database: a buyer link (`/s/…`) of this flat on its floor, with the finishes and furniture kept for it (floor 3's beige, not the floor plan's); its buyers' picks and notes reach the change list. It asks once for the staff key when you are not signed in. Without the online database the link of a drawing made in the Studio (Preview 3D, a project's floor) opens only in this browser — anywhere else it says "This flat isn't here."; a built-in flat's link (`/u/type-a?c=…`) opens anywhere |
+| Share | — | Copies a link that opens with the finishes you chose. Staff, with the online database: a buyer link (`/s/…`) of this flat on its floor, with the finishes and furniture kept for it (floor 3's beige, not the floor plan's); its buyers' picks and notes reach the change list. It asks once for the staff key when you are not signed in. Without the online database the link of a drawing made in the Studio (Preview 3D, a project's floor) opens only in this browser — anywhere else it says "This flat isn't here." (the message after Share says so); a built-in flat's link (`/u/type-a?c=…`) opens anywhere |
 | Enter VR | — | Only when a VR headset is connected |
 | Edit ▾ (staff) | — | Furniture, Openings, Plan (Studio), Download 3D model (§3) |
 | ⋯ | — | **Clean view** (H), **Quality**: Lite · Low · High, and **How fast is it here?** (not on a buyer link) |
@@ -1452,7 +1452,7 @@ floor** (one number when every storey is alike, else by floor: "G 4.50, 1–9 3.
 **Slab** when a drawing prints them, and the roof — **Flat** with its **Roof level** and **Parapet**, or **Pitched** (a gable
 at each end) or **Hipped** (sloped at the ends too) with its **Eave** and **Ridge**. Gable or hip is read from the
 elevations' outline of the roof: a long side whose ridge runs its whole length is a gable's, one whose slopes stop short of
-the ends a hip's. Levels are shown as the drawing prints them (+6.10 m over the ground floor), heights in metres.
+the ends a hip's. Levels are shown as the drawing prints them (+6.10 m over the ground floor), heights in metres (each field's name ends in "m": FLOOR TO FLOOR M).
 A mark with no number printed is measured on the drawing at its printed scale (or from a dimension printed between two
 level lines). Click any field and type over it — metres, or feet and inches with their marks (`10'-0"`, `+20'-0"`);
 red when it is no length; the roof's kind in its box. What you type is remembered by the drawing's title, like a kind. A
@@ -1570,8 +1570,9 @@ it again with **Building** → **Or open a project**, a list of your projects by
 Close the drawing you were on stays on the screen and is still the project's copy: what you change on it goes into the
 project. **Start over** then empties the Studio without asking and says so ("An empty Studio — the project BTI Demo
 Tower keeps its copy of Floor plan A").
-**Show building** opens the stacked building in a new tab (start screen, then the tower); a floor with no drawing yet is
-filled with the one below it.
+**Show building** opens the stacked building in a new tab, straight on the tower (no start screen); a floor with no drawing
+yet is filled with the one below it. A floor whose drawing is still a picture to trace (a set's second typical plan you
+have not traced yet) stands empty — a gap in the tower, the roof above it — until you trace it.
 
 **One floor different from the others**
 - A drawing on several floors is ONE drawing: change its walls, doors or windows in the Studio and every floor with it
