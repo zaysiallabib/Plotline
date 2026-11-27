@@ -214,3 +214,16 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .ask button.primary:hover { background: color-mix(in srgb, var(--accent) 86%, var(--ink)); }
 .ask button.danger { color: var(--danger); font-weight: 500; }
 .ask button.danger:hover { background: var(--danger-soft); }
+
+/* ── the roof's fields (studio/RoofFields.tsx), the Studio's project column and the 3D view's Finishes alike: an inscription
+   over each field, two to a row; the cornice tick and the roof windows across. Each app draws its own inputs. ─────────── */
+.roof-fields { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: var(--s-3); }
+.roof-fields > label { display: flex; flex-direction: column; gap: var(--s-1); min-width: 0; }
+.roof-fields label > span.label { font-size: var(--fs-2xs); color: var(--muted); }
+.roof-fields > label.check { grid-column: 1 / -1; flex-direction: row; align-items: center; gap: var(--s-2); font-size: var(--fs-sm); color: var(--ink-2); }
+.roof-fields :is(select, input[type='number']) { width: 100%; min-width: 0; }
+.roof-fields input[type='range'] { width: 100%; min-width: 0; margin: 0; accent-color: var(--accent); }
+.roof-windows { grid-column: 1 / -1; display: flex; flex-direction: column; gap: var(--s-2); }
+.roof-windows .name { display: flex; justify-content: space-between; align-items: baseline; }
+.roof-window { display: grid; grid-template-columns: 84px minmax(0, 1fr) auto; align-items: center; gap: var(--s-3); }
+.roof-window > .muted { font-size: var(--fs-sm); }

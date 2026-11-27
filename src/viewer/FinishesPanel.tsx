@@ -1,6 +1,8 @@
 /**
  * Finish options: the floor / wall / ceiling clicked in 3D (one room, one wall) on top; one block per FinishSlot (a group
- * of rooms), chips with a tinted albedo swatch, brand, delta; the one-room choices made; Options total; Reset.
+ * of rooms), chips with a tinted albedo swatch, brand, delta; the one-room choices made; Options total; Reset. Staff in a
+ * building: the roof too (session 31 roof lane) — its line at the foot, its covering's swatches and its fields on top once
+ * the roof is clicked in the Building view (or its line's Change).
  */
 import { useEffect, useState } from 'react'
 import { useFinger } from './Hud'
@@ -9,6 +11,8 @@ import { isOwnId, ownItem, type OwnFinish } from '../furnish/own'
 import { textureSet } from '../furnish/textures'
 import { OwnFinishForm } from './OwnFinish'
 import { formatDelta, formatTaka, type FinishKeys } from './share'
+import { coveringOf, coveringsFor, roofWords, type Roof } from '../data/building/roof'
+import { RoofFields } from '../studio/RoofFields'
 
 /** A floor / wall / ceiling clicked in 3D while the panel is open: its room's key (finishes.ts roomKey), a wall's face key too. */
 export interface Surface {
@@ -30,6 +34,27 @@ interface Props {
   staff?: boolean
   /** staff on the flat's own page: where the picks are kept, in words ("Kept for floor 3 only …") */
   kept?: string | null
+  /** staff, the flat in a building that draws its own roof: the roof as drawn, whether its block is open, and changing it */
+  roof?: { value: Roof | undefined; read: boolean; open: boolean; onOpen: (open: boolean) => void; onChange: (r: Roof) => void } | null
+}
+
+/** The roof of the whole building (staff): its covering as swatches, then its kind, pitch, eaves, edge and roof windows. */
+function RoofBlock({ roof }: { roof: NonNullable<Props['roof']> }) {
+  const now = coveringOf(roof.value)
+  return (
+    <div className="slot surface">
+      <div className="label">The roof · the whole building</div>
+      <div className="chips">
+        {coveringsFor(roof.value).map((o) => (
+          <Chip key={o.id} o={o} bare on={o.id === now.id} onClick={() => roof.onChange({ ...(roof.value ?? { kind: 'flat' }), covering: o.id })} />
+        ))}
+      </div>
+      <RoofFields roof={roof.value} read={roof.read} onChange={roof.onChange} />
+      <button className="link" onClick={() => roof.onOpen(false)}>
+        Done
+      </button>
+    </div>
+  )
 }
 
 function swatchStyle(m: MaterialRef): React.CSSProperties {
@@ -55,8 +80,8 @@ export const optionsTotal = (slots: FinishSlot[], cfg: Configuration): number =>
   return slots.reduce((t, s) => t + (chosen(s, cfg)?.priceDeltaBdt ?? 0), 0) + own.reduce((t, [, o]) => t + (delta.get(o) ?? 0), 0)
 }
 
-/** One option; `title` = the "Same as …" chip: what it falls back to shown under it, no price of its own. */
-function Chip({ o, on, onClick, title }: { o: FinishOption; on: boolean; onClick: () => void; title?: string }) {
+/** One option; `title` = the "Same as …" chip: what it falls back to shown under it, no price of its own; `bare`: no price (the roof's: staff's choice, not a buyer's). */
+function Chip({ o, on, onClick, title, bare }: { o: FinishOption; on: boolean; onClick: () => void; title?: string; bare?: boolean }) {
   return (
     <button className={`chip${on ? ' selected' : ''}`} onClick={onClick}>
       <span className="swatch" style={swatchStyle(o.material)} />
@@ -64,7 +89,7 @@ function Chip({ o, on, onClick, title }: { o: FinishOption; on: boolean; onClick
         <span>{title ?? o.label}</span>
         <span className="muted">{title ? o.label : o.brand}</span>
       </span>
-      {!title && <span className={`delta${o.priceDeltaBdt ? '' : ' muted'}`}>{formatDelta(o.priceDeltaBdt)}</span>}
+      {!title && !bare && <span className={`delta${o.priceDeltaBdt ? '' : ' muted'}`}>{formatDelta(o.priceDeltaBdt)}</span>}
     </button>
   )
 }
@@ -105,7 +130,7 @@ function SurfaceBlock({ surface, keys, cfg, onSelect, onClose }: { surface: Surf
   )
 }
 
-export default function FinishesPanel({ slots, cfg, keys, surface, onSelect, onCloseSurface, onReset, staff, kept }: Props) {
+export default function FinishesPanel({ slots, cfg, keys, surface, onSelect, onCloseSurface, onReset, staff, kept, roof }: Props) {
   /** the Add option form open under this slot, or one of the staff's own options being changed */
   const [form, setForm] = useState<{ slotId: string; edit?: OwnFinish } | null>(null)
   // warm the HTTP cache so the engine's TextureLoader hits it (≤ 200 ms swap after caching)
@@ -128,10 +153,14 @@ export default function FinishesPanel({ slots, cfg, keys, surface, onSelect, onC
   })
   return (
     <section className="finishes">
-      {surface ? (
+      {roof?.open ? (
+        <RoofBlock roof={roof} />
+      ) : surface ? (
         <SurfaceBlock key={`${surface.roomKey}|${surface.wallKey}`} surface={surface} keys={keys} cfg={cfg} onSelect={onSelect} onClose={onCloseSurface} />
       ) : (
-        <p className="muted small">{finger ? 'Tap' : 'Click'} a floor, a wall or a ceiling to choose for that room or that wall alone. Each block below covers a group of rooms.</p>
+        <p className="muted small">
+          {finger ? 'Tap' : 'Click'} a floor, a wall or a ceiling to choose for that room or that wall alone{roof ? ', or the roof in the Building view' : ''}. Each block below covers a group of rooms.
+        </p>
       )}
       {slots.map((slot) => {
         const sel = chosen(slot, cfg)?.id
@@ -193,6 +222,17 @@ export default function FinishesPanel({ slots, cfg, keys, surface, onSelect, onC
         Reset to included
       </button>
       {kept && <p className="muted small">{kept}</p>}
+      {roof && !roof.open && (
+        <div className="slot roof-line">
+          <div className="label">The roof · the whole building</div>
+          <div className="small">
+            {roofWords(roof.value, roof.read)}{' '}
+            <button className="link" onClick={() => roof.onOpen(true)}>
+              Change
+            </button>
+          </div>
+        </div>
+      )}
     </section>
   )
 }
