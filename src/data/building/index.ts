@@ -5,7 +5,8 @@ import { isStairRoom } from '../../furnish/stairs'
 import * as banani from './banani-tower'
 import * as bti from './demo-tower'
 import * as dmd from './dmd-tower'
-import { PROJECTS_KEY, parseProjects, projectTower } from './projects'
+import { PROJECTS_KEY, parseProjects, projectTower, projectWith, readProjects, saveProjects } from './projects'
+import { keepRoof, keptRoofs, type Roof } from './roof'
 import * as sheltech from './sheltech-tower'
 import type { TowerHeights } from './storeys'
 
@@ -14,9 +15,10 @@ import type { TowerHeights } from './storeys'
  * their own floors in FLOORS) and the floor each stands on; ELEVATIONS: an imported building's floor heights by floor
  * number (m above the lowest floor; a floor not listed stands at floor × FLOOR_M); STOREYS: a Studio project's storeys as its
  * set's sections print them (data/building/storeys.ts: each floor's walls, the slab, the roof) — absent, every storey as before;
+ * ROOF_SHAPE: a Studio project's roof (roof.ts: its setting over what its set read) — absent, the flat roof and its parapet;
  * ID: a Studio project's id (the building's outside is kept under it: apartments.ts outsideRecord).
  */
-export type Tower = typeof bti & { LEVELS?: Record<string, number>; ELEVATIONS?: Record<number, number>; STOREYS?: TowerHeights; ID?: string }
+export type Tower = typeof bti & { LEVELS?: Record<string, number>; ELEVATIONS?: Record<number, number>; STOREYS?: TowerHeights; ROOF_SHAPE?: Roof; ID?: string }
 
 const TOWERS: Tower[] = [bti, sheltech, banani, dmd]
 
@@ -40,6 +42,25 @@ export function projectTowers(): Tower[] {
  */
 export const towerOf = (unit: Unit, towers: Tower[] = [...projectTowers(), ...TOWERS]): Tower | null =>
   towers.find((t) => Object.values(t.FLATS).some((f) => f.unit.id === unit.id)) ?? null
+
+/** A built-in tower's key in the roofs kept in this browser (roof.ts): its first flat's stem. */
+const roofKey = (t: Tower): string => Object.keys(t.FLATS)[0]
+
+/** The roof tower t draws (roof.ts): a project's own (ROOF_SHAPE), a built-in tower's as staff set it in this browser, else none (flat). */
+export const roofIn = (t: Tower): Roof | undefined => t.ROOF_SHAPE ?? (TOWERS.includes(t) ? keptRoofs()[roofKey(t)] : undefined)
+
+/**
+ * Staff changed the roof of the building `unit` stands in (the 3D view's Finishes → the roof): kept in its Studio project,
+ * or for a built-in tower in this browser. false: not kept (no tower, or the browser refused).
+ */
+export function saveRoof(unit: Unit, r: Roof): boolean {
+  const t = towerOf(unit)
+  if (!t) return false
+  if (TOWERS.includes(t)) return keepRoof(roofKey(t), r)
+  const ps = readProjects()
+  const p = projectWith(ps, unit.id)
+  return !!p && saveProjects(ps.map((x) => (x === p ? { ...x, roof: r } : x)))
+}
 
 /** `/u/<stem>` of a flat or level in a Studio project (a click on it in the Building view), or null. */
 export const projectUnit = (stem: string): Unit | null => projectTowers().find((t) => t.FLATS[stem])?.FLATS[stem].unit ?? null

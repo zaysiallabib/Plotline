@@ -163,4 +163,10 @@ export const TEXTURES: Record<string, TextureSet> = {
   // flat panels 1.2 × 0.8 m with 10 mm joints, drawn over the concrete scan flattened to an even light grey: fibre-cement and
   // aluminium composite panels (the options tint it white, charcoal…)
   panel_grid: OUT('panel_grid', 'Flat facade panels', 'https://polyhaven.com/a/concrete_wall_008', 2.4, 'Dario Barresi, Charlotte Baglioni'),
+  // session 31 roof lane: a roof's coverings (finishes.ts ROOF_COVERINGS), Poly Haven 1k maps re-encoded small (albedo + normal
+  // 1024, roughness 512, no AO; MANIFEST.md); u along the eaves, v up the slope (three/roof.ts); a zinc or corrugated roof wears the outside sets metal_seam / metal_corrugated below
+  roof_clay: { ...PH('roof_clay', 'Clay roof tiles', 'clay_roof_tiles_02', 2.5, 'Amal Kumar'), ao: undefined },
+  roof_slate: { ...PH('roof_slate', 'Slate roof tiles', 'grey_roof_01', 8, 'Rob Tuytel'), ao: undefined },
+  roof_shingles: { ...PH('roof_shingles', 'Timber roof shingles', 'roof_slates_02', 3, 'Rob Tuytel'), ao: undefined },
+  roof_gravel: { ...PH('roof_gravel', 'Roof gravel', 'gravel_floor_02', 2, 'Jenelle van Heerden, Dimitrios Savva'), ao: undefined },
 }

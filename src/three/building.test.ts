@@ -1084,7 +1084,8 @@ describe('the storeys the set prints (session 31 heights: data/building/storeys.
   })
 
   test('the roof itself: the ridge down the long middle, the slopes from the eaves, gables from the slab', async () => {
-    const { pitchedRoof } = await import('./building')
+    const { roofGeometry } = await import('./roof') // (the heights lane's pitchedRoof, generalised by the roof lane: the same at no overhang)
+    const pitchedRoof = (pts: Pt[], dir: Pt, base: number, eave: number, ridge: number, hip = false) => roofGeometry(pts, dir, { kind: hip ? 'hip' : 'gable' }, base, eave, ridge)
     const r = pitchedRoof([{ x: 0, y: 0 }, { x: 4, y: 10 }, { x: 0, y: 10 }, { x: 4, y: 0 }], { x: 1, y: 0 }, 5, 5.5, 8)
     const pos = r.cover.attributes.position
     const top = [...Array(pos.count).keys()].filter((i) => pos.getY(i) === 8).map((i) => [pos.getX(i), pos.getZ(i)])

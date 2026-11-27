@@ -48,11 +48,12 @@ serves the same rules, so check a new service there.
 | **121 code-built pieces** (beds, wardrobes, kitchens, bathroom fittings, TVs, rugs, curtains, frames, AC units, pots and planters, trees, shrubs, loungers, pergola, gym and play pieces…) | The rest of the library — Poly Haven has no modern bed, bathroom, kitchen, gym or play equipment | Our own code (`src/furnish/procedural.ts`) | ours | permanent |
 | **The library** (Edit furniture → Add in the 3D view; Add a piece with F in the Studio) | 154 pieces in 11 groups (Living, Dining, Bedroom, Office, Kitchen, Bath, Lights & AC, Greenery, Outdoor, Lobby & gym, Decor) | both of the above | free | permanent |
 | **31 texture sets** (wood floors, marble, tiles, plaster, fabrics, rug, metal, turf, paving, asphalt, concrete, deck boards, gym rubber, soil; and for the outside of a building: red brick, painted brick, stone blocks, timber slats, timber clapboard, zinc rib panels, corrugated metal, fair-faced concrete, precast concrete panels, flat facade panels) | What floors, walls, furniture, outdoor areas and the outside walls are made of | 19 from Poly Haven, 12 from ambientCG — https://ambientcg.com (two of the outside sets are the Poly Haven concrete with panel joints drawn in by us) | **CC0** | permanent |
+| **4 roof texture sets** (clay tiles, slate, timber shingles, gravel; a roof in zinc or corrugated metal wears the outside sets above) | What a building's roof is covered with (Studio → Building → Roof; the 3D view's Finishes → the roof) | Poly Haven (clay_roof_tiles_02, grey_roof_01, roof_slates_02, gravel_floor_02; licence read on each page 2026-11-27), re-encoded small (2.0 MB together) | **CC0** | permanent |
 | **2 sky / light pictures (HDRIs)**: a small photo studio (`interior.hdr`), a clear sky (`sky.hdr`) | The soft light inside the rooms; the sky through windows and from the Dollhouse | Poly Haven (studio_small_09, kloofendal_43d_clear_puresky) | **CC0** | permanent |
 | **2 wall pictures** (sea, dawn) | The framed art on the walls | Cropped from two Poly Haven sky photos (umhlanga_sunrise, kiara_1_dawn) | **CC0** | permanent |
 | **Your staff's own models, finishes and textures** | Their pieces and options in the library and Finishes | Whatever they drop in (MANUAL §3) | the developer's own responsibility | — |
 
-All of it is in `public/assets/` (about 98 MB: models 65 MB, textures 29 MB, sky 2.7 MB, art 1.4 MB), listed one by one
+All of it is in `public/assets/` (about 100 MB: models 65 MB, textures 31 MB, sky 2.7 MB, art 1.4 MB), listed one by one
 with author and the date the licence was checked in `public/assets/MANIFEST.md`. A room loads only the pieces it uses;
 Lite loads the pictures at half size and leaves the scanned potted plants out.
 

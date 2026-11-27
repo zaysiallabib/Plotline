@@ -1183,20 +1183,7 @@ export class PlotlineScene {
     this.wake()
     this.applyMaterials()
     this.rebatch('static')
-    const old = this.building
-    if (!old || this.holding) return // (a floor on its way builds its tower with it)
-    const b = Building.for(this.unit, this.tier, o)
-    if (!b) return
-    b.adopt(old)
-    b.onChange = this.wake
-    b.visible = false
-    this.scene.add(b)
-    for (const steps = b.make(); !steps.next().done; );
-    old.dispose()
-    this.building = b
-    this.aroundFlat()
-    if (this.mode === 'building') b.highlight(old.pickedFloor)
-    this.setTimeOfDay(this.hour)
+    this.retower() // (a floor on its way builds its tower with it)
   }
 
   /**
@@ -1417,6 +1404,28 @@ export class PlotlineScene {
     if (!this.sleeping || this.disposed) return
     this.sleeping = false
     this.renderer.setAnimationLoop(this.tick)
+  }
+
+  /**
+   * The building's roof changed (staff, data/building/roof.ts): the tower round the flat made again in place — the flat, the
+   * camera and the picked floor as they were (a tower is ~0.1–0.3 s to make; the rooms and furniture behind its glass are the
+   * old tower's: Building.adopt). Its outside changed (setOutside) the same way.
+   */
+  retower(): void {
+    const was = this.building
+    if (!was || this.holding || !this.unit) return
+    const b = Building.for(this.unit, this.tier, this.outside)
+    if (!b) return
+    b.adopt(was)
+    this.wake()
+    b.onChange = this.wake
+    this.building = b
+    this.scene.add(b)
+    for (const _ of b.make()); // eslint-disable-line @typescript-eslint/no-unused-vars
+    was.dispose()
+    this.aroundFlat()
+    this.setTimeOfDay(this.hour)
+    if (this.mode === 'building') b.highlight(was.pickedFloor)
   }
 
   /** Building view: highlight floor k (0 = ground, top + 1 = roof) and lift the orbit to it. */

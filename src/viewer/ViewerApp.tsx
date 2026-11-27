@@ -9,7 +9,8 @@ import { useEffect, useMemo, useReducer, useRef, useState, useSyncExternalStore 
 import * as THREE from 'three'
 import * as core from '../core'
 import type { Configuration, FinishOption, FinishSlot, FurniturePlacement, Id, Opening, OpeningKind, Pt, Room, Unit, Wall } from '../core'
-import { coverOf, floorIn, levelName, projectUnit, roleIn, stairOnFloor, stairsDown, stairTo, stemIn, streetOf, topFloor, towerOf, type Tower } from '../data/building'
+import { coverOf, floorIn, levelName, projectUnit, roleIn, roofIn, saveRoof, stairOnFloor, stairsDown, stairTo, stemIn, streetOf, topFloor, towerOf, type Tower } from '../data/building'
+import type { Roof } from '../data/building/roof'
 import { buildingOf, keptAt, outsideRecord, placesIn, readFinishes } from '../data/building/apartments'
 import { readProjects, sharedAt, slotsText } from '../data/building/projects'
 import { arriveBy, isStair, isStairRoom } from '../furnish/stairs'
@@ -706,6 +707,14 @@ function Viewer({ first }: { first: Shown }) {
   const level = stem ? tower?.LEVELS?.[stem] : undefined
   /** the level the Building view's picked floor holds (the "Walk this level" button), if any */
   const levelAt = (k: number) => (tower?.FLOORS.find((f) => f.floor === k)?.standIns ?? []).find((s) => tower?.LEVELS?.[s] !== undefined)
+  /**
+   * The building's roof (staff; session 31 roof lane) of a tower that draws its own (not the architect's shape): its floor, the
+   * roof as drawn now (read again after each change) and whether the Finishes panel's roof block is open
+   */
+  const roofK = tower && !unit.shell ? topFloor(tower) + 1 : null
+  const [roofV, bumpRoof] = useReducer((n: number) => n + 1, 0)
+  const roofNow = useMemo(() => (tower ? roofIn(tower) : undefined), [tower, roofV]) // eslint-disable-line react-hooks/exhaustive-deps
+  const [roofOpen, setRoofOpen] = useState(false)
   const commentingRef = useRef(commenting)
   commentingRef.current = commenting
   const finishesRef = useRef(finishesOpen)
@@ -844,6 +853,7 @@ function Viewer({ first }: { first: Shown }) {
         return true
       } else if ((room && keys.has(room)) || out) {
         setSurface({ ...(room && keys.has(room) ? { roomKey: room, wallKey: face && keys.has(face) ? face : undefined } : {}), ...(out ? { outside: out } : {}) })
+        setRoofOpen(false)
         return true
       } else if (modeRef.current === 'orbit' && (hit.kind === 'floor' || hit.kind === 'furniture') && stairRoomAt(hit.under ?? hit.point)) {
         // a stair room — its floor, or the stair itself (its well leaves little floor to click): at its door, looking at the flight
@@ -862,9 +872,12 @@ function Viewer({ first }: { first: Shown }) {
     s.onFlat((h) => {
       const f = h?.flat
       if (!h || going.current) return
-      // staff with Finishes open: the wall clicked (a ground block: its floor) for the building's outside card, not a trip
+      // staff with Finishes open: a click on the roof (not on one of its walls) opens its block in the panel; any other spot
+      // of the tower — a wall, a parapet, a ground block (its floor) — the building's outside card; neither a trip
+      if (!f && STAFF && finishesRef.current && h.k === roofK && !h.wall) return void (setSurface(null), setRoofOpen(true))
       if (finishesRef.current && KEEP) {
         const drawn = h.wall && Object.values(tower?.FLATS ?? {}).find((x) => x.unit.id === h.wall!.drawing)?.unit.name.split(' · ')[0]
+        setRoofOpen(false)
         return setSurface({ outside: outSpot(h.k, h.wall, drawn) })
       }
       if (!f) return levelAt(h.k) ? walkLevel(h.k) : (setPicked(h.k), s.showFloor(h.k))
@@ -1795,6 +1808,22 @@ function Viewer({ first }: { first: Shown }) {
                 <FinishesPanel
                   staff={STAFF}
                   kept={KEEP ? kept : null}
+                  roof={
+                    STAFF && roofK !== null
+                      ? {
+                          value: roofNow,
+                          read: tower?.STOREYS?.ridgeM !== undefined,
+                          open: roofOpen,
+                          onOpen: (o) => (setSurface(null), setRoofOpen(o)),
+                          onChange: (r: Roof) => {
+                            // kept in the project (or, for a built-in building, in this browser), then the tower made again round the flat
+                            if (!saveRoof(unit, r)) return showToast('The roof could not be kept: this browser’s storage is full or blocked.')
+                            bumpRoof()
+                            scene?.retower()
+                          },
+                        }
+                      : null
+                  }
                   slots={unit.finishSlots}
                   cfg={cfg}
                   keys={keys}

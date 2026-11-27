@@ -146,3 +146,20 @@ released under the Creative Commons CC0 license". The script: E:/dev/tmp/s31/fac
 | concrete_fair | texture | https://polyhaven.com/a/concrete_wall_008 | Dario Barresi, Charlotte Baglioni | CC0 | 2026-11-27 | textures/concrete_fair/{albedo.jpg,normal.jpg,roughness.jpg} — fair-faced concrete, its colour 80 % taken out (the scan read olive-green) | 202128 |
 | concrete_precast | texture | https://polyhaven.com/a/concrete_wall_008 | Dario Barresi, Charlotte Baglioni | CC0 | 2026-11-27 | textures/concrete_precast/{albedo.jpg,normal.jpg,roughness.jpg} — the same scan, its colour 80 % taken out, with a 13 mm panel joint drawn in every 2.71 × 1.355 m (colour ×0.45, a groove in the relief, matte): precast panels | 224667 |
 | panel_grid | texture | https://polyhaven.com/a/concrete_wall_008 | Dario Barresi, Charlotte Baglioni | CC0 | 2026-11-27 | textures/panel_grid/{albedo.jpg,normal.jpg,roughness.jpg} — the scan flattened to an even light grey (12 % of its variation, roughness 0.42) with 10 mm joints every 1.2 × 0.8 m: flat fibre-cement / composite panels, tinted by the options | 108866 |
+
+### Added session 31 (the roof: a building's roof coverings)
+
+Poly Haven 1K JPG maps (Diffuse → albedo, nor_gl → normal, Rough → roughness) downloaded through api.polyhaven.com/files and
+re-encoded in a browser canvas to keep them small: albedo 1024 px q80, normal 1024 px q72, roughness 512 px q70, no AO.
+Each asset page read on 2026-11-27: "CC0 1.0 Universal - public domain dedication". Used by the roof's coverings
+(`src/furnish/finishes.ts` ROOF_COVERINGS); zinc and corrugated: the facade sets above; the green roof is the `turf` set above, terrace tiles `tile_floor_terracotta`.
+
+| id | type | source | author | license | checked | file(s) | bytes |
+|---|---|---|---|---|---|---|---|
+| roof_clay | texture | https://polyhaven.com/a/clay_roof_tiles_02 | Amal Kumar | CC0 | 2026-11-27 | textures/roof_clay/{albedo.jpg,normal.jpg,roughness.jpg} — clay tiles, 2.5 m a repeat | 415154 |
+| roof_slate | texture | https://polyhaven.com/a/grey_roof_01 | Rob Tuytel | CC0 | 2026-11-27 | textures/roof_slate/{albedo.jpg,normal.jpg,roughness.jpg} — dark grey slate-look roof tiles, 8 m | 398068 |
+| roof_shingles | texture | https://polyhaven.com/a/roof_slates_02 | Rob Tuytel | CC0 | 2026-11-27 | textures/roof_shingles/{albedo.jpg,normal.jpg,roughness.jpg} — weathered grey timber shingles, 3 m | 459445 |
+| roof_gravel | texture | https://polyhaven.com/a/gravel_floor_02 | Jenelle van Heerden, Dimitrios Savva | CC0 | 2026-11-27 | textures/roof_gravel/{albedo.jpg,normal.jpg,roughness.jpg} — grey roof gravel, 2 m | 818155 |
+
+Session 31 roof: **+2090822 bytes (2.0 MB)**, 4 texture sets; each loads only when a roof wears it. A zinc or corrugated roof
+wears the outside sets `metal_seam` and `metal_corrugated` (the same two Poly Haven sheets, kept once).
