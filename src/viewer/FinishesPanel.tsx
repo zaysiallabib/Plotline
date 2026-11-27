@@ -6,7 +6,7 @@
  * Staff in a building: the roof too (session 31 roof lane) — its line at the foot, its covering's swatches and its fields
  * on top once the roof is clicked in the Building view (or its line's Change).
  */
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useFinger } from './Hud'
 import type { Configuration, FinishOption, FinishSlot, Id, MaterialRef } from '../core'
 import { FRAMES_SLOT, OUTSIDE_SLOT, outsideFloorKey, outsideKey } from '../furnish/finishes'
@@ -55,10 +55,19 @@ interface Props {
 }
 
 /** The roof of the whole building (staff): its covering as swatches, then its kind, pitch, eaves, edge and roof windows. */
+/** a block that opens for what was just clicked (a wall, the outside, the roof) comes into view: the panel may be scrolled
+ * down to the outside walls, and the click seemed to do nothing (qa4). Its key changes with the spot, so it runs per click. */
+function useShown() {
+  const ref = useRef<HTMLDivElement>(null)
+  useEffect(() => ref.current?.scrollIntoView({ block: 'start' }), [])
+  return ref
+}
+
 function RoofBlock({ roof }: { roof: NonNullable<Props['roof']> }) {
   const now = coveringOf(roof.value)
+  const shown = useShown()
   return (
-    <div className="slot surface">
+    <div className="slot surface" ref={shown}>
       <div className="label">The roof · the whole building</div>
       <div className="chips">
         {coveringsFor(roof.value).map((o) => (
@@ -113,6 +122,7 @@ function Chip({ o, on, onClick, title, bare }: { o: FinishOption; on: boolean; o
 /** The clicked surface: its name, for a wall "This wall" / "The whole room", then "Same as …" and the covering slot's options. */
 function SurfaceBlock({ surface, keys, cfg, onSelect, onClose }: { surface: Surface; keys: FinishKeys; cfg: Configuration; onSelect: Props['onSelect']; onClose: () => void }) {
   const [wide, setWide] = useState(false)
+  const shown = useShown()
   const key = surface.wallKey && !wide ? surface.wallKey : surface.roomKey
   const k = key && keys.get(key)
   if (!key || !k) return null
@@ -121,7 +131,7 @@ function SurfaceBlock({ surface, keys, cfg, onSelect, onClose }: { surface: Surf
   const oneWall = key === surface.wallKey
   const fallback = (oneWall && surface.roomKey ? own(cfg[surface.roomKey]) : undefined) ?? chosen(k.slot, cfg)
   return (
-    <div className="slot surface">
+    <div className="slot surface" ref={shown}>
       <div className="label">{k.scope}</div>
       {surface.wallKey && (
         <div className="seg seg-fill" role="group" aria-label="Which walls">
@@ -160,6 +170,7 @@ function OutsideBlock({ spot, outside, onClose }: { spot: NonNullable<Surface['o
   const [scope, setScope] = useState<Scope>(wall ? 'wall' : floor ? 'floor' : 'building')
   const [walls, frames] = [OUTSIDE_SLOT, FRAMES_SLOT].map((s) => outside.slots.find((x) => x.id === s.id) ?? s)
   const { rec, onSelect } = outside
+  const shown = useShown()
   const key = scope === 'wall' && wall ? wall : scope === 'floor' && floor ? floor : walls.id
   const opt = (id: string | undefined) => walls.options.find((o) => o.id === id)
   const sel = opt(rec[key])
@@ -172,7 +183,7 @@ function OutsideBlock({ spot, outside, onClose }: { spot: NonNullable<Surface['o
     ['building', 'Whole building', true],
   ]
   return (
-    <div className="slot surface">
+    <div className="slot surface" ref={shown}>
       <div className="label">Outside{spot.name ? ` · ${spot.name}` : ''}</div>
       <div className="seg seg-fill" role="group" aria-label="Which outside walls">
         {scopes
