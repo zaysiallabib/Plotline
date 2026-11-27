@@ -43,7 +43,7 @@ describe('material names → the outside finish (session 31 ifcmap)', () => {
   ])('%s → %s', (name, want) => expect(outsideOption(name)).toBe(want))
 
   test('what is never seen from outside is skipped, a name that says nothing is unknown', () => {
-    for (const n of ['Kipsilevy', 'Eriste, villa', 'Gipskarton', 'Mineralwolle weich', 'Tuuletusväli', 'Luft', 'Default Wall', 'Material_10', '<Unnamed>', 'Generic Material', 'Metal - Stud Layer', 'tomt mönster', 'SIA_2310_IS_Panneau EPS', 'Isokorf', 'beklädnad, invändig'])
+    for (const n of ['Våtromsplate', 'Kipsilevy', 'Eriste, villa', 'Gipskarton', 'Mineralwolle weich', 'Tuuletusväli', 'Luft', 'Default Wall', 'Material_10', '<Unnamed>', 'Generic Material', 'Metal - Stud Layer', 'tomt mönster', 'SIA_2310_IS_Panneau EPS', 'Isokorf', 'beklädnad, invändig'])
       expect([n, classOf(n)]).toEqual([n, 'skip'])
     for (const n of ['BEKLEIDUNG', 'Verhous', 'Clad - White', 'beklädnad, utvändig']) expect([n, classOf(n)]).toEqual([n, null])
   })

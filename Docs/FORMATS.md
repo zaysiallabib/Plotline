@@ -66,6 +66,22 @@ reads in Firefox today, with what fails and why: [SAMPLES.md](SAMPLES.md).
   name. What the file cannot settle — a bath and its hall given the very same outline (Smiley West, seven flats) — is
   never guessed: the Issues row "Bath shares a room with Hall" offers the unnamed room next door for either name (one
   click), or, with none beside it, **Draw a zone line** with the Wall tool ready.
+- **It arrives dressed (session 31 ifcmap).** An IFC names every layer of every wall and says which walls are outside
+  (`IsExternal` in `Pset_WallCommon`); no IFC of the 48 measured carries a picture. Plotline reads the names in eleven
+  languages (`import/materials.ts`: brick / Ziegel / tiili / tegel / baksteen / mursten / ladrillo, render / Putz / crépi /
+  stukko, timber / Holz / puu / trä / hout, zinc / Blech / metal, concrete / Beton / betoni, stone / Stein / Kivi / granit,
+  Eternit / Viroc / fibre cement, glass) and gives each outer wall Plotline's own finish for the outer layer of its
+  material layer set (a render takes the file's colour: beige crépi is Sand render), the commonest the building's own
+  when the named walls make at least 30 % of the outer walls. The outside shape wears the same pictures (its dressed
+  surfaces carry texture coordinates in metres); Finishes → Whole building changes it there too. IfcRailing makes the
+  low wall under it glass / metal / timber (Made of) or a low wall of its own on a balcony edge; IfcRoof's kind (or what
+  its slopes show), pitch and covering are the project's roof setting (a freeform roof keeps the file's own shape); a
+  curtain wall keeps its mullion spacing and frame colour; a window's frame colour comes from its names. The street is
+  the ground storey — the one named Ground / EG / RDC / 1F, else the storey at the file's elevation 0, else the lowest
+  that holds rooms or outer walls (never one named a basement); an empty datum storey under the building is left out.
+  A gable wall stops at its eaves (the gable is in the shape). A name Plotline does not know keeps the plaster and is
+  listed; the Studio's **Materials** list maps it in one click, kept for the next file. Measured per file:
+  [FORMATS_SCOREBOARD.md](FORMATS_SCOREBOARD.md), "Session 31, ifcmap".
 
 **DXF (Drawing Exchange Format).**
 - AutoCAD's open version of DWG; any drawing program writes it. A plan in DXF is lines, polylines, arcs, repeated symbols
@@ -104,6 +120,10 @@ reads in Firefox today, with what fails and why: [SAMPLES.md](SAMPLES.md).
 - A model that keeps its pictures (or a `.gltf` its `.bin`) in other files is dropped as its folder or a `.zip`; dropped
   alone, the notes name what was missing. Compressed models (Draco, meshopt) are unpacked; KTX2 pictures are refused
   with "export it with PNG / JPEG pictures".
+- It stands on the street, centred on the drawing (on every floor the drawing stands on); one far smaller than a
+  building (under 8 m across, or well under the drawing — a model made at 1 : 10) asks once how big it is, the answer kept
+  for the file's name. A material the file made fully see-through (a Collada habit: the Macky Auditorium vanished) is
+  drawn solid; a coloured glass is toned to Plotline's glass.
 
 **PDF.**
 - A PDF straight out of a drawing program carries the drawing as lines and the names as text, so it reads like a DXF
@@ -147,7 +167,9 @@ reads in Firefox today, with what fails and why: [SAMPLES.md](SAMPLES.md).
 ## 3. What to say to a developer's architect
 
 1. "Send the **IFC** of the building" — one export in Revit, ArchiCAD, SketchUp Pro or Allplan; the whole building in one
-   drop.
+   drop. "**Export with materials and IsExternal** — the defaults": Revit's IFC exporter and ArchiCAD's both write the
+   material layers and `IsExternal` unless switched off, and a real material name ("Brick", "Ziegel", "Puuverhous") dresses
+   the building; a placeholder name ("Default", "Material_10", "Generic") leaves it plaster.
 2. AutoCAD only: "**Save the floor plans as DXF**, one file per floor type" (or the DWG, once DWG is turned on) — and,
    from whoever made the renders, "the **3D model** of the outside as glTF / OBJ / FBX / 3DM", the folder or a zip.
 3. A drawing PDF is fine if it came out of the drawing program (not a scan); a brochure PDF works too — Plotline asks
