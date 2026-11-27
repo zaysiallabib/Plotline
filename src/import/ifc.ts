@@ -17,7 +17,7 @@ import { FRAMES_SLOT, OUTSIDE_SLOT, ROOF_COVERINGS, frameKey, outerRuns, outside
 import type { Roof, RoofKind } from '../data/building/roof'
 import { classOf, coveringOption, frameOption, outerOf, outsideOption, plain, railKind, toneGlass } from './materials'
 import { dressName, writeGlb, type GlbGroup } from './glb'
-import { settleImport } from './plan2d'
+import { finishesOn, settleImport } from './plan2d'
 import { unzipSync } from 'three/examples/jsm/libs/fflate.module.js'
 
 type WebIfc = typeof import('web-ifc')
@@ -1543,35 +1543,6 @@ function readModel(W: WebIfc, api: Api, model: number, fileName: string, t0: num
     ...(roof ? { roof } : {}),
     ...(materials.length ? { materials } : {}),
   }
-}
-
-/**
- * Each wall of `unit` that lies on a wall draft with an outside finish (on its line within half its thickness + 5 cm, parallel,
- * its middle within the draft's span), by id: the Studio's join splits and merges the drafts, so each final wall is matched
- * back by where it stands. Zone lines and kerbs wear none.
- */
-export function finishesOn(unit: Pick<Unit, 'vertices' | 'walls'>, drafts: { pts: Pt[]; thicknessM: number; finish?: string }[]): Map<Id, string> {
-  const segs = drafts.flatMap((d) => (d.finish ? d.pts.slice(1).map((b, i) => ({ a: d.pts[i], b, tol: d.thicknessM / 2 + 0.05, f: d.finish! })) : []))
-  const vs = new Map(unit.vertices.map((v) => [v.id, v]))
-  const out = new Map<Id, string>()
-  for (const w of unit.walls) {
-    const [p, q] = [vs.get(w.a), vs.get(w.b)]
-    if (!p || !q || w.heightM <= 0.2) continue
-    const M = Math.hypot(q.x - p.x, q.y - p.y)
-    if (M < 1e-6) continue
-    const mid = { x: (p.x + q.x) / 2, y: (p.y + q.y) / 2 }
-    for (const { a, b, tol, f } of segs) {
-      if (mid.x < Math.min(a.x, b.x) - tol || mid.x > Math.max(a.x, b.x) + tol || mid.y < Math.min(a.y, b.y) - tol || mid.y > Math.max(a.y, b.y) + tol) continue
-      const L = Math.hypot(b.x - a.x, b.y - a.y)
-      if (L < 1e-6 || Math.abs(((b.x - a.x) * (q.y - p.y) - (b.y - a.y) * (q.x - p.x)) / (L * M)) > 0.05) continue
-      const d = { x: (b.x - a.x) / L, y: (b.y - a.y) / L }
-      const u = (mid.x - a.x) * d.x + (mid.y - a.y) * d.y
-      if (u < -tol || u > L + tol || Math.abs(-(mid.x - a.x) * d.y + (mid.y - a.y) * d.x) > tol) continue
-      out.set(w.id, f)
-      break
-    }
-  }
-  return out
 }
 
 /**

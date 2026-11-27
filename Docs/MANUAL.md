@@ -1477,7 +1477,9 @@ From the ⋯ menu, what a developer or their architect asks for:
   **DOORS** (leaf, swing and the two jambs; a wide opening with no door is a block of its two jambs), **WINDOWS**,
   **COLUMNS**, **TEXT** (names and sizes; a raised floor's name sits at that height), **PLOTLINE_ZONES** (a level's flush
   lines), **PLOTLINE_KERBS** (walls of 20 cm or less) and **PLOTLINE_AXES_…** (each wall's centre line, one layer per
-  thickness — leave them in the file). Dropped back untouched it opens exactly as it was ("Written by Plotline and not
+  thickness — leave them in the file; a low wall's **Made of** and a wall's outside finish ride in the layer's name,
+  `PLOTLINE_AXES_500_LOW_GLASS`, `PLOTLINE_AXES_2540_OUT_BRICK_RED`, so a glass balustrade comes back glass and a brick
+  wall brick, the commonest finish the building's own). Dropped back untouched it opens exactly as it was ("Written by Plotline and not
   changed since"). Saved again by a CAD program it is read from its lines and layers ("… walls read from their centre
   lines, exactly as exported"): all 20 built-in flats and levels come back exactly the same, curved ramps and parking
   bays included. A wall moved, made longer or shorter in the CAD program: the walls are read from their outlines instead

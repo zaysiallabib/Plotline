@@ -7,7 +7,8 @@
  */
 import { readFileSync } from 'node:fs'
 import { describe, expect, test } from 'vitest'
-import { finishesOn, importIfc, railRuns, roofSetting } from './ifc'
+import { importIfc, railRuns, roofSetting } from './ifc'
+import { finishesOn } from './plan2d'
 import { dressUvs, parseDress, readGlbJson } from './glb'
 import { outerRuns } from '../furnish/finishes'
 

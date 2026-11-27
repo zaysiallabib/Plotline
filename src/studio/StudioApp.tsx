@@ -61,9 +61,10 @@ import type { PdfDoc } from '../import/pdf'
 import type { Box } from '../import/sheets'
 import { IMPORT_ACCEPT, expandZips, filesOfDrop, importFile, importFormatOf, lockedFormatOf, mainFile, siblingsOf, type DropFile, type ImportResult, type ImportedStorey, type LayerRole, type LayerRoles } from '../import'
 import { PROJECTS_KEY, drawingName, keepApartments, keepReview, newProject, planOf as planOfProject, projectWith, parseProjects, projectTower, readProjects, saveProjects, setSlot, slotLabel, slotsOf, slotsText, stackFloors, syncUnit, type DrawingSource, type Project, type ProjectPlan, type Slot } from '../data/building/projects'
-import { finishesKey, keptFor, layoutKey, outsideRecord, putKept, readFinishes, saveFinishes, splitKept } from '../data/building/apartments'
+import { buildingOf, finishesKey, keptFor, layoutKey, outsideRecord, putKept, readFinishes, saveFinishes, splitKept } from '../data/building/apartments'
+import { OUTSIDE_SLOT, outerRuns, outsideKey } from '../furnish/finishes'
 import { plain } from '../import/materials'
-import { floorIn, roleIn, stemIn } from '../data/building'
+import { floorIn, roleIn, stemIn, towerOf } from '../data/building'
 import { HARD, snapMove, snapPoint, type Snap } from './snap'
 import { STAFF_KEY, baseOf, planOf, readLayout, saveLayout } from '../viewer/arrange'
 import { titleOf } from '../viewer/defaults'
@@ -1474,7 +1475,7 @@ export default function StudioApp() {
       const drawn = b ? Math.max(b.maxX - b.minX, b.maxY - b.minY) : 0
       const kept = stored<Record<string, number>>(READ_IN_KEY)[fileName] !== undefined
       if (!kept && across > 0 && (across < 4 || across < 0.75 * drawn)) {
-        const ks = [1, 10, 100, 1000].filter((k) => k === 1 || (across * k >= 6 && across * k <= 400))
+        const ks = [1, 10, 100, 1000].filter((k) => k === 1 || (across * k >= 6 && across * k <= 2000))
         const m = (v: number) => (v < 10 ? v.toFixed(1) : Math.round(v).toLocaleString('en'))
         const pick = await askChoice(
           `${fileName} reads ${m(across)} m across and ${m(sz[1])} m tall${drawn ? ` — smaller than the drawing (${m(drawn)} m)` : ''}. How big is it?`,
@@ -1642,7 +1643,12 @@ export default function StudioApp() {
     if (!u.walls.length) return toast('Nothing drawn yet to export')
     const { writeDxf } = await import('../import/dxfWrite')
     const name = nameOf(u)
-    download(`${slug(name)}.dxf`, writeDxf(u), 'application/dxf')
+    // (each wall's outside finish as its building wears it — the whole building's, else its own — kept in its centre line's layer)
+    const rec = readFinishes(outsideRecord(buildingOf(towerOf(u), u.id))) ?? {}
+    const runs = outerRuns(u)
+    const dressed = Object.keys(rec).some((k) => k === OUTSIDE_SLOT.id || k.startsWith(`out:${u.id}:`))
+    const outside = dressed ? Object.fromEntries(u.walls.map((w) => [w.id, rec[outsideKey(u.id, runs.get(w.id) ?? w.id)] ?? rec[OUTSIDE_SLOT.id] ?? OUTSIDE_SLOT.defaultOptionId])) : {}
+    download(`${slug(name)}.dxf`, writeDxf(u, outside), 'application/dxf')
     setSent(openKey())
     toast(`Saved ${slug(name)}.dxf — metres, layers WALLS, DOORS, WINDOWS, COLUMNS, TEXT, PLOTLINE_ZONES, PLOTLINE_KERBS`)
   }
