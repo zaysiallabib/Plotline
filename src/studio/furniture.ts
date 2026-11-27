@@ -648,7 +648,9 @@ function fitOver(unit: Unit, p: FurniturePlacement, w: WallFace, ends: readonly 
   const s = { ...kit, x: fitK('x', want), ...(how === 'cover' ? { y: fitK('y', o.heightM + 0.15) } : {}) }
   const bottom = seat(how, o)
   const side = (Math.sign(dot(fw.f.normal, w.n)) * fw.wall.thicknessM) / 2
-  const u = Math.abs(s.x - want) < 0.03 ? o.offsetM - e * ends[0] + s.x / 2 : o.offsetM + o.widthM / 2
+  // its size as asked: from the start side's overhang; held at its limits (a shutter no narrower than 1.47 m): against the
+  // side that keeps none (a wall there), else centred
+  const u = Math.abs(s.x - want) < 0.03 ? o.offsetM - e * ends[0] + s.x / 2 : !ends[0] && ends[1] ? o.offsetM + s.x / 2 : ends[0] && !ends[1] ? o.offsetM + o.widthM - s.x / 2 : o.offsetM + o.widthM / 2
   const at = { x: fw.f.origin.x + fw.f.dir.x * u + fw.f.normal.x * side, y: fw.f.origin.y + fw.f.dir.y * u + fw.f.normal.y * side }
   const sized = s.x !== kit.x || s.y !== kit.y ? { ...p, sizeM: s } : p
   return { piece: sized, face: { p: at, n: w.n, y: bottom + s.y / 2 } }

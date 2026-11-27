@@ -27,7 +27,9 @@ import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js'
 import * as core from '../core'
 import type { Id, MaterialRef, Opening, Pt, Room, Unit, Wall } from '../core'
 import { floorIn, roofIn, stemIn, streetOf, topFloor, towerOf, voidsOver, type Tower } from '../data/building'
-import { coveringOf, coveringsFor, isPitched, type Roof } from '../data/building/roof'
+import { coveringOf, coveringsFor, isPitched, ROOF_PIECE_ASSET, type Roof } from '../data/building/roof'
+import { buildProcedural } from '../furnish/procedural'
+import { SOLAR } from '../furnish/procedural.meta'
 import { keptAt } from '../data/building/apartments'
 import { storeyUnit } from '../data/building/storeys'
 import type { Rect } from '../data/building/demo-tower'
@@ -475,7 +477,7 @@ export class Building extends THREE.Group {
     const shape = this.roof
     const pitched = isPitched(shape)
     /** the box the roof stands over (a pitched roof, a flat one's skylights): the top floor's outer walls' corners, the scene's plan frame, and their longest wall's direction */
-    const over = pitched || shape?.windows?.length ? { pts: [] as Pt[], dir: { x: 1, y: 0 }, len: 0 } : null
+    const over = pitched || shape?.windows?.length || shape?.pieces?.length ? { pts: [] as Pt[], dir: { x: 1, y: 0 }, len: 0 } : null
     /** a flat roof's covering over its slab (gravel, a green roof, terrace tiles): none for the plain slab */
     const deck = shape && !pitched && coveringOf(shape) !== coveringsFor(shape)[0] ? coveringOf(shape).material : null
     // the architect's outside shape (core Shell: the scene draws it round the flat in every mode) stands in for the box
@@ -633,6 +635,7 @@ export class Building extends THREE.Group {
     // (a traced rooftop with walls is its own flat roof — its parapets, its zones: no skylights over it — but a pitched roof is
     // drawn over the top floor whatever stands on the slab; a rooftop still a picture to trace is no roof yet)
     const roofTraced = roofLevel.some((s) => FLATS[s].unit.walls.length > 0)
+    let roofPieces: ReturnType<typeof roofGeometry>['spots'] = []
     if (shape && over?.pts.length && !hasShell && (pitched || !roofTraced)) {
       // the eave as the set prints it, else on the roof slab; the ridge as printed (when no pitch is set)
       const eave = t.STOREYS?.eaveM !== undefined ? G + t.STOREYS.eaveM : R
@@ -647,6 +650,7 @@ export class Building extends THREE.Group {
         for (let i = r.panes.attributes.position.count / 3; i > 0; i--) own.push({ k: top + 1, flat: null })
         put(top + 1, 'glass', r.panes)
       } else r.panes.dispose()
+      roofPieces = r.spots
     }
 
     // the core, ground to roof head: its traced walls at the ground and as the stair head + lift machine room
@@ -702,6 +706,21 @@ export class Building extends THREE.Group {
         mesh.userData.level = k // its floor: a cut under it hides it (highlight; the plinth: his traced ground floor stands on it), the walk shows floors by tier (frame)
         this.add(mesh)
       }
+    // the roof's solar panels and chimneys (Roof.pieces): the library's pieces, code-built, on the deck as they stand; on a slope
+    // a solar frame turned to it, its modules 12 cm over the covering (ponytail: its legs go into the roof unseen), a chimney
+    // upright with its foot in the slope
+    for (const s of roofPieces) {
+      const g = buildProcedural(ROOF_PIECE_ASSET[s.kind])
+      if (!g) continue
+      const solar = s.kind === 'solar'
+      const tip = solar && s.tilt ? s.tilt - (SOLAR.tiltDeg * Math.PI) / 180 : 0
+      const sink = !s.tilt ? 0 : solar ? 0.39 : 0.3 * Math.tan(s.tilt)
+      g.position.set(s.at[0], s.at[1] - sink, s.at[2])
+      g.rotation.set(tip, s.yaw, 0, 'YXZ')
+      g.userData.level = top + 1
+      g.traverse((o) => ((o as THREE.Mesh).isMesh && ((o.castShadow = o.receiveShadow = true), (o.raycast = () => {}))))
+      this.add(g)
+    }
     this.box.setFromObject(this)
 
     // his traced basements (after the box: the view frames the tower above ground), in full, each its own group so picking

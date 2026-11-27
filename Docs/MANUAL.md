@@ -502,6 +502,11 @@ block is the roof.
 - **Roof windows** (on a flat roof **Skylights**): **+ Add** puts one on the front slope; the windows on a slope spread out
   evenly; **Front / Back** moves one to the other slope; drag its slider to slide it along; **×** takes it away. A roof
   window is glass in a grey frame lying on the slope; a skylight sits on a 15 cm curb on the roof.
+- **On the roof:** **+ Solar panels** puts a frame of two panels on the roof, **+ Chimney** a chimney stack; like the
+  windows they spread out evenly, **Front / Back** moves one to the other slope, the slider slides it along, **×** takes it
+  away. On a flat roof the panels stand on their tilted frame on the deck; on a sloping roof they lie on the slope, 12 cm
+  over its tiles, and a chimney stands upright out of it. One that does not fit its slope (a narrow house) is left out.
+  (A rooftop you traced as a level of its own is a floor: put panels and chimneys there from **Add → Outside**, §3.)
 - Each change rebuilds the tower round the flat at once; **Done** closes the block. It is kept at once: a building made in
   the Studio keeps it in its project (the Studio's project column shows it under **ROOF**, §6); a built-in building
   (Type A's, Sheltech's) keeps it in this browser.
@@ -1464,7 +1469,8 @@ your account card on that list (as ⋯ → your email).
 **ROOF** (under the floors): the roof over the top floor in one line ("Flat, with its parapet · Plain roof slab", "Gable ·
 pitch as drawn · Clay tiles · eaves 0.45 m · 2 roof windows"). **Change** opens its fields under it — **Kind**, **Pitch °**,
 **Ridge**, **Eaves m**, **Covering** (a list), **Coping**, **A cornice band under the roof**, **Roof windows** / **Skylights**
-with **+ Add**, **Front / Back**, a slider and **×** — the same as the 3D view's roof block (§3, "The roof"); **Close** folds
+with **+ Add**, **Front / Back**, a slider and **×**, **On the roof** with **+ Solar panels** and **+ Chimney** (the same
+rows) — the same as the 3D view's roof block (§3, "The roof"); **Close** folds
 them. A typed number goes in on Enter or when you leave the box. Saved in the project at once; **Show building** shows it.
 A project built from a drawing set whose sections print an eave and a ridge starts with that roof ("Gable · pitch as
 drawn"): change its covering or overhang and it stays at the printed heights; type a pitch to make it steeper or flatter.

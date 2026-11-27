@@ -23,7 +23,15 @@ export interface RoofParts {
   trim: THREE.BufferGeometry
   /** the roof windows' glass, with building.ts paneMaterial's `pane` card */
   panes: THREE.BufferGeometry
+  /**
+   * Its solar panels and chimneys (Roof.pieces): where each stands — `at` its base's middle (scene: x, y up, z), turned `yaw`
+   * (about up: its front, +z, down the slope) and tipped `tilt` down toward its front (the slope's angle; 0 on a flat deck).
+   */
+  spots: { kind: 'solar' | 'chimney'; at: [number, number, number]; yaw: number; tilt: number }[]
 }
+
+/** a roof piece's plan size (the kit's solar_panel and chimney, procedural.meta.ts) */
+const PIECE_PLAN = { solar: { w: 2.1, h: 1.8 }, chimney: { w: 0.6, h: 0.6 } }
 
 /** a point in the roof's own frame: along the ridge, across it, up */
 type P = [number, number, number]
@@ -196,6 +204,35 @@ export function roofGeometry(pts: Pt[], dir: Pt, roof: Roof, base: number, eave:
     for (const [p, q] of [[[x0, v0], [x1, v0]], [[x1, v0], [x1, v1]], [[x1, v1], [x0, v1]], [[x0, v1], [x0, v0]]])
       trim.push([pt(p[0], p[1], 0), pt(q[0], q[1], 0), pt(q[0], q[1], RAISE_M), pt(p[0], p[1], RAISE_M)])
   }
+  // solar panels and chimneys: placed as a roof window, standing on a flat roof's deck, on a slope lying on it (building.ts)
+  const spots: RoofParts['spots'] = []
+  const yawOf = (p: P, q: P) => {
+    const [a, b] = [at(p), at(q)]
+    return Math.atan2(b[0] - a[0], b[2] - a[2])
+  }
+  for (const w of roof.pieces ?? []) {
+    const { w: pw, h: ph } = PIECE_PLAN[w.kind]
+    if (roof.kind === 'flat') {
+      const [ca, cb] = [a0 + MARGIN_M + pw / 2 + w.along * Math.max(0, L - 2 * MARGIN_M - pw), b0 + MARGIN_M + ph / 2 + w.up * Math.max(0, W - 2 * MARGIN_M - ph)]
+      spots.push({ kind: w.kind, at: at([ca, cb, base]) as [number, number, number], yaw: yawOf([ca, cb, 0], [ca, cb - 1, 0]), tilt: 0 })
+      continue
+    }
+    const s = slopeOf(w.side)
+    const [e0, e1] = s
+    const sgn = Math.sign(s[2][1] - e0[1]) || 1
+    const rise = s[2][2] - e0[2]
+    const run = Math.abs(s[2][1] - e0[1])
+    const len = Math.hypot(rise, run)
+    if (len < ph + 2 * MARGIN_M) continue
+    const vc = MARGIN_M + ph / 2 + w.up * (len - 2 * MARGIN_M - ph)
+    const lo = Math.min(e0[0], e1[0]) + MARGIN_M + pw / 2 + ((vc / len) * Math.max(0, Math.abs(e1[0] - e0[0]) - Math.abs(s[2][0] - (s[3] ?? s[2])[0]))) / 2
+    const hi = Math.max(e0[0], e1[0]) - (lo - Math.min(e0[0], e1[0]))
+    if (hi < lo) continue
+    const ac = lo + w.along * (hi - lo)
+    const bc = e0[1] + sgn * vc * (run / len)
+    spots.push({ kind: w.kind, at: at([ac, bc, e0[2] + vc * (rise / len)]) as [number, number, number], yaw: yawOf([ac, bc, 0], [ac, bc - sgn, 0]), tilt: Math.atan2(rise, run) })
+  }
+
   // the cornice: a band 30 cm deep round the walls just under the eaves (a flat roof's is drawn with its parapet, building.ts)
   if (roof.cornice && roof.kind !== 'flat')
     for (const [p, q, n] of [[[a0, b0], [a1, b0], [0, -1]], [[a1, b0], [a1, b1], [1, 0]], [[a1, b1], [a0, b1], [0, 1]], [[a0, b1], [a0, b0], [-1, 0]]] as [number[], number[], number[]][]) {
@@ -227,7 +264,7 @@ export function roofGeometry(pts: Pt[], dir: Pt, roof: Roof, base: number, eave:
     panes.computeVertexNormals()
   }
   const wallGeo = faces(walls.map((s) => s.map(at)), wallUv)
-  return { cover, walls: wallGeo, trim: soffit ? merged(paint, soffit) : paint, panes }
+  return { cover, walls: wallGeo, trim: soffit ? merged(paint, soffit) : paint, panes, spots }
 }
 
 /** two non-indexed geometries of the same attributes as one */

@@ -132,3 +132,14 @@ describe('on a real flat (BTI Type A)', () => {
     expect(m.piece.x).toBeGreaterThan(12.67) // shifted off the shaft wall (x 11.75..12.0)
   })
 })
+
+describe('a piece held at its limits beside a wall', () => {
+  it('a roller shutter (no narrower than 1.47 m) on a 0.8 m window by the corner starts at the window, not past the wall', () => {
+    const narrow: Unit = { ...unit, walls: unit.walls.map((w) => (w.id === 'wT' ? { ...w, openings: [{ id: 'nw', kind: 'window', offsetM: 0.15, widthM: 0.8, heightM: 1.2, sillM: 0.9 }] } : w)) }
+    const m = placePiece(narrow, deriveRooms(narrow), [], 'rollershutter_window_01', { x: 0.55, y: -0.1 }, 0, 's', { p: { x: 0.55, y: -0.1 }, n: { x: 0, y: -1 }, y: 1.6 })!
+    expect(m.error).toBeNull()
+    expect(m.piece.sizeM!.x).toBeCloseTo(1.47, 6)
+    expect(m.piece.x - 1.47 / 2).toBeGreaterThan(0.1) // its end off the corner wall's body (x ≤ 0.1), over the window's start
+    expect(m.piece.x - 1.47 / 2).toBeLessThan(0.25)
+  })
+})
