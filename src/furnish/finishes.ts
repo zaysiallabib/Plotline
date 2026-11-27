@@ -8,7 +8,7 @@
  * Slot and option ids are fixed strings (invariant 4): a buyer's choice (`?c=`, an events row) means the same thing
  * after the plan is edited and re-published.
  */
-import { isOutdoor, roomPolygon, type FinishOption, type FinishSlot, type Id, type Room, type RoomKind, type Unit } from '../core'
+import { isOutdoor, roomPolygon, type Configuration, type FinishOption, type FinishSlot, type Id, type MaterialRef, type Room, type RoomKind, type Unit, type Wall } from '../core'
 
 export type CatalogSlot = Omit<FinishSlot, 'roomIds'> & {
   /** the room kinds this slot covers on a unit without slots of its own; 'all' = every room */
@@ -159,9 +159,9 @@ export const ROOF_COVERINGS: { flat: FinishOption[]; pitched: FinishOption[] } =
     { id: 'rc_sheet', brand: 'Generic', sku: 'ROOF-SHEET-GREY', label: 'Grey metal sheet', priceDeltaBdt: 0, material: { kind: 'color', color: '#6b6660', roughness: 0.75 } },
     { id: 'rc_clay', brand: 'Generic', sku: 'ROOF-CLAY-TILE', label: 'Clay tiles', priceDeltaBdt: 0, material: { kind: 'pbr', textureId: 'roof_clay' } },
     { id: 'rc_slate', brand: 'Generic', sku: 'ROOF-SLATE', label: 'Slate', priceDeltaBdt: 0, material: { kind: 'pbr', textureId: 'roof_slate' } },
-    { id: 'rc_zinc', brand: 'Generic', sku: 'ROOF-ZINC-SEAM', label: 'Zinc standing seam', priceDeltaBdt: 0, material: { kind: 'pbr', textureId: 'roof_seam', tint: '#c3c8cc' } },
+    { id: 'rc_zinc', brand: 'Generic', sku: 'ROOF-ZINC-SEAM', label: 'Zinc standing seam', priceDeltaBdt: 0, material: { kind: 'pbr', textureId: 'metal_seam', tint: '#aeb2b6' } },
     { id: 'rc_shingles', brand: 'Generic', sku: 'ROOF-SHINGLE-TIMBER', label: 'Timber shingles', priceDeltaBdt: 0, material: { kind: 'pbr', textureId: 'roof_shingles' } },
-    { id: 'rc_corrugated', brand: 'Generic', sku: 'ROOF-CORRUGATED', label: 'Corrugated metal', priceDeltaBdt: 0, material: { kind: 'pbr', textureId: 'roof_corrugated' } },
+    { id: 'rc_corrugated', brand: 'Generic', sku: 'ROOF-CORRUGATED', label: 'Corrugated metal', priceDeltaBdt: 0, material: { kind: 'pbr', textureId: 'metal_corrugated' } },
   ],
 }
 
@@ -230,4 +230,142 @@ export function faceWallId(unit: Pick<Unit, 'vertices'>, room: Room, wallId: Id)
     }
   }
   return best
+}
+
+// ── the outside (session 31 facade, founder: "real buildings look a lot different from the outside … make sure they can be
+// used in any and all projects") ─────────────────────────────────────────────────────────────────────────────────────────
+
+/** Plaster as Plotline has drawn every outside: the white stucco scan, warmer and darker than the paint (three/materials.ts EXTERIOR_PLASTER). */
+export const OUTSIDE_PLASTER: MaterialRef = { kind: 'pbr', textureId: 'plaster_white', tint: '#dbd3c6' }
+const pbr = (textureId: string, tint?: string): MaterialRef => ({ kind: 'pbr', textureId, ...(tint ? { tint } : {}) })
+const outside = (id: string, brand: string, label: string, sku: string, material: MaterialRef): FinishOption => ({ id: `fo_out_${id}`, brand, sku, label, priceDeltaBdt: 0, material })
+const frame = (id: string, brand: string, label: string, sku: string, material: MaterialRef): FinishOption => ({ id: `fo_frame_${id}`, brand, sku, label, priceDeltaBdt: 0, material })
+
+/**
+ * What the outer walls are clad in — a developer's choice for the building, never a buyer's (no price; a buyer link shows what
+ * staff chose). Not among a unit's slots (finishSlotsFor): it is kept in the building's own record (data/building/apartments.ts
+ * outsideRecord). Its brand line names the family a person picks from; a developer's own brick is Finishes → + Add option.
+ */
+export const OUTSIDE_SLOT: FinishSlot = {
+  id: 's_outside',
+  label: 'Outside walls',
+  target: 'wall',
+  roomIds: [],
+  defaultOptionId: 'fo_out_plaster',
+  options: [
+    outside('plaster', 'Render', 'Warm plaster', 'RENDER-WARM', OUTSIDE_PLASTER),
+    outside('render_white', 'Render', 'White render', 'RENDER-WHITE', pbr('plaster_white', '#f1eee8')),
+    outside('render_sand', 'Render', 'Sand render', 'RENDER-SAND', pbr('plaster_white', '#d8c6a6')),
+    outside('render_terracotta', 'Render', 'Terracotta render', 'RENDER-TERRA', pbr('plaster_white', '#c4876a')),
+    outside('render_charcoal', 'Render', 'Charcoal render', 'RENDER-CHAR', pbr('plaster_white', '#57595c')),
+    outside('brick_red', 'Brick', 'Red brick', 'BRICK-RED', pbr('brick_red')),
+    outside('brick_white', 'Brick', 'White painted brick', 'BRICK-WHITE', pbr('brick_painted', '#f2f0ec')),
+    outside('brick_grey', 'Brick', 'Grey brick', 'BRICK-GREY', pbr('brick_painted', '#8f8f8c')),
+    outside('stone', 'Stone', 'Stone blocks', 'STONE-BLOCK', pbr('stone_blocks', '#e6e2da')),
+    outside('timber_slats', 'Timber', 'Timber slats', 'TIMBER-SLAT', pbr('timber_slats')),
+    outside('clapboard', 'Timber', 'Timber clapboard', 'TIMBER-LAP', pbr('timber_clapboard')),
+    outside('zinc', 'Metal', 'Zinc panels', 'ZINC-RIB', pbr('metal_seam', '#aeb2b6')),
+    outside('metal_dark', 'Metal', 'Dark metal panels', 'METAL-RIB-DARK', pbr('metal_seam', '#5a5e63')),
+    outside('corrugated', 'Metal', 'Corrugated metal', 'METAL-CORR', pbr('metal_corrugated')),
+    outside('concrete', 'Concrete', 'Fair-faced concrete', 'CONC-FAIR', pbr('concrete_fair', '#d4d8d8')),
+    outside('precast', 'Concrete', 'Precast concrete panels', 'CONC-PRECAST', pbr('concrete_precast', '#d4d8d8')),
+    outside('fibre_cement', 'Panels', 'Fibre-cement panels', 'PANEL-FC', pbr('panel_grid', '#ecebe7')),
+    outside('acp_charcoal', 'Panels', 'Charcoal composite panels', 'PANEL-ACP-CHAR', pbr('panel_grid', '#4b4e52')),
+    outside('acp_rust', 'Panels', 'Rust composite panels', 'PANEL-ACP-RUST', pbr('panel_grid', '#9a5a3c')),
+  ],
+}
+
+/** The window, sliding-door and glass-wall frames, the same way (the first: the silver aluminium every window is drawn in). */
+export const FRAMES_SLOT: FinishSlot = {
+  id: 's_frames',
+  label: 'Window frames',
+  target: 'wall',
+  roomIds: [],
+  defaultOptionId: 'fo_frame_silver',
+  options: [
+    frame('silver', 'Aluminium', 'Silver', 'ALU-SILVER', { kind: 'color', color: '#d5d7d6', roughness: 0.45, metalness: 0.15 }),
+    frame('white', 'Aluminium', 'White', 'RAL-9010', { kind: 'color', color: '#eeebe2', roughness: 0.4, metalness: 0 }),
+    frame('anthracite', 'Aluminium', 'Anthracite', 'RAL-7016', { kind: 'color', color: '#3a4045', roughness: 0.45, metalness: 0.15 }),
+    frame('black', 'Aluminium', 'Black', 'RAL-9005', { kind: 'color', color: '#1d1e20', roughness: 0.45, metalness: 0.15 }),
+    frame('timber', 'Timber', 'Timber', 'TIMBER-FRAME', pbr('wood_veneer_light', '#7a5a42')),
+  ],
+}
+
+/**
+ * The building's outside record (a Configuration) holds: OUTSIDE_SLOT's id (every outer wall), FRAMES_SLOT's (every frame),
+ * one wall's outside on every floor its drawing stands on, one floor's outer walls (a plinth band), one window's frame.
+ */
+export const outsideKey = (drawing: Id, run: Id): string => `out:${drawing}:${run}`
+export const outsideFloorKey = (floor: number): string => `out:floor:${floor}`
+export const frameKey = (drawing: Id, openingId: Id): string => `frame:${drawing}:${openingId}`
+
+/** The outside, resolved for the 3D (three/building.ts, PlotlineScene). Null: nothing chosen there — drawn as it always was. */
+export interface Outside {
+  /** wall run `run` (outerRuns) of drawing `drawing` on floor `floor`: its own choice, its floor's, the building's */
+  wall(drawing?: Id | null, run?: Id | null, floor?: number): MaterialRef | null
+  /** opening `openingId`'s frame: its own choice, the building's */
+  frame(drawing?: Id | null, openingId?: Id | null): MaterialRef | null
+  /** the record's choices, sorted ('' = none): two equal ones draw alike */
+  sig: string
+  /** some frame is chosen (the building's or one window's): the tower's panes carry a colour each */
+  framed: boolean
+}
+
+/** `rec` (the building's outside record) over `slots` (OUTSIDE_SLOT and FRAMES_SLOT with staff's own options: own.ts withOwnOptions); a choice not among the options is ignored. */
+export function outsideOf(rec: Configuration, slots: FinishSlot[] = [OUTSIDE_SLOT, FRAMES_SLOT]): Outside {
+  const walls = slots.find((s) => s.id === OUTSIDE_SLOT.id) ?? OUTSIDE_SLOT
+  const frames = slots.find((s) => s.id === FRAMES_SLOT.id) ?? FRAMES_SLOT
+  const pick = (slot: FinishSlot, keys: (string | null)[]): MaterialRef | null => {
+    for (const k of keys) {
+      const o = k !== null && rec[k] !== undefined ? slot.options.find((x) => x.id === rec[k]) : undefined
+      if (o) return o.material
+    }
+    return null
+  }
+  const entries = Object.entries(rec).sort()
+  return {
+    wall: (drawing, run, floor) => pick(walls, [drawing && run ? outsideKey(drawing, run) : null, floor !== undefined ? outsideFloorKey(floor) : null, walls.id]),
+    frame: (drawing, openingId) => pick(frames, [drawing && openingId ? frameKey(drawing, openingId) : null, frames.id]),
+    sig: entries.length ? JSON.stringify(entries) : '',
+    framed: entries.some(([k]) => k === frames.id || k.startsWith('frame:')),
+  }
+}
+
+const RUNS = new WeakMap<object, Map<Id, Id>>()
+/**
+ * The wall an outside face is chosen by: walls end to end in a straight line (within ~1°) and as tall as each other are one
+ * wall to look at — the graph splits an outer wall wherever a room's wall meets it from inside — named by the smallest id in
+ * the run, whichever piece was clicked (faceWallId's rule, without a room). A parapet in line with a storey wall is its own.
+ */
+export function outerRuns(unit: Pick<Unit, 'vertices' | 'walls'>): Map<Id, Id> {
+  const kept = RUNS.get(unit)
+  if (kept) return kept
+  const up = new Map(unit.walls.map((w) => [w.id, w.id]))
+  const root = (id: Id): Id => {
+    let r = id
+    while (up.get(r) !== r) r = up.get(r)!
+    up.set(id, r)
+    return r
+  }
+  const ends = new Map<Id, { w: Wall; dx: number; dy: number }[]>()
+  const vs = new Map(unit.vertices.map((v) => [v.id, v]))
+  for (const w of unit.walls) {
+    const [a, b] = [vs.get(w.a), vs.get(w.b)]
+    const L = a && b ? Math.hypot(b.x - a.x, b.y - a.y) : 0
+    if (!a || !b || L < 1e-6) continue
+    const [dx, dy] = [(b.x - a.x) / L, (b.y - a.y) / L]
+    for (const [v, s] of [[w.a, 1], [w.b, -1]] as const) ends.set(v, [...(ends.get(v) ?? []), { w, dx: dx * s, dy: dy * s }])
+  }
+  // two pieces leaving one corner in opposite directions, alike in height: one wall (the smaller id names the run)
+  for (const at of ends.values())
+    for (let i = 0; i < at.length; i++)
+      for (let j = i + 1; j < at.length; j++) {
+        const [p, q] = [at[i], at[j]]
+        if (p.dx * q.dx + p.dy * q.dy > -0.9998 || Math.abs(p.w.heightM - q.w.heightM) > 0.01) continue
+        const [x, y] = [root(p.w.id), root(q.w.id)]
+        if (x !== y) up.set(x < y ? y : x, x < y ? x : y)
+      }
+  const runs = new Map(unit.walls.map((w) => [w.id, root(w.id)]))
+  RUNS.set(unit, runs)
+  return runs
 }

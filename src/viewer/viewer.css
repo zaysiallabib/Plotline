@@ -163,6 +163,7 @@ html:has(.viewer), body:has(.viewer) { overscroll-behavior: none; }
 .buyer-name input,
 .popover textarea,
 .ftin input,
+.ftin select,
 .sun-date,
 .changes-key input,
 .roof-fields :is(input[type='number'], select) {
@@ -176,7 +177,7 @@ html:has(.viewer), body:has(.viewer) { overscroll-behavior: none; }
   outline: none;
   transition: border-color var(--dur-fast) var(--ease);
 }
-.buyer-name input:focus, .popover textarea:focus, .ftin input:focus, .sun-date:focus, .changes-key input:focus, .roof-fields :is(input, select):focus { border-color: var(--accent); }
+.buyer-name input:focus, .popover textarea:focus, .ftin input:focus, .ftin select:focus, .sun-date:focus, .changes-key input:focus, .roof-fields :is(input, select):focus { border-color: var(--accent); }
 /* the roof's fields (staff, Finishes): a number without the browser's spinner (arrow keys still step it); a select with room for its arrow */
 .roof-fields input[type='number'] { appearance: textfield; -moz-appearance: textfield; }
 .roof-fields input[type='number']::-webkit-inner-spin-button { -webkit-appearance: none; }

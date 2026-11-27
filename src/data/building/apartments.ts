@@ -27,8 +27,17 @@ export const finishesKey = (key: string): string => `${FINISHES}${key}`
 
 /** Drawing `id` on floor `floor`, standing in `places` places of its building: its id alone in one place, else `<id>:<floor>`. */
 export const apartmentKey = (id: Id, floor: number | undefined, places: number): string => (places > 1 && floor !== undefined ? `${id}:${floor}` : id)
-/** The drawing an apartment key belongs to (`<id>:<floor>` → `<id>`). */
-export const drawingOf = (key: string): Id => key.replace(/:-?\d+$/, '')
+/** The drawing an apartment key belongs to (`<id>:<floor>` → `<id>`; a building's outside record `<id>:outside` → `<id>`). */
+export const drawingOf = (key: string): Id => key.replace(/:(-?\d+|outside)$/, '')
+
+/**
+ * The building's outside (Finishes → the outside card, the Studio's wall inspector; furnish/finishes.ts outsideOf): one
+ * record for the whole building, kept as finishes under `<building>:outside` — so the project JSON the cloud saves carries
+ * it with the apartments (keptFor), and a buyer link with its flat (lib/publish.ts).
+ */
+export const outsideRecord = (building: Id): string => `${building}:outside`
+/** The building drawing `unitId` stands in: a Studio project's id, a built-in tower's first flat; a flat in no building is its own. */
+export const buildingOf = (t: Pick<Tower, 'FLATS' | 'ID'> | null, unitId: Id): Id => (t ? (t.ID ?? Object.keys(t.FLATS)[0]) : unitId)
 
 /** The floors of tower `t` that show drawing `id` (its mirrored copy has its own id): a floor listing it as a flat, or its level — never massing. */
 export const placesIn = (t: Pick<Tower, 'FLATS' | 'FLOORS' | 'LEVELS'>, id: Id): number[] =>

@@ -32,6 +32,23 @@ const PH = (id: string, label: string, asset: string, repeatM: number, author: s
   license: 'CC0',
 })
 
+/**
+ * An outside set (session 31 facade): colour, relief and roughness 1k jpgs re-encoded small (albedo q80, normal q82, roughness
+ * q70; no ambient-occlusion picture — a facade is seen from the street, the sky's light does that), `repeatM` its source's
+ * real size; `from`: its source page (Poly Haven, ambientCG; a generated set names the scan it was drawn over).
+ */
+const OUT = (id: string, label: string, from: string, repeatM: number, author: string): TextureSet => ({
+  id,
+  label,
+  albedo: `/assets/textures/${id}/albedo.jpg`,
+  normal: `/assets/textures/${id}/normal.jpg`,
+  roughness: `/assets/textures/${id}/roughness.jpg`,
+  repeatM,
+  source: from,
+  author,
+  license: 'CC0',
+})
+
 export const TEXTURES: Record<string, TextureSet> = {
   wood_floor_oak: {
     id: "wood_floor_oak",
@@ -128,13 +145,28 @@ export const TEXTURES: Record<string, TextureSet> = {
     roughness: '/assets/textures/marble_floor_white/roughness.jpg',
     tint: '#d7d7d7',
   },
+  // session 31 facade: what an outer wall can be clad in (furnish/finishes.ts OUTSIDE_SLOT), public/assets/MANIFEST.md
+  brick_red: OUT('brick_red', 'Red brick', 'https://polyhaven.com/a/large_red_bricks', 2, 'Rob Tuytel'),
+  // whitewashed brick, its colour taken out (grey-white bricks and mortar): the options tint it white, grey or any paint
+  brick_painted: OUT('brick_painted', 'Painted brick', 'https://polyhaven.com/a/whitewashed_brick', 2, 'Rob Tuytel'),
+  stone_blocks: OUT('stone_blocks', 'Light stone blocks', 'https://polyhaven.com/a/stone_tile_wall', 2, 'Charlotte Baglioni'),
+  // vertical composite slats with dark gaps, ~77 mm (26 a repeat): Dhaka's "timber-look" panels
+  timber_slats: OUT('timber_slats', 'Timber slats', 'https://polyhaven.com/a/synthetic_wood', 2, 'Dario Barresi, Charlotte Baglioni'),
+  // lap siding, 13 boards a repeat (~150 mm exposure: ambientCG gives no size)
+  timber_clapboard: OUT('timber_clapboard', 'Timber clapboard', 'https://ambientcg.com/view?id=WoodSiding007', 2, 'ambientCG (Lennart Demes)'),
+  // the box-profile sheet's red taken out and lightened to a zinc grey: ribs every ~220 mm
+  metal_seam: OUT('metal_seam', 'Zinc rib panels', 'https://polyhaven.com/a/box_profile_metal_sheet', 2, 'Amal Kumar'),
+  metal_corrugated: OUT('metal_corrugated', 'Corrugated metal', 'https://polyhaven.com/a/corrugated_iron_02', 2.7, 'Jenelle van Heerden, Sergej Majboroda'),
+  concrete_fair: OUT('concrete_fair', 'Fair-faced concrete', 'https://polyhaven.com/a/concrete_wall_008', 2.71, 'Dario Barresi, Charlotte Baglioni'),
+  // the same concrete with a 13 mm joint every 2.71 × 1.355 m drawn in (colour, relief, roughness): precast panels
+  concrete_precast: OUT('concrete_precast', 'Precast concrete panels', 'https://polyhaven.com/a/concrete_wall_008', 2.71, 'Dario Barresi, Charlotte Baglioni'),
+  // flat panels 1.2 × 0.8 m with 10 mm joints, drawn over the concrete scan flattened to an even light grey: fibre-cement and
+  // aluminium composite panels (the options tint it white, charcoal…)
+  panel_grid: OUT('panel_grid', 'Flat facade panels', 'https://polyhaven.com/a/concrete_wall_008', 2.4, 'Dario Barresi, Charlotte Baglioni'),
   // session 31 roof lane: a roof's coverings (finishes.ts ROOF_COVERINGS), Poly Haven 1k maps re-encoded small (albedo + normal
-  // 1024, roughness 512, no AO; MANIFEST.md); u along the eaves, v up the slope (three/roof.ts)
+  // 1024, roughness 512, no AO; MANIFEST.md); u along the eaves, v up the slope (three/roof.ts); a zinc or corrugated roof wears the outside sets metal_seam / metal_corrugated below
   roof_clay: { ...PH('roof_clay', 'Clay roof tiles', 'clay_roof_tiles_02', 2.5, 'Amal Kumar'), ao: undefined },
   roof_slate: { ...PH('roof_slate', 'Slate roof tiles', 'grey_roof_01', 8, 'Rob Tuytel'), ao: undefined },
   roof_shingles: { ...PH('roof_shingles', 'Timber roof shingles', 'roof_slates_02', 3, 'Rob Tuytel'), ao: undefined },
-  // the box-profile sheet comes red: its colour picture turned zinc grey (its luminance lifted), the option's tint over it
-  roof_seam: { ...PH('roof_seam', 'Zinc standing-seam sheet', 'box_profile_metal_sheet', 2, 'Amal Kumar'), ao: undefined },
-  roof_corrugated: { ...PH('roof_corrugated', 'Corrugated metal sheet', 'corrugated_iron_02', 2.7, 'Jenelle van Heerden, Sergej Majboroda'), ao: undefined },
   roof_gravel: { ...PH('roof_gravel', 'Roof gravel', 'gravel_floor_02', 2, 'Jenelle van Heerden, Dimitrios Savva'), ao: undefined },
 }

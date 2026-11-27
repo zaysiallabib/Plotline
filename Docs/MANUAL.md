@@ -245,6 +245,28 @@ Finishes is open: then the click picks that floor's finish).
 - On a buyer link, **Your name** sits at the top (the same field as in Comment).
 - Staff add their own options here (**+ Add option**, §3), and change the building's roof (§3, "The roof").
 
+**The building's outside** (staff, session 31). What the outer walls are clad in and the colour of the window frames —
+chosen once for the whole building, not flat by flat.
+- At the end of Finishes: **Outside walls** — Warm plaster (what every building was drawn in before), White, Sand,
+  Terracotta and Charcoal render, Red brick, White painted brick, Grey brick, Stone blocks, Timber slats, Timber
+  clapboard, Zinc panels, Dark metal panels, Corrugated metal, Fair-faced concrete, Precast concrete panels, Fibre-cement
+  panels, Charcoal and Rust composite panels — and **Window frames**: Silver (as before), White, Anthracite, Black,
+  Timber. One click dresses every flat and every floor of the building; the tower is built again round you in a moment.
+- **One wall, one floor:** with Finishes open, click an outer wall — in the **Building view** any wall of the tower (a
+  ground-floor block too; while Finishes is open a click there chooses — the card beside the pointer says *Click to
+  choose its outside* — it does not open the flat), in **Walk** or the
+  **Dollhouse** the outside of a wall or a balcony's wall. The card **OUTSIDE · FLOOR 5 · TYPE B WALL** has **This wall ·
+  This floor · Whole building**: *this wall* is that straight wall on every floor its floor plan stands on (a balcony's
+  front can be timber in a brick tower); *this floor* is every outer wall of that floor (a stone plinth on the ground
+  floor); then the options. **Same as the floor** / **Same as the building** takes the choice back; **Window frames ·
+  whole building** sits in the same card; **Done** closes it.
+- A balcony's walls are the outside: they take the outside finish unless a buyer picked a paint for that wall or that
+  balcony.
+- **Chosen for one wall, floor or window** lists those choices; **undo** takes one back.
+- Your own brick, stone or cladding panel: **+ Add option** under **Outside walls**, its look a **Picture** (§3).
+- It is kept for the whole building at once (in this browser, in the project saved online, and in every buyer link
+  made after); a buyer sees it and never changes it — buyers do not get this part of the panel.
+
 **Every flat keeps its own** (staff, founder 2026-11-21). A flat is one floor plan in one place of the building: floor 3's
 Type A, floor 4's Type A and the mirrored flat next door on floor 3 are three flats. What staff pick in Finishes — a whole
 group, one room, one wall — is kept for that flat the moment they click, and the flat opens like that next time, by any
@@ -638,6 +660,8 @@ Works in Walk and Dollhouse; the mouse stays free, so drag empty space to look r
   stepped band under its cap. A passage in a railing or fence stays a gap — a gate.
 - Keys: **Del** removes what is picked · **Ctrl+Z** undoes (one drag = one step) · **Esc** unpicks · **Alt** while
   dragging a low wall's end keeps its corner.
+- A window or a sliding door also has **Frame**: *Same as the building* (Finishes → Window frames), or its own colour —
+  Silver, White, Anthracite, Black, Timber. It changes that window on every floor its floor plan stands on.
 - A room nobody arranged is furnished again for its new walls; a room you arranged keeps its pieces. An opening's
   curtains go with it (move, resize, delete).
 - The change is written into the Studio drawing, so plan and 3D always agree; a Studio open in another tab shows it the
@@ -948,11 +972,14 @@ had.
 - **Selection** — the details of what you picked, to type exact values: a *corner* (position); a *wall* (Wall / Low wall
   / Kerb / Zone line, width, height, **Made of** for a low wall — Solid (plaster), Glass, Metal railing, Steel grille,
   Timber railing, Timber fence, Chain-link fence — and for a solid one **Cornice under the cap**, **Stands alone** — a
-  screen or decoration wall not meant to close a room, length, copy, delete); an *opening* (Door / Sliding door / Window / Passage, width, height, sill, distance from each corner;
-  for a door, hinge and swing); a *column* (width, depth, delete); a *room name* (name, kind, **Flat**, printed size,
+  screen or decoration wall not meant to close a room, **Outside** — what the outside of that wall is clad in, on every
+  floor this plan stands on, or *Same as the building* (the 3D view's Finishes; §2 The building's outside) — length, copy,
+  delete); an *opening* (Door / Sliding door / Window / Passage, width, height, sill, distance from each corner; for a door,
+  hinge and swing; a window's or sliding door's **Frame** colour); a *column* (width, depth, delete); a *room name* (name, kind, **Flat**, printed size,
   floor level, ramp); a *piece* (position, turn, size, height from floor, reset).
   - **Several things picked:** the walls' type, height, width, the low walls' Made of and Cornice (pick a whole
-    balcony's edge — a curved one's many short pieces too — and make it glass in one go), Stands alone; the openings' kind, width, height, sill. A
+    balcony's edge — a curved one's many short pieces too — and make it glass in one go), Stands alone, Outside ("mixed"
+    when they differ); the openings' kind, width, height, sill. A
     box shows the value they share; "mixed" means they differ — type a value and every one takes it (one Ctrl+Z). An
     opening the new size does not fit stays as it was, and a note says how many. **Delete them all** removes them.
 - **Issues** — problems in the drawing: red breaks the 3D, amber is worth a look, grey is cosmetic. **Join walls** fixes
@@ -1745,6 +1772,11 @@ Things that are confusing or not finished. Each one is a job on the list.
   "Sliding door" (Studio panel); "Reset layout" (3D) / "Reset to preset" (Studio).
 - One-room finishes: the clicked floor or wall is not outlined in 3D (only the panel names it); the Studio cannot set
   them; two rooms of one floor group with different floors get no threshold strip in their doorway.
+- The building's outside: a building drawn with the architect's own 3D outside shape (Studio → Outside shape) keeps the
+  file's colours — the outside finish dresses the walls Plotline draws (the walked flat's, every tower without a shape).
+  The tower is built again for each choice (about half a second); the floor plates' edges stay plaster. Railings and
+  glass balcony fronts are their own work; the roof is its own block (Finishes → The roof). A click on a roof's wall or parapet in
+  the Building view opens the outside card; on the roof itself, the roof's block.
 
 **Site:** most neighbour heights are guesses (3 floors) — type the ones you know. The map may miss new buildings or keep
 torn-down ones (delete those; a building cannot be added by hand yet). The plot is where the middle of the open drawing
@@ -1763,12 +1795,12 @@ is a job (hand-tested 2026-10-05, updated since).
 
 | Thing | In the 3D view | In the Studio | Cannot be changed anywhere |
 |---|---|---|---|
-| Wall | Its paint, one side at a time (Finishes open, click it) — nothing else | Yes — type, thickness (typed, or a face's dot), height, length, move, copy, delete; curved walls with A | Its paint on the outside |
-| Boundary wall, parapet, low wall | Yes under 1.2 m — Edit openings: drag an end dot, drag it across, type Length / Height, **Made of** (solid, glass, metal railing, steel grille, timber railing, timber fence, chain-link), Cornice, delete | Yes — plus Made of and Cornice up to 2.4 m (a fence, a boundary wall) | Its colour (the plaster, the metal, the timber, the glass tint) |
+| Wall | Its paint, one side at a time (Finishes open, click it); its outside finish — that wall, its floor or the whole building (staff: Finishes open, click its outside) | Yes — type, thickness (typed, or a face's dot), height, length, move, copy, delete; curved walls with A; **Outside** (what it is clad in) | — |
+| Boundary wall, parapet, low wall | Yes under 1.2 m — Edit openings: drag an end dot, drag it across, type Length / Height, **Made of** (solid, glass, metal railing, steel grille, timber railing, timber fence, chain-link), Cornice, delete; a solid one's outside finish as a wall's (Finishes) | Yes — plus Made of and Cornice up to 2.4 m (a fence, a boundary wall); **Outside** | The colour of its metal, timber or glass |
 | Balcony slab edge | It follows the balcony: every balcony's edge stands out | The same | Its depth and colour |
 | Kerb, free-standing screen | Yes under 1.2 m, as a low wall | Yes | — |
-| Glass wall | Yes — width, height, sill, slide, delete | Yes | Frame, glass colour. Cannot be *added* in 3D |
-| Door, double door, gate, window, passage | Yes — kind, width, height, sill, slide, delete | Yes — plus hinge side and swing | Door material. Cannot be *added* in 3D |
+| Glass wall | Yes — width, height, sill, slide, delete; its frame colour (Finishes → Window frames) | Yes | Glass colour. Cannot be *added* in 3D |
+| Door, double door, gate, window, passage | Yes — kind, width, height, sill, slide, delete; a window's or slider's **Frame** colour | Yes — plus hinge side and swing; a window's **Frame** | Door material. Cannot be *added* in 3D |
 | Column | No | Yes — each corner and side by mouse (or typed), move, delete, add | — |
 | Ceiling, slab, ceiling height, ceiling lights | One room's ceiling can be clicked in Finishes, but only one ceiling colour exists | No | Everything else |
 | Roof (the whole building's) | Yes (staff) — Building view, Finishes open, click the roof: kind (flat, gable, hip, shed, mansard), pitch, ridge, eaves, covering, coping, cornice | Yes — the project's column, **ROOF → Change** | A roof shaped to an L-shaped building (one roof over its box); dormers |
@@ -1780,7 +1812,8 @@ is a job (hand-tested 2026-10-05, updated since).
 | Steps | No | No | They are not their own thing yet |
 | Pool | not tested | not tested | not tested |
 | Parking bay | No | Yes — size, number, add, delete | The painted lines |
-| Wall paint of one room / one wall | Yes — Finishes open, click the wall; kept for that flat | No | The outside and the boundary (no paint choice) |
+| Wall paint of one room / one wall | Yes — Finishes open, click the wall; kept for that flat | No | — |
+| The building's outside (every outer wall, one floor's band, one wall; the window frames) | Yes (staff) — Finishes → Outside walls / Window frames, or click an outer wall: This wall · This floor · Whole building; kept for the whole building | Yes — a wall's **Outside**, a window's **Frame** | — |
 | Tree, shrub, plant, furniture, loungers, pergola | Yes — move, turn, resize, delete, add from the library | Yes (F) | Swap a plant for another in one step |
 | Your own furniture model | Yes — Add → + Add your own…, then like any piece; ⋯ renames, resizes, removes | Yes (F) | — |
 | A finish option of your own | Yes — Finishes → + Add option (staff); ⋯ changes or removes it | No | — |

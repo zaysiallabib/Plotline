@@ -956,3 +956,18 @@ describe('a whole floor with flats picked to furnish (s31 bigifc): the walk star
     expect(core.roomAt(e.p, core.deriveRooms(v), v)?.name).toBe('Living 2')
   })
 })
+
+describe("a buyer link carries the building's outside (session 31 facade)", () => {
+  it('the link stores it beside the finishes (none chosen: nothing); the viewer keeps only its own kinds of key', async () => {
+    const { keepOutside } = await import('./share')
+    const { linkUnit } = await import('../lib/publish')
+    const u = typeA as unknown as Unit
+    expect('outside' in linkUnit(u, null, [], {})).toBe(false)
+    const rec = { s_outside: 'fo_out_brick_red', 'out:d:w1': 'fo_out_stone', 'out:floor:0': 'fo_out_stone', s_frames: 'fo_frame_black', 'frame:d:o1': 'fo_frame_white' }
+    const sent = JSON.parse(JSON.stringify(linkUnit(u, { s_x: 'y' }, [], rec)))
+    expect(sent.outside).toEqual(rec)
+    expect(keepOutside(sent.outside)).toEqual(rec)
+    expect(keepOutside({ ...rec, s_floor_beds: 'fo_beds_oak', __proto__: 'x', 'out:x': 3 })).toEqual(rec)
+    expect([keepOutside(null), keepOutside('x'), keepOutside([1])]).toEqual([{}, {}, {}])
+  })
+})
