@@ -1474,8 +1474,10 @@ export default function StudioApp() {
       const across = Math.max(sz[0], sz[2])
       const drawn = b ? Math.max(b.maxX - b.minX, b.maxY - b.minY) : 0
       const kept = stored<Record<string, number>>(READ_IN_KEY)[fileName] !== undefined
-      if (!kept && across > 0 && (across < 4 || across < 0.75 * drawn)) {
-        const ks = [1, 10, 100, 1000].filter((k) => k === 1 || (across * k >= 6 && across * k <= 2000))
+      if (!kept && across > 0 && (across < 8 || across < 0.75 * drawn)) {
+        // (the likeliest size last — the card's blue answer: the one nearest a building's 30 m across)
+        const fit = (k: number) => Math.abs(Math.log((across * k) / 30))
+        const ks = [1, 10, 100, 1000].filter((k) => k === 1 || (across * k >= 6 && across * k <= 2000)).sort((a, b) => (a === 1 ? -1 : b === 1 ? 1 : fit(b) - fit(a)))
         const m = (v: number) => (v < 10 ? v.toFixed(1) : Math.round(v).toLocaleString('en'))
         const pick = await askChoice(
           `${fileName} reads ${m(across)} m across and ${m(sz[1])} m tall${drawn ? ` — smaller than the drawing (${m(drawn)} m)` : ''}. How big is it?`,
